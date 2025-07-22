@@ -1,0 +1,357 @@
+---
+title: "Model Comparison Report: {{TASK}} - {{COHORT}}"
+subtitle: "{{COMPARISON_NAME}}"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    code_folding: hide
+    df_print: paged
+params:
+  results_file: "{{RESULTS_FILE}}"
+  task: "{{TASK}}"
+  cohort: "{{COHORT}}"
+  session: "{{SESSION}}"
+  comparison_name: "{{COMPARISON_NAME}}"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, 
+                      fig.width = 10, fig.height = 6, dpi = 300)
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(knitr)
+  library(DT)
+  library(plotly)
+  library(here)
+})
+
+# Load results
+results <- readRDS(params$results_file)
+comparison_data <- results$comparison_data
+analysis_results <- results$analysis_results
+models_by_type <- results$models_by_type
+config <- results$config
+
+# Load helper functions
+source(file.path(here::here(), "scripts", "model_comparison", "helpers", "model_comparison_helpers.R"))
+source(file.path(here::here(), "scripts", "model_comparison", "visualization", "comparison_plots.R"))
+source(file.path(here::here(), "scripts", "ppc", "helpers", "task_config.R"))
+```
+
+# Executive Summary
+
+## Key Findings
+
+```{r executive-summary}
+# Create executive summary table
+summary_table <- data.frame(
+  Criterion = character(),
+  Best_Model = character(), 
+  Performance = character(),
+  Notes = character(),
+  stringsAsFactors = FALSE
+)
+
+# Information Criteria Winner
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  best_ic_model <- analysis_results$ic$overall_ranking$model[1]
+  ic_method <- analysis_results$ic$metadata$ic_method
+  delta_col <- grep("^delta_", names(analysis_results$ic$overall_ranking), value = TRUE)[1]
+  best_delta <- analysis_results$ic$overall_ranking[[delta_col]][1]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Criterion = paste("Information Criteria (", toupper(ic_method), ")", sep = ""),
+    Best_Model = best_ic_model,
+    Performance = sprintf("Δ%s = %.2f", toupper(ic_method), best_delta),
+    Notes = analysis_results$ic$overall_ranking$performance_tier[1]
+  ))
+}
+
+# Parameter Recovery Winner
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
+  best_recovery_model <- analysis_results$recovery$model_summary$model[1]
+  best_recovery_score <- analysis_results$recovery$model_summary$mean_correlation[1]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Criterion = "Parameter Recovery",
+    Best_Model = best_recovery_model,
+    Performance = sprintf("r = %.3f", best_recovery_score),
+    Notes = analysis_results$recovery$model_summary$recovery_quality[1]
+  ))
+}
+
+# PPC Winner
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
+  best_ppc_model <- analysis_results$ppc$model_summary$model[1]
+  best_ppc_score <- analysis_results$ppc$model_summary$overall_proportion_extreme[1]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Criterion = "Posterior Predictive Checks",
+    Best_Model = best_ppc_model,
+    Performance = sprintf("%.1f%% extreme", best_ppc_score * 100),
+    Notes = analysis_results$ppc$model_summary$model_quality[1]
+  ))
+}
+
+kable(summary_table, caption = "Model Comparison Summary") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Models Analyzed
+
+```{r models-analyzed}
+models_table <- data.frame(
+  Model = names(comparison_data),
+  Type = sapply(names(comparison_data), classify_model_type),
+  Has_Recovery = sapply(comparison_data, function(x) !is.null(x$recovery)),
+  Has_PPC = sapply(comparison_data, function(x) !is.null(x$ppc)),
+  Has_IC = sapply(comparison_data, function(x) !is.null(x$ic)),
+  stringsAsFactors = FALSE
+)
+
+models_table$Complete <- models_table$Has_Recovery & models_table$Has_PPC & models_table$Has_IC
+
+kable(models_table, caption = "Available Data by Model") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  kableExtra::column_spec(6, background = ifelse(models_table$Complete, "#d4edda", "#f8d7da"))
+```
+
+# Information Criteria Analysis
+
+{{IC_SECTION}}
+
+# Parameter Recovery Analysis
+
+{{RECOVERY_SECTION}}
+
+# Posterior Predictive Checks
+
+{{PPC_SECTION}}
+
+# Model Type Comparisons
+
+{{MODEL_TYPE_SECTION}}
+
+# Task-Specific Analysis
+
+{{TASK_SPECIFIC_SECTION}}
+
+# Detailed Model Profiles
+
+{{MODEL_PROFILES_SECTION}}
+
+# Conclusions and Recommendations
+
+## Overall Model Ranking
+
+```{r overall-ranking}
+if ("integrated_ranking" %in% names(analysis_results)) {
+  # Use integrated ranking if available
+  integrated_ranking <- analysis_results$integrated_ranking$consensus_ranking %>%
+    select(consensus_rank, model, model_type, overall_quality, 
+           ic_score, recovery_score, ppc_score, rank_stability) %>%
+    mutate(across(c(ic_score, recovery_score, ppc_score, rank_stability), ~round(.x, 3)))
+  
+  DT::datatable(integrated_ranking, 
+                caption = "Integrated Model Ranking (Consensus across all metrics)",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("overall_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent_all_around", "strong_overall", "good_balanced", 
+                        "strong_but_uneven", "adequate_performance", "needs_improvement"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#fdcb6e", "#f8d7da")
+                    ))
+  
+  cat("\n\n### Methodology\n\n")
+  cat("This integrated ranking combines:
+")
+  cat("- **Information Criteria (IC):** Model fit with complexity penalty\n")
+  cat("- **Parameter Recovery:** Ability to recover true parameter values\n")
+  cat("- **Posterior Predictive Checks (PPC):** Reproduction of behavioral patterns\n\n")
+  
+  cat("**Weighting schemes used:**\n")
+  cat("- Equal: 33% each metric\n")
+  cat("- IC-weighted: 50% IC, 25% recovery, 25% PPC\n")
+  cat("- Balanced: 40% IC, 30% recovery, 30% PPC\n\n")
+  
+  cat("**Consensus rank:** Median rank across all weighting schemes\n")
+  cat("**Rank stability:** Lower values indicate more consistent ranking across schemes\n\n")
+  
+} else if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  # Fall back to IC ranking only if integrated ranking not available
+  ranking_display <- analysis_results$ic$overall_ranking %>%
+    select(rank, model, model_type, matches("estimate$"), matches("^delta_"), 
+           model_weight, performance_tier) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(ranking_display, 
+                caption = "Model Ranking (Information Criteria Only)",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("performance_tier",
+                    backgroundColor = DT::styleEqual(
+                      c("top_tier", "competitive", "considerable_difference", "strong_difference", "decisive_difference"),
+                      c("#d4edda", "#fff3cd", "#ffeaa7", "#fdcb6e", "#e17055")
+                    ))
+  
+  cat("\n\n**Note:** This ranking is based on Information Criteria only. ",
+      "For comprehensive evaluation, include parameter recovery and PPC analysis.\n\n")
+  
+} else {
+  cat("No ranking data available.")
+}
+```
+
+## Key Insights
+
+```{r insights}
+insights <- list()
+
+# Integrated ranking insights (preferred)
+if ("integrated_ranking" %in% names(analysis_results)) {
+  consensus_ranking <- analysis_results$integrated_ranking$consensus_ranking
+  best_model <- consensus_ranking$model[1]
+  best_quality <- consensus_ranking$overall_quality[1]
+  
+  insights$integrated <- paste("**Best overall model (integrated ranking):**", best_model, 
+                              "with", gsub("_", " ", best_quality), "performance")
+  
+  # Top tier models (consensus rank <= 3 or top 25%)
+  top_threshold <- max(3, round(nrow(consensus_ranking) * 0.25))
+  top_models <- consensus_ranking$model[consensus_ranking$consensus_rank <= top_threshold]
+  
+  if (length(top_models) > 1) {
+    insights$top_models <- paste("**Top-performing models:**", paste(top_models, collapse = ", "))
+  }
+  
+  # Stability insights
+  stable_models <- consensus_ranking %>%
+    filter(rank_stability <= quantile(rank_stability, 0.25, na.rm = TRUE)) %>%
+    pull(model)
+  
+  if (length(stable_models) > 0) {
+    insights$stability <- paste("**Most stable rankings:**", paste(head(stable_models, 3), collapse = ", "),
+                               "- consistent performance across weighting schemes")
+  }
+  
+  # Quality distribution
+  quality_summary <- table(consensus_ranking$overall_quality)
+  excellent_count <- sum(quality_summary[grepl("excellent|strong", names(quality_summary))], na.rm = TRUE)
+  
+  if (excellent_count > 0) {
+    insights$quality_dist <- paste("**High-quality models:**", excellent_count, "out of", 
+                                  nrow(consensus_ranking), "models show excellent or strong overall performance")
+  }
+}
+
+# IC insights (fallback or additional)
+if ("ic" %in% names(analysis_results)) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  top_tier_models <- ic_ranking %>%
+    filter(performance_tier == "top_tier") %>%
+    pull(model)
+  
+  if (length(top_tier_models) == 1) {
+    insights$ic <- paste("**Clear IC winner:**", top_tier_models[1])
+  } else if (length(top_tier_models) > 1) {
+    insights$ic <- paste("**Multiple competitive models (IC):**", paste(top_tier_models, collapse = ", "))
+  }
+}
+
+# Recovery insights
+if ("recovery" %in% names(analysis_results)) {
+  best_groups <- head(analysis_results$recovery$group_summary$group, 3)
+  worst_groups <- tail(analysis_results$recovery$group_summary$group, 3)
+  
+  insights$recovery <- paste("**Parameter Recovery:** Best recovered groups:", paste(best_groups, collapse = ", "),
+                           ". Most challenging:", paste(worst_groups, collapse = ", "))
+}
+
+# PPC insights
+if ("ppc" %in% names(analysis_results)) {
+  difficult_domains <- analysis_results$ppc$domain_summary %>%
+    arrange(desc(proportion_extreme)) %>%
+    head(2) %>%
+    pull(domain)
+  
+  insights$ppc <- paste("**PPC Performance:** Most challenging behavioral domains:", paste(difficult_domains, collapse = ", "))
+}
+
+for (i in seq_along(insights)) {
+  cat("**", names(insights)[i], "**: ", insights[[i]], "\n\n")
+}
+```
+
+## Recommendations
+
+Based on the comprehensive analysis:
+
+```{r recommendations}
+# Generate data-driven recommendations
+recommendations <- list()
+
+if ("ic" %in% names(analysis_results)) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  
+  # Top recommendation
+  best_model <- ic_ranking$model[1]
+  best_tier <- ic_ranking$performance_tier[1]
+  
+  if (best_tier == "top_tier") {
+    recommendations$primary <- paste("**Primary recommendation:** Use", best_model, "as it shows the best overall fit to the data.")
+  } else {
+    recommendations$primary <- paste("**Primary recommendation:** Consider", best_model, "but note that model selection is less decisive.")
+  }
+  
+  # Alternative recommendations
+  competitive_models <- ic_ranking %>%
+    filter(performance_tier %in% c("top_tier", "competitive")) %>%
+    filter(row_number() > 1) %>%
+    pull(model)
+  
+  if (length(competitive_models) > 0) {
+    recommendations$alternatives <- paste("**Alternative options:** Consider", paste(competitive_models, collapse = ", "), "as competitive alternatives.")
+  }
+}
+
+# Type-specific recommendations
+if (length(models_by_type) > 1) {
+  type_winners <- sapply(names(models_by_type), function(type) {
+    type_models <- models_by_type[[type]]
+    if ("ic" %in% names(analysis_results)) {
+      type_ranking <- analysis_results$ic$overall_ranking %>%
+        filter(model %in% type_models) %>%
+        arrange(rank)
+      if (nrow(type_ranking) > 0) {
+        return(type_ranking$model[1])
+      }
+    }
+    return(NA)
+  })
+  
+  type_winners <- type_winners[!is.na(type_winners)]
+  
+  if (length(type_winners) > 0) {
+    type_text <- paste(names(type_winners), ":", type_winners, collapse = "; ")
+    recommendations$by_type <- paste("**Best by model type:** ", type_text)
+  }
+}
+
+for (rec in recommendations) {
+  cat(rec, "\n\n")
+}
+```
+
+---
+
+*Report generated on `r Sys.time()` using the model comparison pipeline.*
+
+*Analysis included {{N_MODELS}} models with data from parameter recovery, posterior predictive checks, and information criteria.*

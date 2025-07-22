@@ -1,0 +1,174 @@
+
+### Hybrid RL-SSM Parameter Analysis
+
+#### RL-Specific Parameter Analysis
+```{r rl_params, echo=FALSE, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Motivation parameters (if present)
+positive_lin_params <- recovery_data %>%
+  filter(grepl("wgt_rew", parameter, ignore.case = TRUE))
+
+if(nrow(positive_lin_params) > 0) {
+  ggplot(positive_lin_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Linear Reward Parameters") +
+    theme_minimal()
+}
+
+neg_lin_params <- recovery_data %>%
+  filter(grepl("wgt_pun", parameter, ignore.case = TRUE))
+
+if(nrow(neg_lin_params) > 0) {
+  ggplot(neg_lin_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Linear Punishment Parameters") +
+    theme_minimal()
+}
+
+positive_nlin_params <- recovery_data %>%
+  filter(grepl("gain", parameter, ignore.case = TRUE))
+
+if(nrow(positive_nlin_params) > 0) {
+  ggplot(positive_nlin_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Nonlinear Reward Parameters") +
+    theme_minimal()
+}
+
+neg_nlin_params <- recovery_data %>%
+  filter(grepl("loss", parameter, ignore.case = TRUE))
+
+if(nrow(neg_nlin_params) > 0) {
+  ggplot(neg_nlin_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Nonlinear Punishment Parameters") +
+    theme_minimal()
+}
+
+shape_params <- recovery_data %>%
+  filter(grepl("mag|shape", parameter, ignore.case = TRUE))
+
+if(nrow(shape_params) > 0) {
+  ggplot(shape_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Utility Shape Parameters") +
+    theme_minimal()
+}
+
+# Learning rate parameters (if present)
+learning_params <- recovery_data %>%
+  filter(grepl("alpha|learning|lr|update", parameter, ignore.case = TRUE))
+
+if(nrow(learning_params) > 0) {
+  ggplot(learning_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Learning Rate Parameters") +
+    theme_minimal()
+}
+
+# Decay rate parameters (if present)
+decay_params <- recovery_data %>%
+  filter(grepl("retend|decay", parameter, ignore.case = TRUE))
+
+if(nrow(decay_params) > 0) {
+
+  ggplot(decay_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Decay Rate Parameters") +
+    theme_minimal()
+}
+
+# Temperature/exploration parameters (if present)
+temp_params <- recovery_data %>%
+  filter(grepl("temp|con|drift_con", parameter, ignore.case = TRUE))
+
+if(nrow(temp_params) > 0) {
+  ggplot(temp_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE) +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Temperature/Exploration Parameters") +
+    theme_minimal()
+}
+```
+
+#### SSM-Specific Parameter Analysis
+
+```{r ssm_params, echo=FALSE, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Drift rate parameters
+drift_params <- recovery_data %>%
+  filter(grepl("drift|v|drift_con", parameter, ignore.case = TRUE))
+
+if(nrow(drift_params) > 0) {
+  ggplot(drift_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Drift Rate Parameters") +
+    theme_minimal()
+}
+
+# Boundary/threshold parameters
+boundary_params <- recovery_data %>%
+  filter(grepl("boundary|threshold", parameter, ignore.case = TRUE))
+
+if(nrow(boundary_params) > 0) {
+  ggplot(boundary_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Boundary/Threshold Parameters") +
+    theme_minimal()
+}
+
+# Non-decision time parameters
+ndt_params <- recovery_data %>%
+  filter(grepl("ndt|ter|t0|tau", parameter, ignore.case = TRUE))
+
+if(nrow(ndt_params) > 0) {
+  ggplot(ndt_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Non-Decision Time (Tau) Parameters") +
+    theme_minimal()
+}
+
+# Starting point parameters
+start_params <- recovery_data %>%
+  filter(grepl("beta", parameter, ignore.case = TRUE))
+
+if(nrow(start_params) > 0) {
+  ggplot(start_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Beta or Starting Point Parameters") +
+    theme_minimal()
+}
+```

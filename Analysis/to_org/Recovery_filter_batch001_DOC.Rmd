@@ -1,0 +1,880 @@
+---
+title: "Recovery Results"
+author: "Felix Pichardo"
+date: "2025-02-28"
+output: 
+  word_document:
+    toc: true
+    toc_depth: 3
+    fig_width: 8
+    fig_height: 6
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, dpi = 300)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(ggrepel)  # For label repulsion in plots
+
+# Helper function for Word-compatible tables - with col.names support
+make_word_table <- function(df, caption_text, digits = 3, col.names = NULL) {
+  if (is.null(col.names)) {
+    return(kable(df, caption = caption_text, digits = digits))
+  } else {
+    return(kable(df, caption = caption_text, digits = digits, col.names = col.names))
+  }
+}
+```
+
+# Model Configuration
+
+First, we define the model configuration to make this analysis more extensible:
+
+```{r model-config}
+# Enhanced Model Configuration
+model_config <- list(
+  # Define model families (the core algorithms)
+  families = list(
+    ev = list(
+      display_name = "Expected Value",
+      models = c("ev", "ev_ddm")
+    ),
+    pvl = list(
+      display_name = "Prospect Valence Learning",
+      # Group all PVL variants
+      variants = list(
+        delta = list(
+          display_name = "PVLdelta",
+          models = c("pvldelta", "pvldelta_ddm")
+        ),
+        decay = list(
+          display_name = "PVLdecay",
+          models = c("pvldecay", "pvldecay_ddm") 
+        ),
+        both = list(
+          display_name = "PVLboth",
+          models = c("pvlboth", "pvlboth_ddm")
+        ),
+        bothsd = list(
+          display_name = "PVLbothsd",
+          models = c("pvlbothsd", "pvlbothsd_ddm")
+        )
+      )
+    ),
+    vpp = list(
+      display_name = "Value-Plus-Perseverance",
+      # Group all VPP variants
+      variants = list(
+        delta = list(
+          display_name = "VPPdeltag",
+          models = c("vppdeltag", "vppdeltag_ddm")
+        ),
+        decay = list(
+          display_name = "VPPdecayg",
+          models = c("vppdecayg", "vppdecayg_ddm") 
+        ),
+        both = list(
+          display_name = "VPPbothg",
+          models = c("vppbothg", "vppbothg_ddm")
+        ),
+        delta = list(
+          display_name = "VPPdeltagd",
+          models = c("vppdeltagd", "vppdeltagd_ddm")
+        ),
+        decay = list(
+          display_name = "VPPdecaygd",
+          models = c("vppdecaygd", "vppdecaygd_ddm") 
+        ),
+        both = list(
+          display_name = "VPPbothgd",
+          models = c("vppbothgd", "vppbothgd_ddm")
+        )
+      )
+    ),
+    ddm = list(
+      display_name = "DDM Only",
+      models = c("ddm")
+    )
+  ),
+  
+  # Define model types (for categorization)
+  types = list(
+    rl_only = "Reinforcement Learning", 
+    ddm_only = "Sequential Sampling",
+    hybrid = "Hybrid (RL+DDM)"
+  ),
+  
+  # Define parameter groups
+  parameter_groups = list(
+    "DDM Process" = c("boundary", "tau", "beta"),
+    "Consistency/Drift" = c("drift", "drift_con", "con"),
+    "Valuation" = c("wgt_pun", "wgt_rew", "gain", "loss"),
+    "Learning Rate" = c("update", "retend", "decay"),
+    "Perseveration" = c("k", "w", "ep")
+  )
+)
+
+# Build derived model lists automatically
+build_model_lists <- function(config) {
+  # Initialize lists
+  all_models <- character()
+  display_names <- list()
+  rl_only_models <- character()
+  ddm_only_models <- character()
+  hybrid_models <- character()
+  all_model_families <- list()
+  
+  # Process all model families
+  for (family_name in names(config$families)) {
+    family <- config$families[[family_name]]
+    
+    # Handle families with variants
+    if ("variants" %in% names(family)) {
+      for (variant_name in names(family$variants)) {
+        variant <- family$variants[[variant_name]]
+        
+        # Process each model in the variant
+        for (model in variant$models) {
+          # Create display name
+          display_name <- paste(variant$display_name, ifelse(grepl("_ddm$", model), "+DDM", "Only"))
+          display_names[[model]] <- display_name
+          
+          # Determine model type and store in appropriate list
+          if (grepl("_ddm$", model)) {
+            hybrid_models <- c(hybrid_models, model)
+          } else if (model == "ddm") {
+            ddm_only_models <- c(ddm_only_models, model)
+          } else {
+            rl_only_models <- c(rl_only_models, model)
+          }
+          
+          # Add to all models list
+          all_models <- c(all_models, model)
+          
+          # Add to model families - group by base algorithm
+          base_family <- ifelse(family_name == "ddm", "ddm", 
+                                paste0(family_name, variant_name))
+          
+          if (is.null(all_model_families[[base_family]])) {
+            all_model_families[[base_family]] <- character()
+          }
+          all_model_families[[base_family]] <- c(all_model_families[[base_family]], model)
+        }
+      }
+    } else {
+      # Simple family without variants (like EV or DDM)
+      for (model in family$models) {
+        # Create display name
+        display_name <- paste(family$display_name, ifelse(grepl("_ddm$", model), "+DDM", ""))
+        display_names[[model]] <- display_name
+        
+        # Determine model type and store in appropriate list
+        if (grepl("_ddm$", model)) {
+          hybrid_models <- c(hybrid_models, model)
+        } else if (model == "ddm") {
+          ddm_only_models <- c(ddm_only_models, model)
+        } else {
+          rl_only_models <- c(rl_only_models, model)
+        }
+        
+        # Add to all models list
+        all_models <- c(all_models, model)
+        
+        # Add to model families
+        base_family <- ifelse(family_name == "ddm", "ddm", family_name)
+        if (is.null(all_model_families[[base_family]])) {
+          all_model_families[[base_family]] <- character()
+        }
+        all_model_families[[base_family]] <- c(all_model_families[[base_family]], model)
+      }
+    }
+  }
+  
+  # Return all derived lists
+  return(list(
+    all_models = unique(all_models),
+    rl_only_models = unique(rl_only_models),
+    ddm_only_models = unique(ddm_only_models),
+    hybrid_models = unique(hybrid_models),
+    model_display_names = display_names,
+    model_families = all_model_families
+  ))
+}
+
+# Generate all the model lists from configuration
+derived_lists <- build_model_lists(model_config)
+all_models <- derived_lists$all_models
+rl_only_models <- derived_lists$rl_only_models
+ddm_only_models <- derived_lists$ddm_only_models
+hybrid_models <- derived_lists$hybrid_models
+model_display_names <- derived_lists$model_display_names
+model_families <- derived_lists$model_families
+
+# Print model lists for verification
+cat("All models:", length(all_models), "\n")
+cat("RL-only models:", length(rl_only_models), "\n")
+cat("DDM-only models:", length(ddm_only_models), "\n")
+cat("Hybrid models:", length(hybrid_models), "\n")
+cat("Model families:", length(model_families), "\n")
+```
+
+```{r data-loading}
+# Function to load recovery data with error handling
+load_recovery_data <- function(model_name, base_dir = NULL) {
+  if (is.null(base_dir)) {
+    PROJ_DIR <- here::here()
+    base_dir <- file.path(PROJ_DIR, "Data", "sim", "recovery")
+  }
+  
+  file_path <- file.path(base_dir, paste0("recovery_igt_mod_batch_001_", model_name, "_desc-sim_params.rds"))
+  
+  if (file.exists(file_path)) {
+    return(readRDS(file_path))
+  } else {
+    warning(paste("Recovery file not found for model:", model_name))
+    return(NULL)
+  }
+}
+
+# Paths to data files
+PROJ_DIR <- here::here()
+REC_SIM_DIR <- file.path(PROJ_DIR, "Data", "sim", "recovery")
+
+# Automatically discover available models in the directory
+available_files <- list.files(REC_SIM_DIR, pattern = "recovery_igt_mod_batch_001_(.*)_desc-sim_params.rds", full.names = FALSE)
+available_models <- available_files %>% 
+  str_remove("recovery_igt_mod_batch_001_") %>%
+  str_remove("_desc-sim_params.rds")
+
+# Load data for all configured models that are available
+recovery_data <- list()
+for (model_name in all_models) {
+  if (model_name %in% available_models) {
+    recovery_data[[model_name]] <- load_recovery_data(model_name, REC_SIM_DIR)
+  }
+}
+
+# Update model lists based on what's actually available
+available_all_models <- names(recovery_data)
+available_rl_models <- intersect(rl_only_models, available_all_models)
+available_ddm_models <- intersect(ddm_only_models, available_all_models)
+available_hybrid_models <- intersect(hybrid_models, available_all_models)
+
+# Print availability stats
+cat("Available models:", length(available_all_models), "out of", length(all_models), "\n")
+```
+
+# Overall Recovery Performance
+
+```{r overall-performance, fig.height=8, fig.width=9}
+# Create a function to extract overall metrics with error handling
+extract_overall <- function(recovery_obj, model_name) {
+  if (is.null(recovery_obj)) {
+    return(NULL)
+  }
+  
+  overall <- recovery_obj$overall
+  overall$model <- model_name
+  overall$model_display <- model_display_names[model_name]
+  
+  # Add model type classification
+  overall$model_type <- case_when(
+    model_name %in% rl_only_models ~ "RL Only",
+    model_name %in% ddm_only_models ~ "DDM Only",
+    model_name %in% hybrid_models ~ "Hybrid (RL+DDM)",
+    TRUE ~ "Unknown"
+  )
+  
+  return(overall)
+}
+
+# Combine all overall metrics
+overall_df <- bind_rows(
+  lapply(names(recovery_data), function(name) {
+    extract_overall(recovery_data[[name]], name)
+  })
+)
+
+# Create a wider format for easier comparison
+overall_wide <- overall_df %>%
+  pivot_wider(names_from = metric, values_from = value) %>%
+  select(model, model_display, model_type, correlation, rmse, bias, relative_bias) %>%
+  arrange(model_type, model)
+
+# Display nice table
+make_word_table(overall_wide, 
+      caption_text = "Overall Recovery Performance Metrics",
+      digits = 3,
+      col.names = c("Model", "Display Name", "Type", "Correlation", "RMSE", "Bias", "Relative Bias"))
+
+# Function to visualize overall performance - Fixed to avoid reorder issues
+plot_overall_performance <- function(data, metric = "correlation") {
+  # Define plot labels based on metric
+  y_label <- case_when(
+    metric == "correlation" ~ "Parameter Recovery Correlation (higher is better)",
+    metric == "rmse" ~ "Parameter Recovery RMSE (lower is better)",
+    metric == "relative_bias" ~ "Parameter Relative Bias (closer to 0 is better)",
+    TRUE ~ metric
+  )
+  
+  # Set up color direction based on metric (higher better for correlation, lower better for others)
+  color_direction <- if(metric == "correlation") "high" else "low"
+  midpoint <- if(metric == "correlation") 0.7 else 0.3
+  limits <- if(metric == "correlation") c(0, 1) else NULL
+  
+  # Pre-sort the data by the metric value
+  if (metric == "correlation") {
+    sorted_data <- data %>% 
+      arrange(model_type, desc(!!sym(metric))) %>%
+      mutate(model_display = factor(model_display, levels = unique(model_display)))
+  } else {
+    sorted_data <- data %>% 
+      arrange(model_type, !!sym(metric)) %>%
+      mutate(model_display = factor(model_display, levels = unique(model_display)))
+  }
+  
+  # Create plot without using reorder()
+  ggplot(sorted_data, aes(x = model_display, y = !!sym(metric), fill = !!sym(metric))) +
+    geom_bar(stat = "identity") +
+    scale_fill_gradient2(
+      low = if(color_direction == "low") "green" else "red", 
+      mid = "yellow", 
+      high = if(color_direction == "low") "red" else "green",
+      midpoint = midpoint,
+      limits = limits
+    ) +
+    coord_flip() +
+    facet_wrap(~ model_type, scales = "free_y") +
+    theme_minimal() +
+    labs(
+      title = paste("Model Recovery Performance -", toupper(metric)),
+      x = NULL,
+      y = y_label,
+      fill = metric
+    )
+}
+
+# Create overall performance visualizations
+plot_overall_performance(overall_wide, "correlation")
+plot_overall_performance(overall_wide, "rmse")
+```
+
+# Parameter-Specific Recovery
+
+```{r parameter-functions}
+# Function to extract parameter-specific data with error handling
+extract_params <- function(recovery_obj, model_name) {
+  if (is.null(recovery_obj) || !("by_parameter" %in% names(recovery_obj))) {
+    return(NULL)
+  }
+  
+  params <- recovery_obj$by_parameter
+  params$model <- model_name
+  params$model_display <- as.character(model_display_names[model_name])  # Convert to character
+  
+  # Add model type classification
+  params$model_type <- case_when(
+    model_name %in% rl_only_models ~ "RL Only",
+    model_name %in% ddm_only_models ~ "DDM Only",
+    model_name %in% hybrid_models ~ "Hybrid (RL+DDM)",
+    TRUE ~ "Unknown"
+  )
+  
+  # Add parameter type based on config
+  params$param_type <- NA_character_
+  for (type_name in names(model_config$parameter_groups)) {
+    type_params <- model_config$parameter_groups[[type_name]]
+    params$param_type[params$parameter %in% type_params] <- type_name
+  }
+  params$param_type[is.na(params$param_type)] <- "Other"
+  
+  # Extract family and variant information
+  for (family_name in names(model_config$families)) {
+    family <- model_config$families[[family_name]]
+    
+    # Check if this model belongs to this family
+    if ("variants" %in% names(family)) {
+      # Check each variant in this family
+      for (variant_name in names(family$variants)) {
+        variant <- family$variants[[variant_name]]
+        if (model_name %in% variant$models) {
+          params$family_name <- family_name
+          params$variant_name <- variant_name
+          break
+        }
+      }
+    } else {
+      # Simple family without variants
+      if (model_name %in% family$models) {
+        params$family_name <- family_name
+        params$variant_name <- NA
+      }
+    }
+  }
+  
+  return(params)
+}
+
+# Function to create parameter tables for a specific model
+create_param_table <- function(model_name) {
+  if (!model_name %in% names(recovery_data) || is.null(recovery_data[[model_name]])) {
+    return(NULL)
+  }
+  
+  param_df <- recovery_data[[model_name]]$by_parameter
+  make_word_table(param_df, 
+      caption_text = paste("Parameter Recovery for", model_display_names[model_name]), 
+      digits = 3)
+}
+```
+
+## DDM Only Models
+
+```{r ddm-only-tables}
+for (model_name in available_ddm_models) {
+  cat(paste0("\n### Model: ", model_display_names[model_name], "\n\n"))
+  
+  if (!model_name %in% names(recovery_data) || is.null(recovery_data[[model_name]])) {
+    cat(paste("Model", model_name, "data not available.\n\n"))
+  } else {
+    param_df <- recovery_data[[model_name]]$by_parameter
+    print(
+      make_word_table(param_df, 
+          caption_text = paste("Parameter Recovery for", model_display_names[model_name]), 
+          digits = 3)
+    )
+    cat("\n\n") # Add some spacing between tables
+  }
+}
+```
+
+## RL Models
+
+```{r rl-only-tables}
+for (model_name in available_rl_models) {
+  cat(paste0("\n### Model: ", model_display_names[model_name], "\n\n"))
+  
+  if (!model_name %in% names(recovery_data) || is.null(recovery_data[[model_name]])) {
+    cat(paste("Model", model_name, "data not available.\n\n"))
+  } else {
+    param_df <- recovery_data[[model_name]]$by_parameter
+    print(
+      make_word_table(param_df, 
+          caption_text = paste("Parameter Recovery for", model_display_names[model_name]), 
+          digits = 3)
+    )
+    cat("\n\n") # Add some spacing between tables
+  }
+}
+```
+
+## Hybrid Models (RL+DDM)
+
+```{r hybrid-tables}
+for (model_name in available_hybrid_models) {
+  cat(paste0("\n### Model: ", model_display_names[model_name], "\n\n"))
+  
+  if (!model_name %in% names(recovery_data) || is.null(recovery_data[[model_name]])) {
+    cat(paste("Model", model_name, "data not available.\n\n"))
+  } else {
+    param_df <- recovery_data[[model_name]]$by_parameter
+    print(
+      make_word_table(param_df, 
+          caption_text = paste("Parameter Recovery for", model_display_names[model_name]), 
+          digits = 3)
+    )
+    cat("\n\n") # Add some spacing between tables
+  }
+}
+```
+
+# Cross-Model Parameter Recovery Analysis
+
+Now let's analyze parameter recovery performance across different models and model types:
+
+```{r cross-model-analysis, fig.height=8, fig.width=10}
+# Combine all parameter data
+params_df <- bind_rows(
+  lapply(names(recovery_data), function(name) {
+    extract_params(recovery_data[[name]], name)
+  })
+)
+
+# Create a comparison of correlation by parameter type and model type
+correlation_by_param_type <- params_df %>%
+  group_by(model_type, param_type) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    mean_rmse = mean(rmse, na.rm = TRUE),
+    parameter_count = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(param_type, desc(mean_correlation))
+
+# Display the summary table
+make_word_table(correlation_by_param_type, 
+      caption_text = "Parameter Recovery by Model Type and Parameter Type", 
+      digits = 3,
+      col.names = c("Model Type", "Parameter Type", "Mean Correlation", "Mean RMSE", "# Parameters"))
+
+# Visualize the comparison
+ggplot(correlation_by_param_type, 
+       aes(x = param_type, y = mean_correlation, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.3f", mean_correlation)),
+            position = position_dodge(width = 0.9),
+            vjust = -0.3, size = 3) +
+  scale_y_continuous(limits = c(0, max(correlation_by_param_type$mean_correlation) * 1.2)) +
+  scale_fill_brewer(palette = "Set2") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Parameter Recovery by Type",
+       x = "Parameter Type",
+       y = "Mean Correlation",
+       fill = "Model Type")
+
+# Plot correlation by parameter and model type
+ggplot(params_df, aes(x = parameter, y = correlation, fill = model_type)) +
+  geom_boxplot() +
+  facet_wrap(~ param_type, scales = "free_x", ncol = 2) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    strip.text = element_text(size = 11, face = "bold")
+  ) +
+  labs(
+    title = "Parameter Recovery (Correlation)",
+    y = "Correlation (higher is better)",
+    x = "Parameter",
+    fill = "Model Type"
+  )
+
+# Plot RMSE by parameter and model type
+ggplot(params_df, aes(x = parameter, y = rmse, fill = model_type)) +
+  geom_boxplot() +
+  facet_wrap(~ param_type, scales = "free_x", ncol = 2) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    strip.text = element_text(size = 11, face = "bold")
+  ) +
+  labs(
+    title = "Parameter Recovery (RMSE)",
+    y = "RMSE (lower is better)",
+    x = "Parameter",
+    fill = "Model Type"
+  )
+```
+
+# Parameter Recovery by Model Family
+
+Let's examine how parameters are recovered in each model family:
+
+```{r model-family-analysis, fig.height=9, fig.width=10}
+# Add a more informative family label for grouping
+params_df <- params_df %>%
+  mutate(
+    model_family_label = case_when(
+      grepl("^ev", model) ~ "EV",
+      grepl("^pvldelta", model) ~ "PVLdelta",
+      grepl("^pvldecay", model) ~ "PVLdecay",
+      grepl("^pvlboth$|^pvlboth_", model) ~ "PVLboth",
+      grepl("^pvlbothsd", model) ~ "PVLbothsd",
+      grepl("^vppdelta", model) ~ "VPPdelta",
+      grepl("^vppdecay", model) ~ "VPPdecay",
+      grepl("^vppboth$|^vppboth_", model) ~ "VPPboth",
+      model == "ddm" ~ "DDM",
+      TRUE ~ "Other"
+    ),
+    is_hybrid = grepl("_ddm$", model)
+  )
+
+# Group parameters by model family and type
+family_parameter_performance <- params_df %>%
+  group_by(model_family_label, is_hybrid, param_type, parameter) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    mean_rmse = mean(rmse, na.rm = TRUE),
+    model_count = n(),
+    .groups = "drop"
+  )
+
+# Plot performance by model family and parameter type
+ggplot(family_parameter_performance, 
+       aes(x = parameter, y = mean_correlation, 
+           fill = interaction(model_family_label, is_hybrid))) +
+  geom_col(position = position_dodge(width = 0.8)) +
+  facet_wrap(~ param_type, scales = "free_x", ncol = 2) +
+  scale_fill_brewer(palette = "Paired") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    strip.text = element_text(size = 11, face = "bold")
+  ) +
+  labs(
+    title = "Parameter Recovery by Model Family and Parameter Type",
+    y = "Mean Correlation",
+    x = "Parameter",
+    fill = "Model Family"
+  )
+
+# Create a focused comparison within each model family that has both RL-only and hybrid versions
+# First, identify families with both versions
+family_has_both <- family_parameter_performance %>%
+  group_by(model_family_label) %>%
+  summarize(
+    has_rl_only = any(!is_hybrid),
+    has_hybrid = any(is_hybrid),
+    has_both = has_rl_only & has_hybrid,
+    .groups = "drop"
+  ) %>%
+  filter(has_both) %>%
+  pull(model_family_label)
+
+# Plot comparison within families that have both versions
+family_parameter_performance %>%
+  filter(model_family_label %in% family_has_both) %>%
+  ggplot(aes(x = parameter, y = mean_correlation, fill = is_hybrid)) +
+  geom_col(position = position_dodge(width = 0.8)) +
+  facet_grid(param_type ~ model_family_label, scales = "free_x") +
+  scale_fill_manual(
+    values = c("FALSE" = "#1B9E77", "TRUE" = "#D95F02"),
+    labels = c("FALSE" = "RL-Only", "TRUE" = "Hybrid (RL+DDM)"),
+    name = "Model Type"
+  ) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(size = 9, face = "bold")
+  ) +
+  labs(
+    title = "RL-Only vs. Hybrid: Parameter Recovery Within Model Families",
+    y = "Mean Correlation",
+    x = "Parameter"
+  )
+```
+
+# Parameter-Focused Analysis
+
+Let's examine how each parameter is recovered across different models:
+
+```{r parameter-focused, fig.height=8, fig.width=10}
+# Function to create parameter-focused plots for a specific parameter type
+plot_parameter_type <- function(param_type_focus) {
+  # Filter data for this parameter type
+  param_data <- params_df %>% 
+    filter(param_type == param_type_focus)
+  
+  # If no data, return NULL
+  if (nrow(param_data) == 0) {
+    return(NULL)
+  }
+  
+  # Plot correlation
+  p_corr <- ggplot(param_data, aes(x = model_family_label, y = correlation, fill = model_type)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    facet_wrap(~ parameter, scales = "free_x", ncol = 3) +
+    scale_fill_brewer(palette = "Set2") +
+    scale_y_continuous(limits = c(0, 1)) +
+    labs(
+      title = paste("Parameter Recovery (Correlation) for", param_type_focus, "Parameters"),
+      y = "Correlation (higher is better)",
+      x = "Model Family",
+      fill = "Model Type"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold"),
+      strip.text = element_text(size = 11, face = "bold")
+    )
+  
+  # Plot RMSE
+  p_rmse <- ggplot(param_data, aes(x = model_family_label, y = rmse, fill = model_type)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    facet_wrap(~ parameter, scales = "free_y", ncol = 3) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(
+      title = paste("Parameter Recovery (RMSE) for", param_type_focus, "Parameters"),
+      y = "RMSE (lower is better)",
+      x = "Model Family",
+      fill = "Model Type"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold"),
+      strip.text = element_text(size = 11, face = "bold")
+    )
+  
+  # Print the plots
+  print(p_corr)
+  print(p_rmse)
+}
+
+# Loop through each parameter type
+for (param_type in unique(params_df$param_type)) {
+  cat(paste0("\n## ", param_type, " Parameters\n"))
+  plot_parameter_type(param_type)
+}
+```
+
+# Best Performing Models by Parameter
+
+Now let's identify which models perform best for each parameter:
+
+```{r best-models, fig.height=8, fig.width=10}
+# Create a summary visualization of best-performing models by parameter
+param_summary <- params_df %>%
+  group_by(parameter, param_type) %>%
+  # For each parameter, find which model performs best
+  summarize(
+    best_corr_model = model_display[which.max(correlation)],
+    best_corr_value = max(correlation, na.rm = TRUE),
+    best_rmse_model = model_display[which.min(rmse)],
+    best_rmse_value = min(rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Plot best models by parameter (Correlation)
+ggplot(param_summary, aes(x = parameter, y = best_corr_value, fill = best_corr_model)) +
+  geom_col() +
+  facet_wrap(~ param_type, scales = "free_x", ncol = 2) +
+  scale_fill_viridis_d() +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    title = "Best Performing Models by Parameter (Correlation)",
+    y = "Maximum Correlation",
+    x = "Parameter",
+    fill = "Best Model"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(size = 11, face = "bold")
+  )
+
+# Plot best models by parameter (RMSE)
+ggplot(param_summary, aes(x = parameter, y = best_rmse_value, fill = best_rmse_model)) +
+  geom_col() +
+  facet_wrap(~ param_type, scales = "free", ncol = 2) +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Best Performing Models by Parameter (RMSE)",
+    y = "Minimum RMSE",
+    x = "Parameter",
+    fill = "Best Model"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(size = 11, face = "bold")
+  )
+```
+
+# Model Performance Summary
+
+Let's create a summary of model performance based on parameter recovery:
+
+```{r model-summary, fig.height=8, fig.width=10}
+# Aggregate model performance across parameter types
+model_performance <- params_df %>%
+  group_by(model, model_display, model_type, param_type) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    mean_rmse = mean(rmse, na.rm = TRUE),
+    parameter_count = n(),
+    .groups = "drop"
+  ) %>%
+  group_by(model, model_display, model_type) %>%
+  summarize(
+    overall_correlation = mean(mean_correlation, na.rm = TRUE),
+    overall_rmse = mean(mean_rmse, na.rm = TRUE),
+    best_param_type = param_type[which.max(mean_correlation)],
+    best_param_correlation = max(mean_correlation, na.rm = TRUE),
+    worst_param_type = param_type[which.min(mean_correlation)],
+    worst_param_correlation = min(mean_correlation, na.rm = TRUE),
+    param_type_count = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(overall_correlation))
+
+# Display the model performance table
+make_word_table(model_performance, 
+      caption_text = "Model Recovery Performance Summary", 
+      digits = 3,
+      col.names = c("Model", "Display Name", "Type", "Overall Correlation", "Overall RMSE", 
+                     "Best Parameter Type", "Best Param Correlation", 
+                     "Worst Parameter Type", "Worst Param Correlation", "# Param Types"))
+
+# Create a bar chart of overall model performance
+ggplot(model_performance, 
+       aes(x = model_display, 
+           y = overall_correlation, 
+           fill = model_type)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = sprintf("%.3f", overall_correlation)),
+            position = position_stack(vjust = 0.5),
+            color = "white") +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal() +
+  labs(title = "Overall Model Recovery Performance",
+       subtitle = "Based on parameter recovery correlation",
+       x = NULL,
+       y = "Mean Correlation",
+       fill = "Model Type")
+
+# Create a visualization that shows both correlation and RMSE
+ggplot(model_performance, 
+       aes(x = overall_correlation, y = 1/overall_rmse, 
+           color = model_type, label = model_display)) +
+  geom_point(size = 4, alpha = 0.7) +
+  geom_text_repel(box.padding = 0.5, point.padding = 0.5) +
+  scale_color_brewer(palette = "Set2") +
+  theme_minimal() +
+  labs(title = "Model Recovery Performance Tradeoff",
+       subtitle = "Better models are in the upper-right (high correlation, low RMSE)",
+       x = "Correlation (higher is better)",
+       y = "1/RMSE (higher is better)",
+       color = "Model Type")
+
+# Visualize parameter type performance by model
+param_type_by_model <- params_df %>%
+  group_by(model_display, param_type) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(param_type_by_model, 
+       aes(x = model_display, y = mean_correlation, fill = param_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Parameter Type Recovery by Model",
+       x = "Model",
+       y = "Mean Correlation",
+       fill = "Parameter Type")
+```

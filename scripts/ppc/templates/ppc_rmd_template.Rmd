@@ -1,0 +1,570 @@
+---
+title: "Posterior Predictive Check Analysis: {{TASK}} - {{MODEL}} - {{GROUP}}"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tidyr)
+  library(knitr)
+  library(kableExtra)
+  library(reshape2)
+  library(corrplot)
+  library(viridis)
+  library(igraph)
+  library(patchwork)
+})
+
+# Source helper functions - use existing functions rather than duplicating
+script_dir <- file.path(here::here(), "scripts")
+source(file.path(script_dir, "parameter_recovery", "helper_functions_PR.R"))
+source(file.path(script_dir, "helpers", "helper_functions_cmdSR.R"))
+source(file.path(script_dir, "ppc", "visualization_functions.R"))
+source(file.path(script_dir, "ppc", "helpers", "task_config.R"))
+
+# The only file we actually need is the summary file
+ppc_summary_file <- "{{PPC_SUMMARY_FILE}}"     # ppc_summary_{task}_{model}_{group}.csv
+
+# Extract components from the summary filename using helper function
+components <- parse_bids_filename(basename(ppc_summary_file))
+task <- components$task
+model <- components$model
+group <- components$group
+
+# Load task configuration for dynamic statistics
+task_config <- get_task_config(task)
+message("Task type: ", task_config$type)
+
+# Create model_type tag based on model name
+model_type <- if(model == "ddm") {
+  "SSM"  # Pure Sequential Sampling Model
+} else if(grepl("ddm", model)) {
+  "RL_SSM"  # Combined RL and Sequential Sampling Model
+} else {
+  "RL"  # Pure Reinforcement Learning Model
+}
+
+# Load the summary data from CSV file
+message("Loading PPC statistics...")
+
+# Load the primary data source
+if (file.exists(ppc_summary_file)) {
+  message("Loading summary file: ", ppc_summary_file)
+  ppc_summary <- read.csv(ppc_summary_file)
+  
+  # Ensure proper column naming for compatibility with visualization functions
+  if (!"subject_id" %in% names(ppc_summary) && "sid" %in% names(ppc_summary)) {
+    ppc_summary <- ppc_summary %>% rename(subject_id = sid)
+  }
+} else {
+  stop("Summary file not found: ", ppc_summary_file)
+}
+
+# Get all applicable statistics for this task from the config
+all_applicable_stats <- get_applicable_stats(task)
+message("Applicable statistics for ", task, ": ", length(all_applicable_stats))
+
+# Filter ppc_summary to only include applicable stats
+ppc_summary <- ppc_summary %>% filter(statistic %in% all_applicable_stats)
+message("Filtered to ", nrow(ppc_summary), " applicable statistics")
+
+# Create dynamic arrays based on patterns in the applicable stats and task type
+if (task_config$type == "deck_selection") {
+  # IGT: deck selection patterns
+  deck_stats <- all_applicable_stats[grepl("deck[1-4]_freq|good_deck_freq|bad_deck_freq", all_applicable_stats)]
+  performance_stats <- all_applicable_stats[grepl("net_score|total_earnings|mean_earnings", all_applicable_stats)]
+  strategy_stats <- all_applicable_stats[grepl("win_stay|lose_shift|perseveration", all_applicable_stats)]
+  # IGT RT stats - no play/pass distinction
+  rt_stats <- all_applicable_stats[grepl("^rt_", all_applicable_stats)]
+  rt_stats <- rt_stats[!grepl("_play|_pass", rt_stats)]  # Remove play/pass RT stats
+} else if (task_config$type == "play_pass") {
+  # mIGT: play/pass patterns
+  play_ratios <- all_applicable_stats[grepl("play_ratio", all_applicable_stats)]
+  performance_stats <- all_applicable_stats[grepl("net_score|total_earnings|mean_earnings", all_applicable_stats)]
+  strategy_stats <- character(0)  # No WSLS for play/pass decisions
+  # mIGT RT stats - includes play/pass distinction
+  play_rts <- all_applicable_stats[grepl("rt_.*_play", all_applicable_stats)]
+  pass_rts <- all_applicable_stats[grepl("rt_.*_pass", all_applicable_stats)]
+  rt_stats <- all_applicable_stats[grepl("^rt_", all_applicable_stats)]
+}
+
+# Common arrays for all tasks
+choice_stats <- all_applicable_stats[grepl("ratio|freq|score|earnings", all_applicable_stats)]
+rt_all_stats <- all_applicable_stats[grepl("^rt_", all_applicable_stats)]
+
+# Load exclude list if provided
+exclude_subjects <- NULL
+exclude_file_path <- "{{EXCLUDE_FILE}}"
+if (!is.null(exclude_file_path) && exclude_file_path != "NULL" && file.exists(exclude_file_path)) {
+  exclude_subjects <- readLines(exclude_file_path)
+  message(paste("Excluding", length(exclude_subjects), "subjects"))
+}
+
+# Filter excluded subjects
+ppc_summary <- ppc_summary %>%
+  filter(!subject_id %in% exclude_subjects)
+
+
+# Construct recovery file path - model parameter recovery analysis if available
+recovery_dir <- gsub("ppc", "recovery", dirname(ppc_summary_file))
+recovery_csv <- file.path(recovery_dir, 
+           paste0("recovery_", task, "_", model, "_", group, ".csv"))
+
+# Format parameter and statistic names for display
+format_names <- function(names) {
+  names %>% 
+    gsub("_", " ", .) %>%
+    gsub("ssm ", "", .) %>%
+    gsub("rl ", "", .) %>%
+    tools::toTitleCase(.)
+}
+
+# Create function to find top correlations
+get_top_correlations <- function(cor_matrix, n = 10) {
+  cors_long <- as.data.frame(as.table(cor_matrix)) %>%
+    rename(Parameter = Var1, Statistic = Var2, Correlation = Freq) %>%
+    mutate(
+      Parameter = as.character(Parameter),
+      Statistic = as.character(Statistic),
+      Abs_Correlation = abs(Correlation)
+    ) %>%
+    arrange(desc(Abs_Correlation))
+  
+  # Return top N correlations
+  return(head(cors_long, n))
+}
+
+# Helper function for correlation plots
+create_corr_plot <- function(corr_matrix, title, mar = c(1,1,2,1)) {
+  if(ncol(corr_matrix) > 1 && nrow(corr_matrix) > 0) {
+    if (nrow(corr_matrix) == ncol(corr_matrix)){
+    corrplot(corr_matrix, 
+             method = "circle", 
+             type = "upper", 
+             tl.col = "black",
+             tl.srt = 45,
+             addCoef.col = "black",
+             number.cex = 0.7,
+             mar = mar,
+             title = title,
+             diag = FALSE)
+    } else{
+      corrplot(corr_matrix, 
+             method = "circle", 
+             type = "full", 
+             tl.col = "black",
+             tl.srt = 45,
+             addCoef.col = "black",
+             number.cex = 0.7,
+             mar = mar,
+             title = title)
+    }
+    return(TRUE)
+  } else {
+    cat("Insufficient data for correlation matrix:", title, "\n")
+    return(FALSE)
+  }
+}
+
+# Calculate extreme PPP metrics directly from ppc_summary
+# Only count session-level data (not block-level) for summary statistics
+if ("extreme_ppp" %in% names(ppc_summary)) {
+  # Filter based on task type for WSLS exclusion
+  session_data <- ppc_summary[!grepl("block_", ppc_summary$session),]
+  if (task_config$type == "play_pass") {
+    # For mIGT, exclude WSLS stats since they don't apply
+    session_data <- session_data %>% filter(!grepl("win_stay|lose_shift", statistic))
+  }
+  extreme_ppp_count <- sum(session_data$extreme_ppp, na.rm = TRUE)
+  total_ppp_count <- nrow(session_data)
+  extreme_ppp_ratio <- extreme_ppp_count / total_ppp_count
+} else {
+  extreme_ppp_count <- 0
+  total_ppp_count <- 0
+  extreme_ppp_ratio <- 0
+  message("Could not find PPP extreme values data")
+}
+```
+
+## Overview
+
+This document presents posterior predictive check (PPC) analysis for the **{{MODEL}}** model (**`r model_type`** type) applied to the **{{TASK}}** task with group type **{{GROUP}}**.
+
+Posterior predictive checks compare statistics from observed data with statistics from data simulated using posterior parameter samples. These checks help validate whether the model can reproduce key behavioral patterns in the data.
+
+## Summary Statistics
+
+### PPC Quality Overview
+
+```{r summary, echo=FALSE}
+summary_df <- data.frame(
+  Statistic = c("Total Statistics Checked", "Extreme PPP Values (p < 0.05 or p > 0.95)", 
+                "Proportion Extreme"),
+  Value = c(total_ppp_count, extreme_ppp_count, sprintf("%.2f%%", extreme_ppp_ratio * 100))
+)
+
+kable(summary_df, caption = "Summary of All Individual Session-Level PPC Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Model-Level Statistics
+
+```{r model_stats, echo=FALSE}
+# Create an aggregate summary for display
+model_stats <- ppc_summary %>%
+  filter(!grepl("block_", session)) %>%
+  group_by(category, statistic) %>%
+  summarize(
+    observed = mean(observed, na.rm = TRUE),
+    simulated_mean = mean(simulated_mean, na.rm = TRUE),
+    ppp = mean(ppp, na.rm = TRUE),
+    extreme_rate = mean(extreme_ppp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Select most relevant columns for display
+priority_cols <- c("category", "statistic", "observed", "simulated_mean", "ppp", "extreme_rate")
+display_cols <- intersect(priority_cols, names(model_stats))
+
+# Limit number of rows displayed for readability
+if (nrow(model_stats) > 15) {
+  display_rows <- 15
+  note <- "Showing top 15 rows. See full statistics in the data file."
+} else {
+  display_rows <- nrow(model_stats)
+  note <- NULL
+}
+
+# Create display table
+model_display <- model_stats[1:display_rows, display_cols]
+
+# Display the table
+kable(model_display, caption = "Model-Level PPC Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+if (!is.null(note)) {
+  cat(note)
+}
+```
+
+## PPP Value Distribution
+
+PPP values should ideally be distributed uniformly between 0 and 1 if the model fits well. Extreme values (< 0.05 or > 0.95) indicate statistics that the model struggles to reproduce.
+
+```{r ppp_dist, echo=FALSE, fig.width=10, fig.height=6}
+# Create PPP summary plots for each category
+if (any(ppc_summary$category == "choice")) {
+  choice_ppp <- plot_ppp_summary(ppc_summary, category = "choice")
+  print(choice_ppp)
+}
+
+if (any(ppc_summary$category == "rt")) {
+  rt_ppp <- plot_ppp_summary(ppc_summary, category = "rt")
+  print(rt_ppp)
+}
+
+# Add PPP heatmap for more detailed view
+if (exists("plot_ppp_heatmap", mode = "function") && any(ppc_summary$category == "choice")) {
+  ppp_heatmap <- plot_ppp_heatmap(ppc_summary, category = "choice")
+  print(ppp_heatmap)
+}
+```
+
+## Task-Specific Choice Statistics
+
+```{r choice_plots, echo=FALSE, fig.width=10, fig.height=8}
+# Get available choice statistics and determine which groups can be plotted
+available_choice_stats <- unique(ppc_summary$statistic[ppc_summary$category == "choice"])
+available_groups <- get_available_stat_groups(task, available_choice_stats)
+
+if (length(available_groups) > 0) {
+  message("Creating plots for available groups: ", paste(available_groups, collapse = ", "))
+  
+  # Create task-aware choice plots
+  choice_plots <- plot_choice_statistics(ppc_summary, task_name = task, include_groups = available_groups)
+  
+  if (is.list(choice_plots) && length(choice_plots) > 0) {
+    for (group_name in names(choice_plots)) {
+      cat("\n\n### ", tools::toTitleCase(gsub("_", " ", group_name)), "\n\n")
+      print(choice_plots[[group_name]])
+    }
+  } else if (!is.null(choice_plots)) {
+    # Single plot returned
+    print(choice_plots)
+  }
+} else {
+  cat("No choice statistics groups available for plotting with this task type.\n")
+}
+```
+
+## PPP Distributions
+
+```{r ppp_histograms, echo=FALSE, fig.width=10, fig.height=6}
+all_ppps <- ppc_summary %>%
+  filter(!is.na(ppp)) %>%
+  filter(session == "session")
+
+# Create task-specific plots only for available statistics
+if (task_config$type == "deck_selection") {
+  # IGT plots - only create if statistics exist
+  if (length(deck_stats) > 0 && any(deck_stats %in% all_ppps$statistic)) {
+    available_deck_stats <- deck_stats[deck_stats %in% all_ppps$statistic]
+    p1 <- all_ppps %>% 
+      filter(statistic %in% available_deck_stats) %>%
+      ggplot(aes(x = ppp)) +
+      geom_histogram(bins = 20) +
+      facet_wrap(~statistic) +
+      ggtitle("Distribution of PPP values: Deck Selection (IGT)") +
+      theme_minimal()
+    print(p1)
+  }
+  
+  if (length(performance_stats) > 0 && any(performance_stats %in% all_ppps$statistic)) {
+    available_perf_stats <- performance_stats[performance_stats %in% all_ppps$statistic]
+    p2 <- all_ppps %>% 
+      filter(statistic %in% available_perf_stats) %>%
+      ggplot(aes(x = ppp)) +
+      geom_histogram(bins = 20) +
+      facet_wrap(~statistic) +
+      ggtitle("Distribution of PPP values: Performance") +
+      theme_minimal()
+    print(p2)
+  }
+  
+  if (length(strategy_stats) > 0 && any(strategy_stats %in% all_ppps$statistic)) {
+    available_strat_stats <- strategy_stats[strategy_stats %in% all_ppps$statistic]
+    p3 <- all_ppps %>% 
+      filter(statistic %in% available_strat_stats) %>%
+      ggplot(aes(x = ppp)) +
+      geom_histogram(bins = 20) +
+      facet_wrap(~statistic) +
+      ggtitle("Distribution of PPP values: Strategy (IGT)") +
+      theme_minimal()
+    print(p3)
+  }
+  
+  # RT plots for models that include RT
+  if (model_type %in% c("SSM", "RL_SSM") && length(rt_stats) > 0 && any(rt_stats %in% all_ppps$statistic)) {
+    available_rt_stats <- rt_stats[rt_stats %in% all_ppps$statistic]
+    p4 <- all_ppps %>% 
+      filter(statistic %in% available_rt_stats) %>%
+      ggplot(aes(x = ppp)) +
+      geom_histogram(bins = 20) +
+      facet_wrap(~statistic) +
+      ggtitle("Distribution of PPP values: Response Times (IGT)") +
+      theme_minimal()
+    print(p4)
+  }
+  
+} else if (task_config$type == "play_pass") {
+  # mIGT plots - only create if statistics exist
+  if (length(play_ratios) > 0 && any(play_ratios %in% all_ppps$statistic)) {
+    available_play_stats <- play_ratios[play_ratios %in% all_ppps$statistic]
+    p1 <- all_ppps %>% 
+      filter(statistic %in% available_play_stats) %>%
+      ggplot(aes(x = ppp)) +
+      geom_histogram(bins = 20) +
+      facet_wrap(~statistic) +
+      ggtitle("Distribution of PPP values: Play Ratios (mIGT)") +
+      theme_minimal()
+    print(p1)
+  }
+  
+  if (length(performance_stats) > 0 && any(performance_stats %in% all_ppps$statistic)) {
+    available_perf_stats <- performance_stats[performance_stats %in% all_ppps$statistic]
+    p2 <- all_ppps %>% 
+      filter(statistic %in% available_perf_stats) %>%
+      ggplot(aes(x = ppp)) +
+      geom_histogram(bins = 20) +
+      facet_wrap(~statistic) +
+      ggtitle("Distribution of PPP values: Performance") +
+      theme_minimal()
+    print(p2)
+  }
+  
+  # RT plots for models that include RT
+  if (model_type %in% c("SSM", "RL_SSM")) {
+    if (length(play_rts) > 0 && any(play_rts %in% all_ppps$statistic)) {
+      available_play_rt_stats <- play_rts[play_rts %in% all_ppps$statistic]
+      p3 <- all_ppps %>% 
+        filter(statistic %in% available_play_rt_stats) %>%
+        ggplot(aes(x = ppp)) +
+        geom_histogram(bins = 20) +
+        facet_wrap(~statistic) +
+        ggtitle("Distribution of PPP values: Play RTs (mIGT)") +
+        theme_minimal()
+      print(p3)
+    }
+    
+    if (length(pass_rts) > 0 && any(pass_rts %in% all_ppps$statistic)) {
+      available_pass_rt_stats <- pass_rts[pass_rts %in% all_ppps$statistic]
+      p4 <- all_ppps %>% 
+        filter(statistic %in% available_pass_rt_stats) %>%
+        ggplot(aes(x = ppp)) +
+        geom_histogram(bins = 20) +
+        facet_wrap(~statistic) +
+        ggtitle("Distribution of PPP values: Pass RTs (mIGT)") +
+        theme_minimal()
+      print(p4)
+    }
+  }
+}
+```
+
+
+## Predicted vs Observed Plots
+```{r pred_vs_obs, echo=FALSE, fig.width=8, fig.height=6}
+# Create task-specific predicted vs observed plots using applicable statistics only
+stats_to_plot <- c()
+if (task_config$type == "deck_selection") {
+  # IGT plots - only include stats that exist
+  if (length(deck_stats) > 0) stats_to_plot <- c(stats_to_plot, deck_stats)
+  if (length(performance_stats) > 0) stats_to_plot <- c(stats_to_plot, performance_stats)
+  if (length(strategy_stats) > 0) stats_to_plot <- c(stats_to_plot, strategy_stats)
+} else if (task_config$type == "play_pass") {
+  # mIGT plots - only include stats that exist
+  if (length(play_ratios) > 0) stats_to_plot <- c(stats_to_plot, play_ratios)
+  if (length(performance_stats) > 0) stats_to_plot <- c(stats_to_plot, performance_stats)
+}
+
+# Filter to only stats that actually exist in the data
+stats_to_plot <- stats_to_plot[stats_to_plot %in% unique(ppc_summary$statistic)]
+
+for (stat in stats_to_plot){
+  if (any(ppc_summary$statistic == stat & ppc_summary$session == "session")) {
+    model_performance <- ppc_summary %>%
+      filter(statistic == stat & session == "session") %>%
+      ggplot(aes(x = observed, y = simulated_mean)) +
+      geom_point() +
+      geom_errorbar(aes(ymin = p_2.5, ymax = p_97.5)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+      ggtitle("Model predictions vs. observed data") +
+      xlab(paste("Observed", stat)) +
+      ylab(paste("Predicted", stat)) +
+      theme_minimal()
+    
+    print(model_performance)
+  }
+}
+
+# RT plots for models that include RT - only for available statistics
+if (model_type %in% c("SSM", "RL_SSM")) {
+  rt_stats_to_plot <- c()
+  if (task_config$type == "deck_selection") {
+    if (length(rt_stats) > 0) rt_stats_to_plot <- rt_stats
+  } else {
+    if (length(play_rts) > 0) rt_stats_to_plot <- c(rt_stats_to_plot, play_rts)
+    if (length(pass_rts) > 0) rt_stats_to_plot <- c(rt_stats_to_plot, pass_rts)
+  }
+  
+  # Filter to only stats that exist in data
+  rt_stats_to_plot <- rt_stats_to_plot[rt_stats_to_plot %in% unique(ppc_summary$statistic)]
+  
+  for (stat in rt_stats_to_plot){
+    if (any(ppc_summary$statistic == stat & ppc_summary$session == "session")) {
+      model_performance <- ppc_summary %>%
+        filter(statistic == stat & session == "session") %>%
+        ggplot(aes(x = observed, y = simulated_mean)) +
+        geom_point() +
+        geom_errorbar(aes(ymin = p_2.5, ymax = p_97.5)) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+        ggtitle("Model predictions vs. observed data") +
+        xlab(paste("Observed", stat)) +
+        ylab(paste("Predicted", stat)) +
+        theme_minimal()
+      
+      print(model_performance)
+    }
+  }
+}
+```
+
+
+## Directionality of Model Misfit
+
+This section examines not only whether the model fits the data, but also the direction of misfit (whether the model systematically over- or under-predicts observed statistics).
+
+```{r misfit_analysis, echo=FALSE, fig.width=10, fig.height=8}
+# Calculate misfit for session data
+session_data <- ppc_summary %>% filter(session == "session")
+
+# Calculate misfit
+misfit_data <- session_data %>%
+  mutate(
+    misfit = observed - simulated_mean,
+    misfit_standardized = misfit / (p_97.5 - p_2.5) * 2,
+    misfit_direction = case_when(
+      misfit > 0 & extreme_ppp ~ "Model Underpredicts",
+      misfit < 0 & extreme_ppp ~ "Model Overpredicts",
+      TRUE ~ "Good Fit"
+    )
+  )
+
+# Plot standardized misfit by category and statistic
+misfit_data %>%
+  filter(category == "choice") %>%
+ggplot(., aes(x = statistic, y = misfit_standardized, fill = misfit_direction)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = c(-1, 1), linetype = "dotted", color = "red") +
+  scale_fill_manual(values = c("Good Fit" = "gray", 
+                            "Model Underpredicts" = "blue", 
+                            "Model Overpredicts" = "red")) +
+  facet_wrap(~category, scales = "free_x") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Standardized Misfit by Statistic",
+       subtitle = "Misfit = (Observed - Predicted) / Width of 95% CI",
+       x = "", y = "Standardized Misfit",
+       fill = "Direction")
+
+if (any(ppc_summary$category == "rt")) {
+  misfit_data %>%
+    filter(category == "rt") %>%
+  ggplot(., aes(x = statistic, y = misfit_standardized, fill = misfit_direction)) +
+    geom_boxplot() +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_hline(yintercept = c(-1, 1), linetype = "dotted", color = "red") +
+    scale_fill_manual(values = c("Good Fit" = "gray", 
+                              "Model Underpredicts" = "blue", 
+                              "Model Overpredicts" = "red")) +
+    facet_wrap(~category, scales = "free_x") +
+    coord_flip() +
+    theme_minimal() +
+    labs(title = "Standardized Misfit by Statistic",
+         subtitle = "Misfit = (Observed - Predicted) / Width of 95% CI",
+         x = "", y = "Standardized Misfit",
+         fill = "Direction")
+  
+  # Create misfit summary table
+  misfit_summary <- misfit_data %>%
+    group_by(category, statistic) %>%
+    summarize(
+      mean_misfit = mean(misfit, na.rm = TRUE),
+      mean_std_misfit = mean(misfit_standardized, na.rm = TRUE),
+      prop_underpredict = mean(misfit_direction == "Model Underpredicts", na.rm = TRUE),
+      prop_overpredict = mean(misfit_direction == "Model Overpredicts", na.rm = TRUE),
+      mean_abs_misfit = mean(abs(misfit_standardized), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(category, desc(mean_abs_misfit))
+  
+  kable(misfit_summary, caption = "Summary of Model Misfit Direction and Magnitude") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
+
+{{MODEL_SPECIFIC_SECTION}}
+
+## Conclusion
+
+This analysis examines how well the {{MODEL}} model can reproduce key behavioral patterns observed in the {{TASK}} task. The model's fit quality is evaluated through posterior predictive checks, comparing observed statistics to those generated from model simulations.
+
+PPP values near 0 or 1 suggest systematic discrepancies between the model and observed data. These may indicate aspects of behavior that the model struggles to capture. Good model fit is indicated by PPP values distributed uniformly between 0 and 1, with observed statistics falling within the model's predicted range.

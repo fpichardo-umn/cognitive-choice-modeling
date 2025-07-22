@@ -1,0 +1,433 @@
+
+## Hybrid RL-SSM Model Analyses
+
+This section examines both reinforcement learning (RL) and sequential sampling model (SSM) components of the hybrid model.
+
+```{r rl_ssm_setup, include=FALSE}
+# Load task config for hybrid model analysis
+source(file.path(here::here(), "scripts", "ppc", "helpers", "task_config.R"))
+task_config <- get_task_config(task)
+```
+
+### RL Component Analysis
+
+This section examines reinforcement learning behavioral metrics across participants.
+
+#### Choice Statistics Visualization
+
+```{r rl_choice_stats, echo=FALSE, fig.width=10, fig.height=8}
+# Create choice statistics plots
+choice_plots <- plot_choice_statistics(ppc_summary)
+
+# Display each group of plots
+for (plot_name in names(choice_plots)) {
+  knitr::knit_print(choice_plots[[plot_name]])
+}
+```
+
+#### Block-Level Curves
+
+```{r choice_block_curves, echo=FALSE, fig.width=10, fig.height=6}
+
+# Task-specific variables to plot
+if (task_config$type == "deck_selection") {
+  # IGT block curves - no play/pass stuff
+  variables_to_plot = c("good_deck_freq", "bad_deck_freq", "net_score", "total_earnings", 
+                       "deck1_freq", "deck2_freq", "deck3_freq", "deck4_freq")
+} else if (task_config$type == "play_pass") {
+  # mIGT block curves
+  variables_to_plot = c("good_play_ratio", "bad_play_ratio", "net_score", "total_earnings", "play_ratio", 
+                       "play_ratio_deck1", "play_ratio_deck2", "play_ratio_deck3", "play_ratio_deck4")
+}
+
+for (plot_stat in variables_to_plot){
+  if (any(ppc_summary$statistic == plot_stat & grepl("block_", ppc_summary$session))) {
+    tryCatch({
+      plot <- plot_block_curve(ppc_summary, statistic = plot_stat)
+      knitr::knit_print(plot)
+    }, error = function(e) {
+      cat("Could not create block curve for", plot_stat, ":", e$message, "\n")
+    })
+  }
+}
+
+```
+
+#### Win-Stay/Lose-Shift Behavior
+
+```{r rl_wsls, echo=FALSE, fig.width=8, fig.height=5}
+# Task-specific WSLS analysis
+if (task_config$type == "deck_selection") {
+  # IGT: WSLS makes sense and uses "win_stay", "lose_shift" names
+  wsls_stats <- c("win_stay", "lose_shift")
+  wsls_data <- ppc_summary %>%
+    filter(category == "choice" & session == "session" & 
+           statistic %in% wsls_stats)
+  
+  if(nrow(wsls_data) > 0) {
+    # Aggregate across subjects for cleaner visualization
+    wsls_agg <- wsls_data %>%
+      group_by(statistic) %>%
+      summarize(
+        obs_mean = mean(observed, na.rm = TRUE),
+        obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+        pred_mean = mean(simulated_mean, na.rm = TRUE),
+        pred_lower = mean(p_2.5, na.rm = TRUE),
+        pred_upper = mean(p_97.5, na.rm = TRUE),
+        misfit = obs_mean - pred_mean,
+        misfit_standardized = misfit / (pred_upper - pred_lower) * 2,
+        .groups = "drop"
+      )
+    
+    # Plot aggregated WSLS data
+    p1 = ggplot(wsls_agg, aes(x = statistic)) +
+      geom_pointrange(aes(y = pred_mean, ymin = pred_lower, ymax = pred_upper), 
+                     color = "blue", size = 1, position = position_dodge(width = 0.5)) +
+      geom_pointrange(aes(y = obs_mean, ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), 
+                     color = "red", shape = 4, size = 1, position = position_dodge(width = 0.5)) +
+      ylim(0, 1) +
+      theme_minimal() +
+      labs(title = "Win-Stay/Lose-Shift Behavior (IGT)", 
+           subtitle = "Red X = Observed (with SE), Blue dots = Predicted (with 95% CI)",
+           x = "", y = "Ratio")
+    
+    # Create summary table
+    kable(wsls_agg %>% select(statistic, obs_mean, pred_mean, misfit, misfit_standardized),
+          caption = "Win-Stay/Lose-Shift: Observed vs. Predicted", digits = 3) %>%
+      kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    knitr::knit_print(p1)
+  } else {
+    cat("No Win-Stay/Lose-Shift data found in the statistics for IGT.\n")
+  }
+  
+} else if (task_config$type == "play_pass") {
+  # mIGT: WSLS doesn't make sense for play/pass decisions
+  cat("Win-Stay/Lose-Shift behavior is not applicable to the modified IGT (play/pass decisions).\n")
+  cat("This behavioral pattern requires a choice outcome followed by the same choice option,\n")
+  cat("which is not meaningful when participants choose whether to play or pass on different decks.\n")
+}
+```
+
+#### Deck Selection Stats
+
+```{r deck_selection_ratio, echo=FALSE, fig.width=8, fig.height=6}
+# Task-specific deck selection analysis
+if (task_config$type == "deck_selection") {
+  # IGT: Look for deck frequency data
+  deck_ratio_data <- ppc_summary %>%
+    filter(category == "choice" & session == "session" & 
+           grepl("deck[1-4]_freq|good_deck_freq|bad_deck_freq", statistic))
+  
+  plot_title <- "IGT Deck Selection Frequencies"
+  subtitle_text <- "Direct deck selection from 4 decks"
+  
+} else if (task_config$type == "play_pass") {
+  # mIGT: Look for play ratio data
+  deck_ratio_data <- ppc_summary %>%
+    filter(category == "choice" & session == "session" & 
+           grepl("play_ratio_deck|good_play_ratio|bad_play_ratio", statistic))
+  
+  plot_title <- "mIGT Play Ratios by Deck"  
+  subtitle_text <- "Play/pass decisions for offered decks"
+}
+
+if(nrow(deck_ratio_data) > 0) {
+  # Aggregate across subjects
+  ratio_agg <- deck_ratio_data %>%
+    group_by(statistic) %>%
+    summarize(
+      obs_mean = mean(observed, na.rm = TRUE),
+      obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+      pred_mean = mean(simulated_mean, na.rm = TRUE),
+      pred_lower = mean(p_2.5, na.rm = TRUE),
+      pred_upper = mean(p_97.5, na.rm = TRUE),
+      misfit = obs_mean - pred_mean,
+      misfit_standardized = misfit / (pred_upper - pred_lower) * 2,
+      .groups = "drop"
+    )
+  
+  # Plot deck selection ratios
+  p1 = ggplot(ratio_agg, aes(x = statistic)) +
+    geom_pointrange(aes(y = pred_mean, ymin = pred_lower, ymax = pred_upper), 
+                   color = "blue", size = 1, position = position_dodge(width = 0.5)) +
+    geom_pointrange(aes(y = obs_mean, ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), 
+                   color = "red", shape = 4, size = 1, position = position_dodge(width = 0.5)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = plot_title, 
+         subtitle = paste(subtitle_text, "- Red X = Observed (with SE), Blue dots = Predicted (with 95% CI)"),
+         x = "", y = "Frequency/Ratio")
+  
+  # Plot directionality of misfit
+  p2 = ggplot(ratio_agg, aes(x = statistic, y = misfit, fill = abs(misfit_standardized) > 1)) +
+    geom_col() +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "gray"), 
+                     labels = c("FALSE" = "Not Significant", "TRUE" = "Significant"),
+                     name = "Misfit") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Misfit Direction for Deck Selection Metrics",
+         subtitle = "Positive = Model Underpredicts, Negative = Model Overpredicts",
+         x = "", y = "Observed - Predicted")
+  
+  knitr::knit_print(p1)
+  knitr::knit_print(p2)
+} else {
+  cat("No deck selection/play ratio data found in the statistics.\n")
+}
+```
+
+#### Earnings Performance
+
+```{r earnings_performance, echo=FALSE, fig.width=10, fig.height=6}
+# Extract earnings/money data
+earnings_data <- ppc_summary %>%
+  filter(category == "choice" & session == "session" & 
+         grepl("earnings|net_score", statistic))
+
+if(nrow(earnings_data) > 0) {
+  # Aggregate across subjects
+  earnings_agg <- earnings_data %>%
+    group_by(statistic) %>%
+    summarize(
+      obs_mean = mean(observed, na.rm = TRUE),
+      obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+      pred_mean = mean(simulated_mean, na.rm = TRUE),
+      pred_lower = mean(p_2.5, na.rm = TRUE),
+      pred_upper = mean(p_97.5, na.rm = TRUE),
+      misfit = obs_mean - pred_mean,
+      misfit_pct = (obs_mean - pred_mean) / pred_mean * 100,
+      .groups = "drop"
+    )
+  
+  # Prepare data for plot with facets
+  earnings_agg$y_max <- pmax(earnings_agg$obs_mean + earnings_agg$obs_se, 
+                           earnings_agg$pred_upper, na.rm = TRUE)
+  earnings_agg$text_y <- earnings_agg$y_max * 1.15
+  
+  # Plot earnings metrics
+  ggplot(earnings_agg, aes(x = statistic)) +
+    geom_pointrange(aes(y = pred_mean, ymin = pred_lower, ymax = pred_upper), 
+                   color = "blue", size = 1) +
+    geom_pointrange(aes(y = obs_mean, ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), 
+                   color = "red", shape = 4, size = 1) +
+    geom_text(aes(y = text_y, label = sprintf("Δ: %.1f%%", misfit_pct)),
+              size = 4, fontface = "bold") +
+    facet_wrap(~statistic, scales = "free_y") +
+    scale_x_discrete(labels = NULL) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 14, face = "bold"),
+      axis.text.y = element_text(size = 10),
+      axis.ticks.x = element_blank(),
+      axis.text.x = element_blank(),
+      plot.title = element_text(size = 14, face = "bold"),
+      plot.subtitle = element_text(size = 12),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank()
+    ) +
+    labs(
+      title = "Earnings Performance Metrics",
+      subtitle = "Red X = Observed (with SE), Blue dots = Predicted (with 95% CI)",
+      x = "", y = "Value"
+    )
+  
+  # Create summary table
+  kable(earnings_agg %>% select(statistic, obs_mean, pred_mean, misfit_pct),
+        caption = "Earnings Metrics Summary", digits = 2) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+} else {
+  cat("No earnings data found in the statistics.\n")
+}
+```
+
+### SSM Component Analysis
+
+This section examines the model's performance on RT metrics.
+
+```{r ssm_rt_analysis, echo=FALSE, fig.width=10, fig.height=8}
+# Use the existing RT visualization functions directly
+if (any(ppc_summary$category == "rt")) {
+  # Use the RT distribution visualization function for comprehensive view
+  rt_combined_plot <- plot_rt_combined(ppc_summary)
+  print(rt_combined_plot)
+  
+  # Task-specific RT analysis
+  if (task_config$type == "deck_selection") {
+    # IGT: Show overall RT distributions
+    rt_all <- plot_rt_distributions(ppc_summary, rt_type = "all")
+    print(rt_all)
+    
+  } else if (task_config$type == "play_pass") {
+    # mIGT: Show RT by choice type
+    rt_play <- plot_rt_distributions(ppc_summary, rt_type = "play")
+    print(rt_play)
+    
+    rt_pass <- plot_rt_distributions(ppc_summary, rt_type = "pass")
+    print(rt_pass)
+  }
+  
+  # Create summary table of RT statistics
+  rt_summary <- ppc_summary %>%
+    filter(category == "rt") %>%
+    group_by(statistic) %>%
+    summarize(
+      mean_observed = mean(observed, na.rm = TRUE),
+      mean_predicted = mean(simulated_mean, na.rm = TRUE),
+      mean_difference = mean(observed - simulated_mean, na.rm = TRUE),
+      percent_diff = 100 * mean_difference / mean_observed,
+      pct_extreme = 100 * mean(extreme_ppp, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  kable(rt_summary, caption = "Summary of RT Statistics") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+  
+} else {
+  cat("No RT data found in the summary statistics.\n")
+}
+```
+
+#### RT PPP Analysis
+
+```{r rt_ppp_analysis, echo=FALSE, fig.width=10, fig.height=6}
+# Use the existing PPP visualization function for RT data
+if (any(ppc_summary$category == "rt")) {
+  # Create PPP summary plot for RT statistics
+  rt_ppp_plot <- plot_ppp_summary(ppc_summary, category = "rt")
+  print(rt_ppp_plot)
+  
+  # Create PPP heatmap for RT statistics
+  rt_ppp_heatmap <- plot_ppp_heatmap(ppc_summary, category = "rt")
+  print(rt_ppp_heatmap)
+  
+} else {
+  cat("No RT data found for PPP analysis.\n")
+}
+```
+
+#### RT Block-Level Analysis
+
+```{r rt_blocks, echo=FALSE, fig.width=10, fig.height=6}
+# Check if we have block-level RT data
+if (any(ppc_summary$category == "rt" & grepl("block_", ppc_summary$session))) {
+  
+  if (task_config$type == "deck_selection") {
+    # IGT: RT metrics to track across blocks
+    rt_metrics <- c("rt_mean", "rt_q50")
+  } else if (task_config$type == "play_pass") {
+    # mIGT: RT metrics by choice type across blocks
+    rt_metrics <- c("rt_mean", "rt_mean_play", "rt_mean_pass")
+  }
+  
+  # Check which metrics are available in the data
+  available_metrics <- intersect(rt_metrics, unique(ppc_summary$statistic))
+  
+  if (length(available_metrics) > 0) {
+    for (metric in available_metrics) {
+      if (any(ppc_summary$statistic == metric & grepl("block_", ppc_summary$session))) {
+        tryCatch({
+          rt_learning_plot <- plot_block_curve(ppc_summary, statistic = metric)
+          print(rt_learning_plot)
+        }, error = function(e) {
+          cat("Could not create RT block curve for", metric, ":", e$message, "\n")
+        })
+      }
+    }
+  } else {
+    cat("No suitable RT metrics found for block-level analysis.\n")
+  }
+} else {
+  cat("No block-level RT data found.\n")
+}
+```
+
+### Model Component Comparison
+
+The following sections analyze how well the model fits different kinds of data.
+
+```{r component_comparison, echo=FALSE, fig.width=10, fig.height=8}
+# Create comparison of PPP values by category
+if (any(ppc_summary$category == "choice") && any(ppc_summary$category == "rt")) {
+  # Calculate summary statistics for each category
+  category_summary <- ppc_summary %>%
+    filter(!grepl("block_", session)) %>%
+    group_by(category) %>%
+    summarize(
+      num_metrics = n(),
+      extreme_count = sum(extreme_ppp),
+      extreme_percentage = 100 * extreme_count / num_metrics,
+      mean_ppp = mean(ppp, na.rm = TRUE),
+      median_ppp = median(ppp, na.rm = TRUE),
+      std_ppp = sd(ppp, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Display summary table
+  kable(category_summary, caption = "Model Fit Summary by Category", digits = 2) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  # Create a plot comparing PPP distributions by category
+  ggplot(ppc_summary %>% filter(session == "session"), 
+         aes(x = ppp, fill = category)) +
+    geom_histogram(binwidth = 0.05, position = "dodge", alpha = 0.7) +
+    geom_vline(xintercept = c(0.05, 0.5, 0.95), linetype = c("dashed", "solid", "dashed")) +
+    facet_wrap(~category) +
+    theme_minimal() +
+    labs(title = "PPP Value Distribution by Model Component",
+         subtitle = "Ideally distributed uniformly between 0 and 1",
+         x = "PPP Value", y = "Count")
+  
+} else {
+  cat("Cannot compare model components - missing either choice or RT data.\n")
+}
+```
+
+### Subject-Level Analysis
+
+The following visualizations show the model fit at the individual subject level.
+
+```{r subject_level, echo=FALSE, fig.width=10, fig.height=8}
+# Get a sample of subjects for individual analysis
+subjects <- unique(ppc_summary$subject_id)
+
+# Randomly select up to 4 subjects for visualization
+if (length(subjects) > 4) {
+  sample_subjects <- sample(subjects, 4)
+} else {
+  sample_subjects <- subjects
+}
+
+# For each subject, create plots
+for (subject_id in sample_subjects) {
+  cat("### Subject", subject_id, "\n\n")
+  
+  # Use the existing visualization functions for subject-level plots
+  tryCatch({
+    subject_plots <- generate_subject_plots(ppc_summary, subject_id, save_plots = FALSE)
+    
+    # Display a subset of the plots for this subject
+    if ("choice" %in% names(subject_plots)) {
+      if (is.list(subject_plots$choice)) {
+        for (plot_name in names(subject_plots$choice)) {
+          print(subject_plots$choice[[plot_name]])
+        }
+      } else {
+        print(subject_plots$choice)
+      }
+    }
+    
+    if ("rt_all" %in% names(subject_plots)) {
+      print(subject_plots$rt_all)
+    }
+    
+    if ("learning_good" %in% names(subject_plots)) {
+      print(subject_plots$learning_good)
+    }
+  }, error = function(e) {
+    cat("Could not generate subject plots for", subject_id, ":", e$message, "\n")
+  })
+}
+```

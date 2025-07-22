@@ -1,0 +1,1469 @@
+---
+title: "Posterior Predictive Check Analysis"
+author: "Felix Pichardo"
+date: "2025-03-07"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(viridis)
+library(scales)
+library(gridExtra)
+library(ggrepel) # For label repulsion in plots
+```
+
+# Introduction
+
+This document analyzes the posterior predictive checks (PPCs) performed on several computational models of decision-making in the modified Iowa Gambling Task (mIGT). PPCs evaluate a model's ability to reproduce patterns observed in the empirical data by comparing statistics derived from observed data to statistics calculated from simulated data generated using posterior parameter estimates.
+
+## Models Evaluated
+
+We evaluate several types of models:
+
+1. **Reinforcement Learning (RL) Models**
+   - Expected Value (EV)
+   - Prospect Valence Learning (PVL) variants
+      - With Delta rule (PVLdelta)
+      - With Decay rule (PVLdecay)
+      - With Both rules (PVLboth)
+      - With Both rules and Selective Decay (PVLbothsd)
+   - Value-Plus-Perseverance (VPP) variants (with a general [g] only and general+deck [gd] specific perseveration)
+      - With Delta rule (VPPdelta)
+      - With Decay rule (VPPdecay)
+      - With Both rules (VPPboth)
+
+2. **Sequential Sampling Model (SSM)**
+   - Drift Diffusion Model (DDM)
+
+3. **Hybrid Models (RL+SSM)**
+   - RL models combined with DDM
+
+## Posterior Predictive Checks (PPC)
+
+For each model, we assess how well it captures key behavioral patterns by calculating posterior predictive p-values (PPP values). These values represent the probability that the simulated data are more extreme than the observed data. Values close to 0.5 indicate good fit, while values close to 0 or 1 indicate poor fit. We consider PPP values below 0.05 or above 0.95 as "extreme" and potentially problematic.
+
+```{r model-config}
+# Enhanced Model Configuration
+model_config <- list(
+  # Define model families (the core algorithms)
+  families = list(
+    ev = list(
+      display_name = "Expected Value",
+      models = c("ev", "ev_ddm")
+    ),
+    pvl = list(
+      display_name = "Prospect Valence Learning",
+      # Group all PVL variants
+      variants = list(
+        delta = list(
+          display_name = "PVLdelta",
+          models = c("pvldelta", "pvldelta_ddm")
+        ),
+        decay = list(
+          display_name = "PVLdecay",
+          models = c("pvldecay", "pvldecay_ddm") 
+        ),
+        both = list(
+          display_name = "PVLboth",
+          models = c("pvlboth", "pvlboth_ddm")
+        ),
+        bothsd = list(
+          display_name = "PVLbothsd",
+          models = c("pvlbothsd", "pvlbothsd_ddm")
+        ),
+        puldelta = list(
+          display_name = "PULdelta",
+          models = c("puldelta", "puldelta_ddm")
+        )
+      )
+    ),
+    vpp = list(
+      display_name = "Value-Plus-Perseverance",
+      # Group all VPP variants
+      variants = list(
+        delta = list(
+          display_name = "VPPdeltag",
+          models = c("vppdeltag", "vppdeltag_ddm")
+        ),
+        decay = list(
+          display_name = "VPPdecayg",
+          models = c("vppdecayg", "vppdecayg_ddm") 
+        ),
+        both = list(
+          display_name = "VPPbothg",
+          models = c("vppbothg", "vppbothg_ddm")
+        ),
+        delta = list(
+          display_name = "VPPdeltagd",
+          models = c("vppdeltagd", "vppdeltagd_ddm")
+        ),
+        decay = list(
+          display_name = "VPPdecaygd",
+          models = c("vppdecaygd", "vppdecaygd_ddm") 
+        ),
+        both = list(
+          display_name = "VPPbothgd",
+          models = c("vppbothgd", "vppbothgd_ddm")
+        )
+      )
+    ),
+    ddm = list(
+      display_name = "DDM Only",
+      models = c("ddm")
+    )
+  ),
+  
+  # Define model types (for categorization)
+  types = list(
+    rl_only = "Reinforcement Learning", 
+    ddm_only = "Sequential Sampling",
+    hybrid = "Hybrid (RL+DDM)"
+  ),
+  
+  # Define parameter groups
+  parameter_groups = list(
+    "DDM Process" = c("boundary", "tau", "beta"),
+    "Consistency/Drift" = c("drift", "drift_con", "con"),
+    "Valuation" = c("wgt_pun", "wgt_rew", "gain", "loss", "mag"),
+    "Learning Rate" = c("update", "retend", "decay"),
+    "Perseveration" = c("k", "w", "ep")
+  ),
+  
+  # Define key statistics for PPC analysis
+  key_statistics = list(
+    deck_selection = c("good_deck_ratio", "new_good_deck_ratio", "new_bad_deck_ratio"),
+    rl_performance = c("skip_ratio", "total_money", "avg_outcome"),
+    play_rt = c("rt_play_mean", "rt_play_median", "rt_play_quantiles_10%", "rt_play_quantiles_90%"),
+    skip_rt = c("rt_skip_mean", "rt_skip_median", "rt_skip_quantiles_10%", "rt_skip_quantiles_90%"),
+    choice = c("choice_prob")
+  )
+)
+
+# Build derived model lists automatically
+build_model_lists <- function(config) {
+  # Initialize lists
+  all_models <- character()
+  display_names <- list()
+  rl_only_models <- character()
+  ddm_only_models <- character()
+  hybrid_models <- character()
+  all_model_families <- list()
+  
+  # Process all model families
+  for (family_name in names(config$families)) {
+    family <- config$families[[family_name]]
+    
+    # Handle families with variants
+    if ("variants" %in% names(family)) {
+      for (variant_name in names(family$variants)) {
+        variant <- family$variants[[variant_name]]
+        
+        # Process each model in the variant
+        for (model in variant$models) {
+          # Create display name
+          display_name <- paste(variant$display_name, ifelse(grepl("_ddm$", model), "+DDM", "Only"))
+          display_names[[model]] <- display_name
+          
+          # Determine model type and store in appropriate list
+          if (grepl("_ddm$", model)) {
+            hybrid_models <- c(hybrid_models, model)
+          } else if (model == "ddm") {
+            ddm_only_models <- c(ddm_only_models, model)
+          } else {
+            rl_only_models <- c(rl_only_models, model)
+          }
+          
+          # Add to all models list
+          all_models <- c(all_models, model)
+          
+          # Add to model families - group by base algorithm
+          base_family <- ifelse(family_name == "ddm", "ddm", 
+                                paste0(family_name, variant_name))
+          
+          if (is.null(all_model_families[[base_family]])) {
+            all_model_families[[base_family]] <- character()
+          }
+          all_model_families[[base_family]] <- c(all_model_families[[base_family]], model)
+        }
+      }
+    } else {
+      # Simple family without variants (like EV or DDM)
+      for (model in family$models) {
+        # Create display name
+        display_name <- paste(family$display_name, ifelse(grepl("_ddm$", model), "+DDM", ""))
+        display_names[[model]] <- display_name
+        
+        # Determine model type and store in appropriate list
+        if (grepl("_ddm$", model)) {
+          hybrid_models <- c(hybrid_models, model)
+        } else if (model == "ddm") {
+          ddm_only_models <- c(ddm_only_models, model)
+        } else {
+          rl_only_models <- c(rl_only_models, model)
+        }
+        
+        # Add to all models list
+        all_models <- c(all_models, model)
+        
+        # Add to model families
+        base_family <- ifelse(family_name == "ddm", "ddm", family_name)
+        if (is.null(all_model_families[[base_family]])) {
+          all_model_families[[base_family]] <- character()
+        }
+        all_model_families[[base_family]] <- c(all_model_families[[base_family]], model)
+      }
+    }
+  }
+  
+  # Return all derived lists
+  return(list(
+    all_models = unique(all_models),
+    rl_only_models = unique(rl_only_models),
+    ddm_only_models = unique(ddm_only_models),
+    hybrid_models = unique(hybrid_models),
+    model_display_names = display_names,
+    model_families = all_model_families
+  ))
+}
+
+# Generate all the model lists from configuration
+derived_lists <- build_model_lists(model_config)
+all_models <- derived_lists$all_models
+rl_only_models <- derived_lists$rl_only_models
+ddm_only_models <- derived_lists$ddm_only_models
+hybrid_models <- derived_lists$hybrid_models
+model_display_names <- derived_lists$model_display_names
+model_families <- derived_lists$model_families
+
+# Print model lists for verification
+cat("All models:", length(all_models), "\n")
+cat("RL-only models:", length(rl_only_models), "\n")
+cat("DDM-only models:", length(ddm_only_models), "\n")
+cat("Hybrid models:", length(hybrid_models), "\n")
+cat("Model families:", length(model_families), "\n")
+```
+
+```{r load-data}
+# Function to load PPC result files flexibly
+load_ppc_results <- function(model_name, base_dir = NULL) {
+  if (is.null(base_dir)) {
+    PROJ_DIR <- here::here()
+    base_dir <- file.path(PROJ_DIR, "Data", "sim", "ppc")
+  }
+  
+  file_path <- file.path(base_dir, paste0("ppc_results_igt_mod_", model_name, "_batch_001.rds"))
+  
+  if (file.exists(file_path)) {
+    return(readRDS(file_path))
+  } else {
+    warning(paste("File not found for model:", model_name))
+    return(NULL)
+  }
+}
+
+# Paths to data files
+task = "igt_mod"
+PROJ_DIR <- here::here()
+PPC_DIR <- file.path(PROJ_DIR, "Data", task, "sim", "ppc")
+
+# Automatically discover available models in the directory
+available_files <- list.files(PPC_DIR, pattern = "ppc_results_igt_mod_.*_batch_001.rds", full.names = FALSE)
+available_models <- available_files %>% 
+  str_remove("ppc_results_igt_mod_") %>%
+  str_remove("_batch_001.rds")
+
+# Load data for all configured models that are available
+ppc_data <- list()
+for (model_name in all_models) {
+  if (model_name %in% available_models) {
+    ppc_data[[model_name]] <- load_ppc_results(model_name, PPC_DIR)
+  }
+}
+
+# Update model lists based on what's actually available
+available_all_models <- names(ppc_data)
+available_rl_models <- intersect(rl_only_models, available_all_models)
+available_ddm_models <- intersect(ddm_only_models, available_all_models)
+available_hybrid_models <- intersect(hybrid_models, available_all_models)
+
+# Print availability stats
+cat("Available models:", length(available_all_models), "out of", length(all_models), "\n")
+```
+
+# Data Extraction and Processing
+
+```{r extract-summary-stats}
+# Function to extract summary statistics with component detection
+extract_summary_stats <- function(ppc_obj, model_name) {
+  # Check if model exists
+  if (is.null(ppc_obj)) {
+    return(NULL)
+  }
+  
+  # Determine model type
+  model_type <- case_when(
+    model_name %in% rl_only_models ~ "RL Only",
+    model_name %in% ddm_only_models ~ "DDM Only",
+    model_name %in% hybrid_models ~ "Hybrid (RL+DDM)",
+    TRUE ~ "Unknown"
+  )
+  
+  # Check if the model has RL and SSM components or just one component
+  if (is.list(ppc_obj$model$summary) && "rl" %in% names(ppc_obj$model$summary)) {
+    # Hybrid model with both components
+    rl_summary <- ppc_obj$model$summary$rl %>%
+      mutate(component = "RL", model = model_name, model_type = model_type)
+    
+    ssm_summary <- ppc_obj$model$summary$ssm %>%
+      mutate(component = "SSM", model = model_name, model_type = model_type)
+    
+    return(bind_rows(rl_summary, ssm_summary))
+  } else {
+    # Single component model
+    summary_df <- ppc_obj$model$summary
+    
+    # For individual models, determine component type based on model name
+    component_type <- case_when(
+      model_name %in% rl_only_models ~ "RL",
+      model_name %in% ddm_only_models ~ "SSM",
+      TRUE ~ "Unknown"
+    )
+    
+    # Clean up statistic names by removing misleading prefixes if present
+    summary_df <- summary_df %>%
+      mutate(statistic = str_remove(statistic, "^(rl_|ssm_)"))
+    
+    return(summary_df %>% mutate(component = component_type, model = model_name, model_type = model_type))
+  }
+}
+
+# Combine all summary statistics
+all_summaries <- bind_rows(
+  lapply(names(ppc_data), function(name) {
+    extract_summary_stats(ppc_data[[name]], name)
+  })
+)
+
+# Replace model names with display names and add categorical factor for display order
+all_summaries <- all_summaries %>%
+  mutate(
+    model_display = model_display_names[model],
+    model_display = factor(model_display, levels = model_display_names[all_models])
+  )
+
+# Create separate datasets for RL and SSM components
+rl_summaries <- all_summaries %>% filter(component == "RL")
+ssm_summaries <- all_summaries %>% filter(component == "SSM")
+
+# Confirm the correct assignment of components
+component_check <- all_summaries %>%
+  group_by(model, component) %>%
+  summarise(statistics = paste(head(statistic, 3), collapse = ", "), .groups = "drop")
+
+kable(component_check, 
+      col.names = c("Model", "Component", "Example Statistics"),
+      caption = "Component Assignment Check") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE)
+```
+
+# Overall PPC Performance
+
+First, let's examine the overall PPC performance across all models to get a high-level view of model fit.
+
+```{r overall-performance}
+# Calculate overall fit metrics for each model and component
+overall_metrics <- all_summaries %>%
+  group_by(model, model_display, component, model_type) %>%
+  summarize(
+    mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    median_ppp = median(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    extreme_stats_count = sum(extreme_ratio > 0.3, na.rm = TRUE),
+    total_stats = n(),
+    pct_problematic = extreme_stats_count / total_stats * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(component, mean_extreme_ratio)
+
+# Display the overall metrics table
+kable(overall_metrics, digits = 3,
+      col.names = c("Model", "Display Name", "Component", "Model Type", "Mean PPP", "Median PPP", 
+                    "Mean Extreme Ratio", "# Problematic Stats", "Total Stats", "% Problematic"),
+      caption = "Overall PPC Performance by Model and Component") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Visualize overall model performance by component
+ggplot(overall_metrics, 
+       aes(x = reorder(model_display, mean_extreme_ratio), 
+           y = mean_extreme_ratio, 
+           fill = mean_ppp)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = sprintf("%.1f%%", pct_problematic)), 
+            position = position_stack(vjust = 0.5), 
+            color = "white", fontface = "bold") +
+  facet_wrap(~ component, scales = "free_y") +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.4, limits = c(0, 0.5),
+                     name = "Mean PPP\n(closer to 0.5 is better)") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Model Performance by Component",
+       subtitle = "Percentage of problematic statistics shown in bars (lower is better)",
+       x = NULL, 
+       y = "Mean Proportion of Extreme PPP Values")
+
+# Create a more detailed model comparison by component
+ggplot(overall_metrics, 
+       aes(x = reorder(model_display, -mean_ppp), 
+           y = mean_ppp, 
+           fill = component)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_y_continuous(limits = c(0, 0.7)) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Mean PPP by Model and Component",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Model", 
+       y = "Mean PPP",
+       fill = "Component")
+
+# Create a scatter plot of mean PPP vs. extreme ratio
+ggplot(overall_metrics, 
+       aes(x = abs(mean_ppp - 0.5), y = mean_extreme_ratio, 
+           color = component, shape = model_type, label = model_display)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_text_repel(size = 3, nudge_x = 0.02, nudge_y = 0.02) +
+  scale_x_continuous(limits = c(0, 0.3), 
+                    labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.7), 
+                    labels = scales::percent) +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(title = "Model Performance: Mean PPP Deviation vs. Extreme Ratio",
+       subtitle = "Better models appear in the bottom-left corner",
+       x = "Mean PPP Deviation from 0.5", 
+       y = "Mean Proportion of Extreme PPP Values",
+       color = "Component",
+       shape = "Model Type")
+```
+
+# Reinforcement Learning (RL) Component Analysis
+
+## RL Metrics Across All Models with RL Components
+
+Let's analyze how well each model with an RL component captures key reinforcement learning statistics.
+
+```{r rl-metrics}
+# Get key RL statistics based on the configuration
+rl_key_stats <- unlist(model_config$key_statistics[c("deck_selection", "rl_performance")])
+
+# Filter for key RL statistics across all models with RL components
+rl_metrics <- rl_summaries %>%
+  filter(statistic %in% rl_key_stats)
+
+# Create a comparison table with dynamic columns
+rl_comparison <- rl_metrics %>%
+  select(model_display, statistic, mean_ppp, extreme_ratio) %>%
+  pivot_wider(names_from = statistic, 
+              values_from = c(mean_ppp, extreme_ratio)) %>%
+  arrange(model_display)
+
+# Function to create a properly formatted table with headers
+create_metrics_table <- function(data, stat_groups, title) {
+  # Calculate the number of statistics in each group for header spans
+  group_counts <- sapply(stat_groups, length)
+  
+  # Create header row labels
+  header_labels <- c(" " = 1)
+  for (group_name in names(stat_groups)) {
+    header_labels <- c(header_labels, "Mean PPP Values" = group_counts[group_name])
+  }
+  for (group_name in names(stat_groups)) {
+    header_labels <- c(header_labels, "Extreme Ratios" = group_counts[group_name])
+  }
+  
+  # Display the table with better formatting
+  kable(data, digits = 3, caption = title) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    add_header_above(header_labels)
+}
+
+# Display the RL metrics table
+create_metrics_table(
+  rl_comparison, 
+  list(
+    deck_selection = model_config$key_statistics$deck_selection,
+    rl_performance = model_config$key_statistics$rl_performance
+  ),
+  "RL Metrics: Mean PPP Values and Extreme Ratios by Model"
+)
+
+# Create a visualization of RL metrics by model family
+# First, group models by their family
+rl_metrics_by_family <- rl_metrics %>%
+  mutate(
+    model_family = case_when(
+      grepl("^ev", model) ~ "EV",
+      grepl("^pvldelta", model) ~ "PVLdelta",
+      grepl("^pvldecay", model) ~ "PVLdecay",
+      grepl("^pvlboth$|^pvlboth_", model) ~ "PVLboth",
+      grepl("^pvlbothsd", model) ~ "PVLbothsd",
+      grepl("^vppdelta", model) ~ "VPPdelta",
+      grepl("^vppdecay", model) ~ "VPPdecay",
+      grepl("^vppboth$|^vppboth_", model) ~ "VPPboth",
+      grepl("^vppbothsd", model) ~ "VPPbothsd",
+      TRUE ~ "Other"
+    ),
+    is_hybrid = grepl("_ddm$", model)
+  )
+
+# Create a visualization of RL metrics
+ggplot(rl_metrics, aes(x = statistic, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for RL Statistics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+# Visualize extreme ratios for RL statistics
+ggplot(rl_metrics, aes(x = statistic, y = extreme_ratio, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Proportion of Subjects with Extreme PPP Values for RL Statistics",
+       subtitle = "Lower values indicate better fit (fewer extreme PPP values)",
+       x = "Statistic", y = "Proportion of Subjects")
+
+# Create a heatmap for RL metrics
+rl_metrics %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "RL Metrics Heatmap: Mean PPP Values",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Mean PPP")
+```
+
+## Deck Selection Metrics Analysis
+
+Now let's analyze the different deck selection metrics, comparing the original good deck ratio with the new metrics focusing on specific decks.
+
+```{r deck-selection-metrics}
+# Get deck selection statistics from configuration
+deck_selection_stats <- model_config$key_statistics$deck_selection
+
+# Filter for deck selection statistics across all models with RL components
+deck_selection_metrics <- rl_summaries %>%
+  filter(statistic %in% deck_selection_stats)
+
+# Create a comparison table
+deck_metrics_comparison <- deck_selection_metrics %>%
+  select(model_display, statistic, mean_ppp, extreme_ratio) %>%
+  pivot_wider(names_from = statistic, 
+              values_from = c(mean_ppp, extreme_ratio)) %>%
+  arrange(model_display)
+
+# Display the table with better formatting
+create_metrics_table(
+  deck_metrics_comparison,
+  list(deck_selection = deck_selection_stats),
+  "Deck Selection Metrics: Mean PPP Values and Extreme Ratios by Model"
+)
+
+# Create labels for metrics in the visualization
+deck_metric_labels <- c(
+  "good_deck_ratio" = "Original Good Decks (3+4) / All Selections",
+  "new_good_deck_ratio" = "New Good Decks (3+4) / Decks 1,3,4",
+  "new_bad_deck_ratio" = "Bad Deck (1) / Decks 1,3,4"
+)
+
+# Visualize deck selection metrics
+deck_selection_metrics %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = metric_label, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for Deck Selection Metrics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Metric", y = "Mean PPP Value")
+
+# Visualize extreme ratios for deck selection metrics
+deck_selection_metrics %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = metric_label, y = extreme_ratio, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Proportion of Subjects with Extreme PPP Values for Deck Selection Metrics",
+       subtitle = "Lower values indicate better fit (fewer extreme PPP values)",
+       x = "Metric", y = "Proportion of Subjects")
+
+# Compare deck selection metrics within each model
+deck_selection_metrics %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = model_display, y = mean_ppp, fill = metric_label)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Deck Selection Metrics Within Each Model",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Model", y = "Mean PPP Value")
+
+# Create a heatmap specifically for deck selection metrics
+deck_selection_metrics %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  theme_minimal() +
+  labs(title = "Deck Selection Metrics: Mean PPP Values Heatmap",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Deck Selection Metric", y = "Model",
+       fill = "Mean PPP")
+```
+
+## Comparison: RL-Only vs. Hybrid Models (RL Component)
+
+Let's directly compare how the RL components perform in RL-only models versus their hybrid counterparts.
+
+```{r rl-hybrid-comparison}
+# Function to extract base model name
+extract_base_model <- function(model_name) {
+  if (grepl("_ddm$", model_name)) {
+    return(gsub("_ddm$", "", model_name))
+  } else {
+    return(model_name)
+  }
+}
+
+# Create a dataset for RL model comparison (RL-only vs. hybrid)
+rl_model_comparison <- rl_metrics %>%
+  mutate(
+    model_type = case_when(
+      model %in% rl_only_models ~ "RL-Only",
+      model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Other"
+    ),
+    # Extract base model name for pairing
+    base_model = sapply(model, extract_base_model)
+  )
+
+# Calculate average metrics by base model and model type
+rl_comparison_summary <- rl_model_comparison %>%
+  group_by(base_model, model_type) %>%
+  summarize(
+    mean_ppp_overall = mean(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(base_model, model_type)
+
+# Display the comparison table
+kable(rl_comparison_summary, digits = 3,
+      col.names = c("Base Model", "Model Type", "Mean PPP", "Mean Extreme Ratio"),
+      caption = "RL Component: RL-Only vs. Hybrid Models") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Visualize the comparison for each RL statistic by base model
+rl_stat_comparison <- rl_model_comparison %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  facet_wrap(~ base_model, ncol = 2) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("RL-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "RL Component Performance: RL-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+rl_stat_comparison
+
+# Visualize the comparison specifically for deck selection metrics
+deck_selection_comparison <- rl_model_comparison %>%
+  filter(statistic %in% deck_selection_stats) %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = metric_label, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  facet_wrap(~ base_model, ncol = 2) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("RL-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Deck Selection Metrics: RL-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Metric", y = "Mean PPP Value")
+
+deck_selection_comparison
+
+# Create a direct comparison of RL-only vs. Hybrid model pairs
+rl_paired_comparison <- rl_comparison_summary %>%
+  # Rename the model_type values to avoid problematic characters in column names
+  mutate(model_type = case_when(
+    model_type == "RL-Only" ~ "RL_Only",
+    model_type == "Hybrid (RL+DDM)" ~ "Hybrid_RLDDM",
+    TRUE ~ model_type
+  )) %>%
+  pivot_wider(names_from = model_type, values_from = c(mean_ppp_overall, mean_extreme_ratio)) %>%
+  mutate(
+    ppp_difference = mean_ppp_overall_Hybrid_RLDDM - mean_ppp_overall_RL_Only,
+    extreme_difference = mean_extreme_ratio_Hybrid_RLDDM - mean_extreme_ratio_RL_Only
+  )
+
+# Visualize the paired comparison
+ggplot(rl_paired_comparison, 
+       aes(x = base_model, 
+           y = ppp_difference, 
+           fill = extreme_difference)) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.3f", ppp_difference)), 
+            vjust = ifelse(rl_paired_comparison$ppp_difference >= 0, -0.5, 1.5)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_gradient2(
+    low = "green", 
+    mid = "gray", 
+    high = "red", 
+    midpoint = 0,
+    limits = c(-0.2, 0.2)
+  ) +
+  theme_minimal() +
+  labs(title = "Impact of Adding DDM to RL Models",
+       subtitle = "Positive values indicate hybrid models have higher (worse) Mean PPP deviation from 0.5",
+       x = "Base RL Model", 
+       y = "Difference in Mean PPP (Hybrid - RL-Only)",
+       fill = "Difference in\nExtreme Ratio\n(Hybrid - RL-Only)")
+```
+
+# Sequential Sampling Model (SSM) Component Analysis
+
+## SSM Metrics Across All Models with DDM Components
+
+Now let's analyze how well each model with a DDM component captures key sequential sampling statistics, including both play and pass reaction times.
+
+```{r ssm-metrics}
+# Get SSM statistics from the configuration
+play_rt_stats <- model_config$key_statistics$play_rt
+skip_rt_stats <- model_config$key_statistics$skip_rt
+choice_stats <- model_config$key_statistics$choice
+ssm_key_stats <- c(choice_stats, play_rt_stats, skip_rt_stats)
+
+# Filter for key SSM statistics across all models with DDM components
+ssm_metrics <- ssm_summaries %>%
+  filter(statistic %in% ssm_key_stats)
+
+# Create a comparison table
+ssm_comparison <- ssm_metrics %>%
+  select(model_display, statistic, mean_ppp, extreme_ratio) %>%
+  pivot_wider(names_from = statistic, 
+              values_from = c(mean_ppp, extreme_ratio)) %>%
+  arrange(model_display)
+
+# Display the table with better formatting
+create_metrics_table(
+  ssm_comparison,
+  list(
+    choice = choice_stats,
+    play_rt = play_rt_stats,
+    skip_rt = skip_rt_stats
+  ),
+  "SSM Metrics: Mean PPP Values and Extreme Ratios by Model"
+)
+
+# Visualize Play RT metrics
+ssm_metrics %>%
+  filter(statistic %in% play_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for PLAY Reaction Time Statistics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+# Visualize Skip/Pass RT metrics
+ssm_metrics %>%
+  filter(statistic %in% skip_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for SKIP/PASS Reaction Time Statistics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+# Visualize Choice Probability metrics
+ssm_metrics %>%
+  filter(statistic %in% choice_stats) %>%
+  ggplot(aes(x = model_display, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none") +
+  labs(title = "Mean PPP Values for Choice Probability",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Model", y = "Mean PPP Value")
+
+# Create a heatmap for SSM metrics
+ssm_metrics %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                      midpoint = 0.5, limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "SSM Metrics Heatmap: Mean PPP Values",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Mean PPP")
+```
+
+## Comparison: DDM-Only vs. Hybrid Models (SSM Component)
+
+Let's directly compare how the SSM components perform in the DDM-only model versus the hybrid models.
+
+```{r ddm-hybrid-comparison}
+# Create a dataset for SSM model comparison (DDM-only vs. hybrid)
+ssm_model_comparison <- ssm_metrics %>%
+  mutate(
+    model_type = case_when(
+      model %in% ddm_only_models ~ "DDM-Only",
+      model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Other"
+    ),
+    # For hybrid models, extract the RL component
+    rl_component = case_when(
+      grepl("^ev_", model) ~ "EV",
+      grepl("^pvldecay_", model) ~ "PVLdecay",
+      grepl("^pvldelta_", model) ~ "PVLdelta",
+      grepl("^pvlboth_", model) ~ "PVLboth",
+      grepl("^pvlbothsd_", model) ~ "PVLbothsd",
+      grepl("^vppdelta_", model) ~ "VPPdelta",
+      grepl("^vppdecay_", model) ~ "VPPdecay",
+      grepl("^vppboth_", model) ~ "VPPboth",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Calculate average metrics by model type and statistic
+ssm_stat_summary <- ssm_model_comparison %>%
+  group_by(model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create separate summaries for different RT types
+play_rt_summary <- ssm_stat_summary %>%
+  filter(statistic %in% play_rt_stats) %>%
+  group_by(model_type) %>%
+  summarize(
+    play_mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    play_mean_extreme = mean(mean_extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+skip_rt_summary <- ssm_stat_summary %>%
+  filter(statistic %in% skip_rt_stats) %>%
+  group_by(model_type) %>%
+  summarize(
+    skip_mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    skip_mean_extreme = mean(mean_extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Combine the summaries
+rt_type_summary <- full_join(play_rt_summary, skip_rt_summary, by = "model_type")
+
+# Display the summary table
+kable(rt_type_summary, digits = 3,
+      col.names = c("Model Type", "Play Mean PPP", "Play Mean Extreme Ratio", 
+                    "Skip Mean PPP", "Skip Mean Extreme Ratio"),
+      caption = "SSM Component: Play vs. Skip RT Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Visualize the comparison for play RTs
+ssm_model_comparison %>%
+  filter(statistic %in% play_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("DDM-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "PLAY RT Performance: DDM-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+# Visualize the comparison for skip RTs
+ssm_model_comparison %>%
+  filter(statistic %in% skip_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("DDM-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "SKIP RT Performance: DDM-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+# Detailed hybrid model comparison for SSM
+ssm_metrics %>%
+  filter(model %in% hybrid_models) %>%
+  # Group models by family
+  mutate(
+    model_family = case_when(
+      grepl("^ev_", model) ~ "EV+DDM",
+      grepl("^pvldecay_", model) ~ "PVLdecay+DDM",
+      grepl("^pvldelta_", model) ~ "PVLdelta+DDM",
+      grepl("^pvlboth_ddm", model) ~ "PVLboth+DDM",
+      grepl("^pvlbothsd_", model) ~ "PVLbothsd+DDM",
+      grepl("^vppdecay_", model) ~ "VPPdecay+DDM",
+      grepl("^vppdelta_", model) ~ "VPPdelta+DDM",
+      grepl("^vppboth_ddm", model) ~ "VPPboth+DDM",
+      TRUE ~ model
+    )
+  ) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_family)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  facet_wrap(~ factor(grepl("play", statistic), labels = c("Skip/Pass RT", "Play RT")), scales = "free_x") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "SSM Component Performance Across Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+# Cross-Model Comparison
+
+Let's examine key metrics across all models to identify the strengths and weaknesses of each approach.
+
+```{r cross-model-comparison}
+# Function to create component-specific performance summaries
+create_component_performance <- function(data, component_type) {
+  data %>%
+    filter(component == component_type) %>%
+    group_by(model, model_display) %>%
+    summarize(
+      mean_ppp = mean(mean_ppp, na.rm = TRUE),
+      extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+      problematic_stats = sum(extreme_ratio > 0.3, na.rm = TRUE),
+      total_stats = n(),
+      pct_problematic = problematic_stats / total_stats * 100,
+      .groups = "drop"
+    ) %>%
+    rename_with(~ paste0(component_type, "_", .), .cols = c(mean_ppp, extreme_ratio, problematic_stats, total_stats, pct_problematic))
+}
+
+# Create data frames for component-specific model performance
+rl_component_performance <- create_component_performance(all_summaries, "RL")
+ssm_component_performance <- create_component_performance(all_summaries, "SSM")
+
+# Create a base dataframe with all model information
+all_models_df <- tibble(
+  model = available_all_models,
+  model_display = unlist(model_display_names[available_all_models])
+)
+
+# Ensure consistent data types for joining
+rl_component_performance <- rl_component_performance %>%
+  mutate(model_display = as.character(model_display))
+
+ssm_component_performance <- ssm_component_performance %>%
+  mutate(model_display = as.character(model_display))
+
+# Join the component performances
+model_performance <- all_models_df %>%
+  left_join(rl_component_performance, by = c("model", "model_display")) %>%
+  left_join(ssm_component_performance, by = c("model", "model_display")) %>%
+  mutate(
+    # Add model type
+    model_type = case_when(
+      model %in% rl_only_models ~ "RL Only",
+      model %in% ddm_only_models ~ "DDM Only",
+      model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Unknown"
+    ),
+    
+    # Calculate overall metrics for all models
+    overall_mean_ppp = case_when(
+      model %in% rl_only_models ~ RL_mean_ppp,
+      model %in% ddm_only_models ~ SSM_mean_ppp,
+      model %in% hybrid_models ~ (RL_mean_ppp + SSM_mean_ppp) / 2,
+      TRUE ~ NA_real_
+    ),
+    overall_extreme_ratio = case_when(
+      model %in% rl_only_models ~ RL_extreme_ratio,
+      model %in% ddm_only_models ~ SSM_extreme_ratio,
+      model %in% hybrid_models ~ (RL_extreme_ratio + SSM_extreme_ratio) / 2,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  arrange(desc(overall_mean_ppp))
+
+# Display the combined performance table
+kable(model_performance %>% 
+        select(model_display, model_type, RL_mean_ppp, RL_extreme_ratio, 
+               SSM_mean_ppp, SSM_extreme_ratio, 
+               overall_mean_ppp, overall_extreme_ratio),
+      digits = 3,
+      col.names = c("Model", "Type", "RL Mean PPP", "RL Extreme Ratio", 
+                   "SSM Mean PPP", "SSM Extreme Ratio", 
+                   "Overall Mean PPP", "Overall Extreme Ratio"),
+      caption = "Component-Specific and Overall Model Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create a visualization of model performance by component
+all_summaries %>%
+  group_by(model_display, component) %>%
+  summarize(
+    mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(x = model_display, y = mean_extreme_ratio, fill = component)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5,
+            size = 3) +
+  scale_y_continuous(limits = c(0, max(overall_metrics$mean_extreme_ratio) * 1.2),
+                    labels = scales::percent) +
+  scale_fill_manual(values = c("RL" = "#1B9E77", "SSM" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Model Performance by Component",
+       subtitle = "Lower extreme ratio values indicate better fit; PPP values shown above bars",
+       x = "Model", y = "Mean Proportion of Extreme PPP Values",
+       fill = "Component")
+
+# Create a heatmap for key statistics across all models
+# Get all key statistics across components
+key_stats_groups <- model_config$key_statistics
+key_stats_all <- unlist(key_stats_groups)
+
+# Function to create a statistic group label
+assign_metric_group <- function(stat) {
+  for (group_name in names(key_stats_groups)) {
+    if (stat %in% key_stats_groups[[group_name]]) {
+      return(group_name)
+    }
+  }
+  return("Other")
+}
+
+# Create more descriptive group names
+metric_group_labels <- c(
+  "deck_selection" = "Deck Selection",
+  "rl_performance" = "Other RL Metrics",
+  "play_rt" = "Play RT",
+  "skip_rt" = "Skip RT",
+  "choice" = "Choice"
+)
+
+# Filter for key statistics and assign groups
+key_stats_data <- all_summaries %>%
+  filter(statistic %in% key_stats_all) %>%
+  mutate(
+    # Assign each statistic to its metric group
+    metric_group_raw = sapply(statistic, assign_metric_group),
+    # Convert to user-friendly labels
+    metric_group = metric_group_labels[metric_group_raw]
+  )
+
+# Create heatmap for PPP values
+key_stats_data %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  facet_grid(. ~ metric_group, scales = "free", space = "free_x") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "PPP Values for Key Statistics Across All Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Mean PPP Value")
+
+# Create heatmap for extreme ratios
+key_stats_data %>%
+  ggplot(aes(x = statistic, y = model_display, fill = extreme_ratio)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.0f%%", extreme_ratio*100)), color = "black", size = 3) +
+  scale_fill_gradient(low = "green", high = "red", limits = c(0, 1)) +
+  facet_grid(. ~ metric_group, scales = "free", space = "free_x") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Proportion of Subjects with Extreme PPP Values",
+       subtitle = "Lower values indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Extreme Ratio")
+```
+
+# Additional Analysis of New Deck Selection Metrics
+
+Let's dig deeper into the new deck selection metrics to see how models differ in their ability to capture deck selection patterns focusing on specific decks.
+
+```{r new-deck-analysis}
+# Function to extract block-level learning curve data
+extract_block_data <- function(ppc_obj, model_name, metric) {
+  # Check if the model has the required plots
+  if (is.null(ppc_obj) || 
+      !("plots" %in% names(ppc_obj)) || 
+      !(metric %in% names(ppc_obj$plots))) {
+    return(NULL)
+  }
+  
+  # Try to extract data from the plot
+  tryCatch({
+    plot_data <- ggplot_build(ppc_obj$plots[[metric]])$data[[2]]
+    plot_data$metric <- metric
+    plot_data$model <- model_name
+    return(plot_data)
+  }, error = function(e) {
+    warning(paste("Could not extract block data for model:", model_name, "metric:", metric))
+    return(NULL)
+  })
+}
+
+# Define metrics to extract
+block_metrics <- c(
+  "learning_curve", 
+  "new_good_learning_curve", 
+  "new_bad_learning_curve"
+)
+
+# Initialize empty dataframe for block data
+block_data_all <- data.frame()
+
+# Extract block data for each model and metric
+for (model_name in names(ppc_data)) {
+  for (metric in block_metrics) {
+    metric_data <- extract_block_data(ppc_data[[model_name]], model_name, metric)
+    if (!is.null(metric_data)) {
+      block_data_all <- bind_rows(block_data_all, metric_data)
+    }
+  }
+}
+
+# Check if we have block data to analyze
+if (nrow(block_data_all) > 0) {
+  # Clean up the dataset
+  block_data_clean <- block_data_all %>%
+    rename(block = x, value = y) %>%
+    mutate(
+      model_display = model_display_names[model],
+      metric_label = case_when(
+        metric == "learning_curve" ~ "Original Good Decks (3+4) / All Selections",
+        metric == "new_good_learning_curve" ~ "New Good Decks (3+4) / Decks 1,3,4",
+        metric == "new_bad_learning_curve" ~ "Bad Deck (1) / Decks 1,3,4",
+        TRUE ~ metric
+      ),
+      model_type = case_when(
+        model %in% rl_only_models ~ "RL Only",
+        model %in% ddm_only_models ~ "DDM Only",
+        model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+        TRUE ~ "Unknown"
+      )
+    )
+  
+  # Create learning curve visualization for different metrics
+  block_data_clean %>%
+    ggplot(aes(x = block, y = value, color = metric_label)) +
+    geom_line(size = 1) +
+    geom_point(size = 2) +
+    facet_wrap(~ model_display, scales = "free_y") +
+    scale_color_viridis_d() +
+    theme_minimal() +
+    labs(title = "Learning Curves for Different Deck Selection Metrics",
+         subtitle = "Observed data across blocks",
+         x = "Block", y = "Proportion",
+         color = "Metric")
+  
+  # Create a comparison of each metric across models
+  block_data_clean %>%
+    ggplot(aes(x = block, y = value, color = model_display)) +
+    geom_line(size = 1) +
+    geom_point(size = 2) +
+    facet_wrap(~ metric_label, scales = "free_y") +
+    scale_color_viridis_d() +
+    theme_minimal() +
+    labs(title = "Deck Selection Metrics Across Models",
+         subtitle = "Observed data across blocks",
+         x = "Block", y = "Proportion",
+         color = "Model")
+  
+  # Extract base model name for pairings
+  block_data_clean <- block_data_clean %>%
+    mutate(
+      base_model = case_when(
+        grepl("_ddm$", model) ~ gsub("_ddm$", "", model),
+        TRUE ~ model
+      ),
+      model_category = case_when(
+        model %in% rl_only_models ~ "RL Only",
+        model %in% hybrid_models ~ "Hybrid",
+        TRUE ~ "Other"
+      )
+    )
+  
+  # Plot comparison within each base model
+  block_data_clean %>%
+    filter(base_model %in% rl_only_models) %>%  # Only include base models that have both versions
+    ggplot(aes(x = block, y = value, color = model_category, linetype = model_category)) +
+    geom_line(size = 1) +
+    geom_point(size = 2) +
+    facet_grid(metric_label ~ base_model) +
+    scale_color_brewer(palette = "Set1") +
+    theme_minimal() +
+    labs(title = "RL-Only vs. Hybrid Model Comparison",
+         subtitle = "Learning curves by base model and metric",
+         x = "Block", y = "Proportion",
+         color = "Model Type", linetype = "Model Type")
+  
+  # Create a slope analysis to see learning rate differences
+  block_data_clean %>%
+    group_by(model, model_display, model_type, metric, metric_label) %>%
+    # Calculate slope between first and last block
+    summarize(
+      first_block = first(value),
+      last_block = last(value),
+      slope = (last_block - first_block) / (max(block) - min(block)),
+      .groups = "drop"
+    ) %>%
+    ggplot(aes(x = slope, y = reorder(model_display, slope), fill = model_type)) +
+    geom_col() +
+    facet_wrap(~ metric_label) +
+    theme_minimal() +
+    labs(title = "Learning Slope by Model and Metric",
+         subtitle = "Higher slopes indicate stronger learning effects",
+         x = "Slope (Change per Block)",
+         y = "Model",
+         fill = "Model Type")
+} else {
+  cat("No block-level data available for analysis\n")
+}
+```
+
+# Integration with Parameter Recovery Results
+
+```{r param-recovery-integration}
+# Function to load recovery results
+load_recovery_results <- function(model_names) {
+  # Paths to recovery data files
+  REC_SIM_DIR <- file.path(PROJ_DIR, "Data", "sim", "recovery")
+  
+  # Initialize empty list for recovery data
+  recovery_data <- list()
+  
+  # Try to load recovery data for each model
+  for (model_name in model_names) {
+    file_path <- file.path(REC_SIM_DIR, 
+                          paste0("recovery_igt_mod_batch_001_", model_name, "_desc-sim_params.rds"))
+    
+    if (file.exists(file_path)) {
+      recovery_data[[model_name]] <- readRDS(file_path)
+    } else {
+      warning(paste("Recovery file not found for model:", model_name))
+    }
+  }
+  
+  return(recovery_data)
+}
+
+# Function to extract overall metrics from recovery objects
+extract_overall_from_recovery <- function(recovery_obj, model_name) {
+  if (is.null(recovery_obj)) {
+    return(NULL)
+  }
+  
+  overall <- recovery_obj$overall
+  overall$model <- model_name
+  return(overall)
+}
+
+# Load recovery data for models in our analysis
+recovery_data <- load_recovery_results(available_all_models)
+
+# Combine all overall metrics
+overall_df <- bind_rows(
+  lapply(names(recovery_data), function(name) {
+    extract_overall_from_recovery(recovery_data[[name]], name)
+  })
+)
+
+# Create recovery performance data frame
+recovery_performance <- overall_df %>%
+  pivot_wider(names_from = metric, values_from = value) %>%
+  select(model, correlation, rmse, bias, relative_bias)
+
+# Combine with PPC performance
+combined_performance <- recovery_performance %>%
+  left_join(model_performance, by = "model") %>%
+  select(model_display, model_type, correlation, rmse, relative_bias, 
+         RL_mean_ppp, RL_extreme_ratio, 
+         SSM_mean_ppp, SSM_extreme_ratio,
+         overall_mean_ppp, overall_extreme_ratio)
+
+# Create a formatted table
+kable(combined_performance, digits = 3,
+      col.names = c("Model", "Type", "Param Correlation", "Param RMSE", "Param Rel Bias", 
+                   "RL Mean PPP", "RL Extreme Ratio", 
+                   "SSM Mean PPP", "SSM Extreme Ratio",
+                   "Overall Mean PPP", "Overall Extreme Ratio"),
+      caption = "Combined Parameter Recovery and PPC Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create a scatter plot of parameter recovery vs PPC performance
+combined_performance %>%
+  ggplot(aes(x = correlation, y = 1 - overall_extreme_ratio, 
+             color = model_display, size = 1/rmse)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = model_display), size = 3, box.padding = 0.5) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_size_continuous(name = "Inverse RMSE\n(Larger is better)") +
+  theme_minimal() +
+  labs(title = "Parameter Recovery vs PPC Performance",
+       subtitle = "Better models appear in the upper-right (high recovery correlation, low extreme PPP ratios)",
+       x = "Parameter Recovery Correlation", 
+       y = "PPC Goodness (1 - Mean Extreme Ratio)",
+       color = "Model")
+
+# Create component-specific scatter plots
+combined_performance %>%
+  filter(!is.na(RL_extreme_ratio)) %>%
+  ggplot(aes(x = correlation, y = 1 - RL_extreme_ratio, 
+             color = model_display, size = 1/rmse)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = model_display), size = 3, box.padding = 0.5) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_size_continuous(name = "Inverse RMSE\n(Larger is better)") +
+  theme_minimal() +
+  labs(title = "Parameter Recovery vs RL Component PPC Performance",
+       subtitle = "Better models appear in the upper-right",
+       x = "Parameter Recovery Correlation", 
+       y = "RL Component PPC Goodness (1 - Extreme Ratio)",
+       color = "Model")
+
+combined_performance %>%
+  filter(!is.na(SSM_extreme_ratio)) %>%
+  ggplot(aes(x = correlation, y = 1 - SSM_extreme_ratio, 
+             color = model_display, size = 1/rmse)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = model_display), size = 3, box.padding = 0.5) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_size_continuous(name = "Inverse RMSE\n(Larger is better)") +
+  theme_minimal() +
+  labs(title = "Parameter Recovery vs SSM Component PPC Performance",
+       subtitle = "Better models appear in the upper-right",
+       x = "Parameter Recovery Correlation", 
+       y = "SSM Component PPC Goodness (1 - Extreme Ratio)",
+       color = "Model")
+
+# Create a comprehensive plot that combines recovery and PPC metrics
+combined_performance %>%
+  mutate(
+    ppp_deviation = abs(overall_mean_ppp - 0.5),
+    extreme_goodness = 1 - overall_extreme_ratio
+  ) %>%
+  ggplot(aes(x = correlation, y = extreme_goodness, 
+             color = model_type, size = 1/ppp_deviation)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = model_display), size = 3, box.padding = 0.5) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_size_continuous(name = "PPP Accuracy\n(Larger is better)") +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(title = "Combined Model Performance: Recovery & PPC",
+       subtitle = "Better models appear in the upper-right corner",
+       x = "Parameter Recovery Correlation", 
+       y = "PPC Goodness (1 - Extreme Ratio)",
+       color = "Model Type")
+```

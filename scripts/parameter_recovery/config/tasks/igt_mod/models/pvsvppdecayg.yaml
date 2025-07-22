@@ -1,0 +1,40 @@
+name: "pvsvppdecayg"
+description: "Prospect Valence Shape Model with VPP and Decay"
+task: "igt_mod"
+response_type: "choice"
+
+parameters:
+  gain_shape:
+    range: [0, 2]
+    transform: "none"
+    prior: "normal(1, 0.5)"
+  
+  loss_shape:
+    range: [0, 2]
+    transform: "none"
+    prior: "normal(1, 0.5)"
+  
+  con:
+    range: [-5, 5]
+    transform: "none"
+    prior: "normal(1, 1)"
+    
+  decay:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+  
+  k:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+  
+  w:
+    range: [0, 1]
+    transform: "logistic" 
+    prior: "normal(0, 1)"
+  
+  ep:
+    range: [-Inf, Inf]
+    transform: "none"
+    prior: "normal(0, 1)"

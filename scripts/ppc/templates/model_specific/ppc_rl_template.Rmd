@@ -1,0 +1,269 @@
+## RL Component Analysis
+
+This section examines reinforcement learning behavioral metrics across participants.
+
+```{r rl_setup, include=FALSE}
+# Load task config for RL-specific analysis
+source(file.path(here::here(), "scripts", "ppc", "helpers", "task_config.R"))
+task_config <- get_task_config(task)
+```
+
+### Choice Statistics Visualization
+
+```{r rl_choice_stats, echo=FALSE, fig.width=10, fig.height=8}
+# Create choice statistics plots
+choice_plots <- plot_choice_statistics(ppc_summary)
+
+# Display each group of plots
+for (plot_name in names(choice_plots)) {
+  knitr::knit_print(choice_plots[[plot_name]])
+}
+```
+
+### Block-Level Curves
+
+```{r choice_block_curves, echo=FALSE, fig.width=10, fig.height=6}
+
+# Task-specific variables to plot
+if (task_config$type == "deck_selection") {
+  # IGT block curves - no play/pass stuff
+  variables_to_plot = c("good_deck_freq", "bad_deck_freq", "net_score", "total_earnings", 
+                       "deck1_freq", "deck2_freq", "deck3_freq", "deck4_freq")
+} else if (task_config$type == "play_pass") {
+  # mIGT block curves
+  variables_to_plot = c("good_play_ratio", "bad_play_ratio", "net_score", "total_earnings", "play_ratio", 
+                       "play_ratio_deck1", "play_ratio_deck2", "play_ratio_deck3", "play_ratio_deck4")
+}
+
+for (plot_stat in variables_to_plot){
+  if (any(ppc_summary$statistic == plot_stat & grepl("block_", ppc_summary$session))) {
+    tryCatch({
+      plot <- plot_block_curve(ppc_summary, statistic = plot_stat)
+      knitr::knit_print(plot)
+    }, error = function(e) {
+      cat("Could not create block curve for", plot_stat, ":", e$message, "\n")
+    })
+  }
+}
+
+```
+
+### Win-Stay/Lose-Shift Behavior
+
+```{r rl_wsls, echo=FALSE, fig.width=8, fig.height=5}
+# Task-specific WSLS analysis
+if (task_config$type == "deck_selection") {
+  # IGT: WSLS makes sense and uses "win_stay", "lose_shift" names
+  wsls_stats <- c("win_stay", "lose_shift")
+  wsls_data <- ppc_summary %>%
+    filter(category == "choice" & session == "session" & 
+           statistic %in% wsls_stats)
+  
+  if(nrow(wsls_data) > 0) {
+    # Aggregate across subjects for cleaner visualization
+    wsls_agg <- wsls_data %>%
+      group_by(statistic) %>%
+      summarize(
+        obs_mean = mean(observed, na.rm = TRUE),
+        obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+        pred_mean = quantile(unlist(list(simulated_mean)), 0.5, na.rm = TRUE),
+        pred_lower = quantile(unlist(list(simulated_mean)), 0.025, na.rm = TRUE),
+        pred_upper = quantile(unlist(list(simulated_mean)), 0.975, na.rm = TRUE),
+        misfit = obs_mean - pred_mean,
+        misfit_standardized = misfit / (pred_upper - pred_lower) * 2,
+        .groups = "drop"
+      )
+    
+    # Plot aggregated WSLS data
+    p1 = ggplot(wsls_agg, aes(x = statistic)) +
+      geom_pointrange(aes(y = pred_mean, ymin = pred_lower, ymax = pred_upper), 
+                     color = "blue", size = 1, position = position_dodge(width = 0.5)) +
+      geom_pointrange(aes(y = obs_mean, ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), 
+                     color = "red", shape = 4, size = 1, position = position_dodge(width = 0.5)) +
+      ylim(0, 1) +
+      theme_minimal() +
+      labs(title = "Win-Stay/Lose-Shift Behavior (IGT)", 
+           subtitle = "Red X = Observed (with SE), Blue dots = Predicted (with 95% CI)",
+           x = "", y = "Ratio")
+    
+    # Create summary table
+    kable(wsls_agg %>% select(statistic, obs_mean, pred_mean, misfit, misfit_standardized),
+          caption = "Win-Stay/Lose-Shift: Observed vs. Predicted", digits = 3) %>%
+      kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    knitr::knit_print(p1)
+  } else {
+    cat("No Win-Stay/Lose-Shift data found in the statistics for IGT.\n")
+  }
+  
+} else if (task_config$type == "play_pass") {
+  # mIGT: WSLS doesn't make sense for play/pass decisions
+  cat("Win-Stay/Lose-Shift behavior is not applicable to the modified IGT (play/pass decisions).\n")
+  cat("This behavioral pattern requires a choice outcome followed by the same choice option,\n")
+  cat("which is not meaningful when participants choose whether to play or pass on different decks.\n")
+}
+```
+
+### Deck Selection Stats
+
+```{r deck_selection_ratio, echo=FALSE, fig.width=8, fig.height=6}
+# Task-specific deck selection analysis
+if (task_config$type == "deck_selection") {
+  # IGT: Look for deck frequency data
+  deck_ratio_data <- ppc_summary %>%
+    filter(category == "choice" & session == "session" & 
+           grepl("deck[1-4]_freq|good_deck_freq|bad_deck_freq", statistic))
+  
+  plot_title <- "IGT Deck Selection Frequencies"
+  subtitle_text <- "Direct deck selection from 4 decks"
+  
+} else if (task_config$type == "play_pass") {
+  # mIGT: Look for play ratio data
+  deck_ratio_data <- ppc_summary %>%
+    filter(category == "choice" & session == "session" & 
+           grepl("play_ratio_deck|good_play_ratio|bad_play_ratio", statistic))
+  
+  plot_title <- "mIGT Play Ratios by Deck"  
+  subtitle_text <- "Play/pass decisions for offered decks"
+}
+
+if(nrow(deck_ratio_data) > 0) {
+  # Aggregate across subjects
+  ratio_agg <- deck_ratio_data %>%
+    group_by(statistic) %>%
+    summarize(
+      obs_mean = mean(observed, na.rm = TRUE),
+      obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+      pred_mean = mean(simulated_mean, na.rm = TRUE),
+      pred_lower = mean(p_2.5, na.rm = TRUE),
+      pred_upper = mean(p_97.5, na.rm = TRUE),
+      misfit = obs_mean - pred_mean,
+      misfit_standardized = misfit / (pred_upper - pred_lower) * 2,
+      .groups = "drop"
+    )
+  
+  # Plot deck selection ratios
+  p1 = ggplot(ratio_agg, aes(x = statistic)) +
+    geom_pointrange(aes(y = pred_mean, ymin = pred_lower, ymax = pred_upper), 
+                   color = "blue", size = 1, position = position_dodge(width = 0.5)) +
+    geom_pointrange(aes(y = obs_mean, ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), 
+                   color = "red", shape = 4, size = 1, position = position_dodge(width = 0.5)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = plot_title, 
+         subtitle = paste(subtitle_text, "- Red X = Observed (with SE), Blue dots = Predicted (with 95% CI)"),
+         x = "", y = "Frequency/Ratio")
+  
+  # Plot directionality of misfit
+  p2 = ggplot(ratio_agg, aes(x = statistic, y = misfit, fill = abs(misfit_standardized) > 1)) +
+    geom_col() +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "gray"), 
+                     labels = c("FALSE" = "Not Significant", "TRUE" = "Significant"),
+                     name = "Misfit") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Misfit Direction for Deck Selection Metrics",
+         subtitle = "Positive = Model Underpredicts, Negative = Model Overpredicts",
+         x = "", y = "Observed - Predicted")
+  
+  knitr::knit_print(p1)
+  knitr::knit_print(p2)
+} else {
+  cat("No deck selection/play ratio data found in the statistics.\n")
+}
+```
+
+### Earnings Performance
+
+```{r earnings_performance, echo=FALSE, fig.width=10, fig.height=6}
+# Extract earnings/money data
+earnings_data <- ppc_summary %>%
+  filter(category == "choice" & session == "session" & 
+         grepl("earnings|net_score", statistic))
+
+if(nrow(earnings_data) > 0) {
+  # Aggregate across subjects
+  earnings_agg <- earnings_data %>%
+    group_by(statistic) %>%
+    summarize(
+      obs_mean = mean(observed, na.rm = TRUE),
+      obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+      pred_mean = mean(simulated_mean, na.rm = TRUE),
+      pred_lower = mean(p_2.5, na.rm = TRUE),
+      pred_upper = mean(p_97.5, na.rm = TRUE),
+      misfit = obs_mean - pred_mean,
+      misfit_pct = (obs_mean - pred_mean) / pred_mean * 100,
+      .groups = "drop"
+    )
+  
+  # Prepare data for plot with facets
+  earnings_agg$y_max <- pmax(earnings_agg$obs_mean + earnings_agg$obs_se, 
+                           earnings_agg$pred_upper, na.rm = TRUE)
+  earnings_agg$text_y <- earnings_agg$y_max * 1.15
+  
+  # Plot earnings metrics
+  ggplot(earnings_agg, aes(x = statistic)) +
+    geom_pointrange(aes(y = pred_mean, ymin = pred_lower, ymax = pred_upper), 
+                   color = "blue", size = 1) +
+    geom_pointrange(aes(y = obs_mean, ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), 
+                   color = "red", shape = 4, size = 1) +
+    geom_text(aes(y = text_y, label = sprintf("Δ: %.1f%%", misfit_pct)),
+              size = 4, fontface = "bold") +
+    facet_wrap(~statistic, scales = "free_y") +
+    scale_x_discrete(labels = NULL) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 14, face = "bold"),
+      axis.text.y = element_text(size = 10),
+      axis.ticks.x = element_blank(),
+      axis.text.x = element_blank(),
+      plot.title = element_text(size = 14, face = "bold"),
+      plot.subtitle = element_text(size = 12),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank()
+    ) +
+    labs(
+      title = "Earnings Performance Metrics",
+      subtitle = "Red X = Observed (with SE), Blue dots = Predicted (with 95% CI)",
+      x = "", y = "Value"
+    )
+  
+  # Create summary table
+  kable(earnings_agg %>% select(statistic, obs_mean, pred_mean, misfit_pct),
+        caption = "Earnings Metrics Summary", digits = 2) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+} else {
+  cat("No earnings data found in the statistics.\n")
+}
+```
+
+## Subject-Level Statistics
+
+The plots below compare observed statistics (red) with model predictions (blue with 95% CI). Good model fit is indicated by observed values falling within the prediction intervals.
+
+```{r subject_level_overall, echo=FALSE, fig.width=10, fig.height=8}
+# Select a sample of subjects for visualization
+subjects_to_plot <- sample(unique(ppc_summary$subject_id), 
+                           min(6, length(unique(ppc_summary$subject_id))))
+
+for (subject_id in subjects_to_plot) {
+  # Generate plots for this subject
+  tryCatch({
+    subject_plots <- generate_subject_plots(ppc_summary, subject_id, save_plots = FALSE)
+    
+    # Print key plots
+    if (!is.null(subject_plots$choice)) {
+      if (is.list(subject_plots$choice)) {
+        for (plot_name in names(subject_plots$choice)) {
+          print(subject_plots$choice[[plot_name]])
+        }
+      } else {
+        print(subject_plots$choice)
+      }
+    }
+  }, error = function(e) {
+    cat("Could not generate subject plots for", subject_id, ":", e$message, "\n")
+  })
+}
+```

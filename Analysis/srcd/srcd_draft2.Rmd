@@ -1,0 +1,3183 @@
+---
+title: "Adolescent Risk Behaviors: Combining RL and Evidence Accumulation Models - NNLdecay"
+author: "Felix Pichardo"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.width = 10, 
+  fig.height = 6,
+  out.width = "100%"
+)
+
+# Set model info
+main_model_name = "nnldelta"
+task <- "igt_mod"
+group_type <- "batch_001"
+```
+
+# Introduction
+
+This analysis investigates the relationship between computational decision-making parameters from the Iowa Gambling Task (IGT) and adolescent risk behaviors. We use both reinforcement learning (RL) models and evidence accumulation models (EAMs) in a combined framework to better characterize the mechanisms that may underlie adolescent risk-taking.
+
+## Research Questions
+
+1. Are computational model parameters more predictive of risk behaviors than raw behavioral performance?
+2. Do gender differences exist in the relationship between decision processes and risk behaviors?
+3. How do developmental factors (age/grade, pubertal timing) relate to decision processes?
+4. Do successful performance mechanisms vary by development stage or gender/sex?
+
+# Setup and Data Preparation
+
+```{r load-packages}
+suppressPackageStartupMessages({
+  library(here)
+  library(foreign)
+  library(dplyr) 
+  library(tidyr)
+  library(plyr)   
+  library(ggplot2)
+  library(gridExtra)
+  library(grid)   
+  library(kableExtra) 
+  library(caret)
+  library(MplusAutomation)
+  library(tidyverse)
+  library(psych)
+  library(car)
+  library(corrplot)
+  library(lme4)
+  library(lmerTest)  
+  library(sjPlot)    # For model visualization
+  library(MuMIn)     # For R-squared in mixed models
+  library(qvalue)
+})
+
+# Directories
+PROJ_DIR            = file.path(here::here())
+DATA_DIR            = file.path(PROJ_DIR, "Data")
+SAFE_DATA_DIR       = file.path(DATA_DIR, "AHRB")
+MODELS_DIR          = file.path(PROJ_DIR, "models")
+MODELS_RDS_DIR      = file.path(MODELS_DIR, "rds")
+MODELS_RDS_FIT_DIR  = file.path(MODELS_RDS_DIR, "fit")
+MODELS_RDS_PoPC_DIR = file.path(MODELS_RDS_DIR, "postpc")
+
+# Source helper functions
+source(file.path(PROJ_DIR, "scripts", "helpers", "helper_functions_cmdSR.R"))
+
+model_defaults = get_model_defaults(task)
+```
+
+## Load Data
+
+```{r load-data}
+# Trial-level data with v_groupnumber
+wave1.sav.file <- file.path(SAFE_DATA_DIR, "modigt_data_Wave1.sav")
+wave1.raw <- read.spss(wave1.sav.file, to.data.frame = TRUE)
+
+# Extract v_groupnumber for later use in nested random effects
+groupnumber_df <- wave1.raw %>% 
+  group_by(sid) %>% 
+  dplyr::summarise(v_groupnumber = first(v_groupnumber)) %>%
+  ungroup()
+
+districtid_schoolid_df <- wave1.raw %>% 
+     group_by(sid) %>% 
+     slice_tail(n = 1) %>%
+     dplyr::summarise(
+         districtid = as.factor(districtid),
+         schoolid = as.factor(schoolid)
+     ) %>%
+     ungroup()
+
+# Risk data
+risk.file <- file.path(SAFE_DATA_DIR, "AHRB.P1W1_v11_AW_v2.sav")
+risk.data <- read.spss(risk.file, to.data.frame = TRUE)
+
+# Excluded subs
+exclude_file <- file.path(SAFE_DATA_DIR, "subs/subject_ids_excludes.txt")
+excluded_sids <- unlist(unname(read.csv(exclude_file, header = F)))
+
+# Set model names - Make sure to define main_model_name and group_type
+# For example: main_model_name <- "pvldelta"
+# For example: group_type <- "batch_001"
+
+# Build full model names
+if (grepl("batch", group_type)) {
+  fit_model_name <- paste(task, group_type, main_model_name, sep="_")
+  full_model_name <- paste(task, "sing", main_model_name, sep="_")
+} else {
+  fit_model_name <- paste(task, group_type, main_model_name, sep="_")
+  full_model_name <- paste(task, group_type, main_model_name, sep="_")
+}
+
+# Load model fit output - updated paths
+model_output_dir <- file.path(DATA_DIR, "igt_mod", "rds", "fit")
+fit_output_file <- file.path(model_output_dir, paste0(fit_model_name, "_fit_output.rds"))
+model_fit_obj <- readRDS(file = fit_output_file)
+
+# Also load the hybrid model
+hybrid_model_name <- paste0(main_model_name, "_ddm_b1b")
+if (grepl("batch", group_type)) {
+  hybrid_fit_model_name <- paste(task, group_type, hybrid_model_name, sep="_")
+  hybrid_full_model_name <- paste(task, "sing", hybrid_model_name, sep="_")
+} else {
+  hybrid_fit_model_name <- paste(task, group_type, hybrid_model_name, sep="_")
+  hybrid_full_model_name <- paste(task, group_type, hybrid_model_name, sep="_")
+}
+
+hybrid_fit_output_file <- file.path(model_output_dir, paste0(hybrid_fit_model_name, "_fit_output.rds"))
+hybrid_model_fit_obj <- readRDS(file = hybrid_fit_output_file)
+```
+
+## Extract Behavioral Measures and Parameters
+
+```{r extract-data}
+risk.data$sid = as.character(risk.data$sid)
+
+# Extract behavioral data
+sids = unname(unlist(lapply(model_fit_obj, function(x) x$subid)))
+sids = sids[!unlist(lapply(sids, function(x) x %in% as.character(excluded_sids)))]
+
+behav_data = wave1.raw %>% group_by(sid) %>%
+  dplyr::summarise(
+    good_play_ratio = last(v_number_goodplay)/last(v_total_gooddeck),
+    good_pass_ratio = 1 - good_play_ratio,
+    bad_play_ratio = last(v_number_badplay)/last(v_total_baddeck),
+    bad_pass_ratio = 1 - bad_play_ratio,
+    good_bad_ratio = good_play_ratio/bad_play_ratio,
+    good_choice_ratio = (good_play_ratio + bad_pass_ratio)/2,
+    money = last(v_currenttotal)
+    ) %>% 
+  ungroup() %>%
+  filter(sid %in% sids)
+
+# Extract RL parameters
+rl_param_df <- data.frame(sid = sids)
+
+for (param in model_defaults[[full_model_name]]$params){
+  rl_param_df[[param]] <- numeric(length(sids))
+}
+
+for (sid_idx in 1:length(sids)) {
+  for (param in model_defaults[[full_model_name]]$params) {
+      rl_param_df[[param]][sid_idx] <- model_fit_obj[[sid_idx]]$summary_stats$mean[which(model_fit_obj[[sid_idx]]$all_params == param)]
+  }
+}
+
+# Extract hybrid model parameters
+hybrid_sids = unname(unlist(lapply(hybrid_model_fit_obj, function(x) x$subid)))
+hybrid_param_df <- data.frame(sid = hybrid_sids)
+
+for (param in model_defaults[[hybrid_full_model_name]]$params){
+  hybrid_param_df[[param]] <- numeric(length(hybrid_sids))
+}
+
+for (sid_idx in 1:length(hybrid_sids)) {
+  for (param in model_defaults[[hybrid_full_model_name]]$params) {
+      hybrid_param_df[[param]][sid_idx] <- hybrid_model_fit_obj[[sid_idx]]$summary_stats$median[which(hybrid_model_fit_obj[[sid_idx]]$all_params == param)]
+  }
+}
+
+# Define variable names for risk data
+variable_names = tolower(c("BISB", "BSSS_ES", "BSSS_BS", "BSSS_TS", "BSSS_SD", 
+                           "ysr_attentionproblems", "ysr_rulebreak", "ysr_mrulebreak", "ysr_aggressive", "ysr_maggressive", "ysr_conduct", "ysr_mconduct", "ysr_external", "bisb", "ysr_somaticcomplaints", "ysr_internal", "ysr_ocd", "ysr_anxdep", "ysr_withdep", "age", "pubertyage", "pubertaltiming", "pubertaltiming_num",
+                           "SID"))
+
+# Convert pubertal timing to numeric
+risk.data$pubertaltiming <- factor(risk.data$pubertaltiming, 
+                                   levels = c("much earlier", "earlier", 
+                                              "at the same time", "later", 
+                                              "much later"), 
+                                   ordered = TRUE)
+risk.data$pubertaltiming_num = as.numeric(risk.data$pubertaltiming)
+
+# Create final datasets by merging
+# 1. Behavioral measures
+behav_final_df <- behav_data %>%
+  inner_join(risk.data[c(variable_names, "bsss8", "male", "race_ethnicity", "grade12", "parent_edu6")], by = "sid") %>%
+  inner_join(wave1.raw %>% group_by(sid) %>% dplyr::select(grpid) %>% ungroup() %>% unique(), by = "sid") %>%
+  inner_join(districtid_schoolid_df, by = "sid") %>%
+  inner_join(groupnumber_df, by = "sid")
+
+# 2. RL model parameters
+rl_final_df <- rl_param_df %>%
+  inner_join(risk.data[c(variable_names, "bsss8", "male", "race_ethnicity", "grade12", "parent_edu6")], by = "sid") %>%
+  inner_join(wave1.raw %>% group_by(sid) %>% dplyr::select(grpid) %>% ungroup() %>% unique(), by = "sid") %>%
+  inner_join(districtid_schoolid_df, by = "sid") %>%
+  inner_join(groupnumber_df, by = "sid")
+
+# 3. Hybrid model parameters
+hybrid_final_df <- hybrid_param_df %>%
+  inner_join(risk.data[c(variable_names, "bsss8", "male", "race_ethnicity", "grade12", "parent_edu6")], by = "sid") %>%
+  inner_join(wave1.raw %>% group_by(sid) %>% dplyr::select(grpid) %>% ungroup() %>% unique(), by = "sid") %>%
+  inner_join(districtid_schoolid_df, by = "sid") %>%
+  inner_join(groupnumber_df, by = "sid")
+
+# Create Asian Non-Hispanic indicator for controls
+behav_final_df$race_ethnicity_ANH = as.numeric(behav_final_df$race_ethnicity == "asian non hispanic")
+rl_final_df$race_ethnicity_ANH = as.numeric(rl_final_df$race_ethnicity == "asian non hispanic")
+hybrid_final_df$race_ethnicity_ANH = as.numeric(hybrid_final_df$race_ethnicity == "asian non hispanic")
+```
+
+### Fix puberty issue
+```{r}
+# Convert pubertyage to numeric
+convert_pubertyage <- function(puberty_cat) {
+  # Convert categorical pubertyage to numeric values
+  # Using midpoints or conservative estimates for ranges
+  case_when(
+    puberty_cat == "=/< 10" ~ 10,    # Using upper bound of 10
+    puberty_cat == "11" ~ 11,
+    puberty_cat == "12" ~ 12,
+    puberty_cat == "13" ~ 13,
+    puberty_cat == "14" ~ 14,
+    puberty_cat == "15" ~ 15,
+    puberty_cat == "16" ~ 16,
+    puberty_cat == "=/> 17" ~ 17,    # Using lower bound of 17
+    TRUE ~ NA_real_                  # Handle any other cases
+  )
+}
+
+# Apply conversion and calculate time since puberty
+create_puberty_metrics <- function(df) {
+  df %>%
+    mutate(
+      pubertyage_num = convert_pubertyage(pubertyage),
+      time_since_puberty = age - pubertyage_num
+    )
+}
+
+# Apply to the dataframes
+behav_final_df <- behav_final_df %>% create_puberty_metrics()
+rl_final_df <- rl_final_df %>% create_puberty_metrics()
+hybrid_final_df <- hybrid_final_df %>% create_puberty_metrics()
+```
+
+## Standardize Variables
+
+```{r standardize-variables}
+# Function to standardize all numeric variables in a dataframe
+standardize_variables <- function(df) {
+  # Identify numeric columns (excluding ID and categorical variables)
+  numeric_cols <- sapply(df, is.numeric)
+  
+  # Exclude specific columns that shouldn't be standardized
+  exclude_cols <- c("sid", "grpid", "v_groupnumber", "schoolid", "districtid")
+  numeric_cols[names(df) %in% exclude_cols] <- FALSE
+  
+  # Standardize numeric columns
+  df_std <- df
+  for (col in names(df)[numeric_cols]) {
+    df_std[[col]] <- scale(df[[col]])
+  }
+  
+  return(df_std)
+}
+
+# Apply standardization to the dataframes
+behav_final_df_std <- standardize_variables(behav_final_df)
+rl_final_df_std <- standardize_variables(rl_final_df)
+hybrid_final_df_std <- standardize_variables(hybrid_final_df)
+
+# Use standardized dataframes for analyses
+behav_final_df <- behav_final_df_std
+rl_final_df <- rl_final_df_std
+hybrid_final_df <- hybrid_final_df_std
+```
+
+## Helper Function for Model Fitting
+
+```{r helper-function}
+# Helper function to handle model fitting with fallbacks for singular fits
+try_fit_model <- function(formula_str, data) {
+  # Try with nested random effects
+  formula <- as.formula(formula_str)
+  model <- tryCatch(lmer(formula, data = data), error = function(e) NULL)
+  
+  # If model is NULL or singular, try with just districtid
+  if (is.null(model) || isSingular(model)) {
+    if (grepl("\\(1\\|districtid/schoolid\\)", formula_str)) {
+      new_formula <- gsub("\\(1\\|districtid/schoolid\\)", "(1|districtid)", formula_str)
+      model <- tryCatch(lmer(as.formula(new_formula), data = data), error = function(e) NULL)
+      
+      # If still NULL or singular, fall back to lm
+      if (is.null(model) || isSingular(model)) {
+        fixed_formula <- gsub("\\s*\\+\\s*\\([^)]+\\)", "", formula_str)
+        model <- lm(as.formula(fixed_formula), data = data)
+      }
+    } else {
+      # For any other random effects, fall back to lm
+      fixed_formula <- gsub("\\s*\\+\\s*\\([^)]+\\)", "", formula_str)
+      model <- lm(as.formula(fixed_formula), data = data)
+    }
+  }
+  
+  return(model)
+}
+```
+
+# Preliminary Data Exploration
+
+## Correlation Analysis
+
+```{r correlation-analysis}
+# Define risk outcomes of interest
+risk_outcomes <- c("bsss_sd", "ysr_attentionproblems", "ysr_maggressive_t", "ysr_mconduct_t")
+
+# Examine correlations for behavioral measures
+behav_corr_vars <- c("good_play_ratio", "money", "bad_play_ratio", "good_bad_ratio", "bad_pass_ratio", "good_choice_ratio", risk_outcomes)
+behav_corr <- cor(behav_final_df[behav_corr_vars], use = "complete.obs")
+
+# Examine correlations for RL parameters
+rl_params <- model_defaults[[full_model_name]]$params
+rl_corr_vars <- c(rl_params, risk_outcomes)
+rl_corr <- cor(rl_final_df[rl_corr_vars], use = "complete.obs")
+
+# Examine correlations for hybrid parameters
+hybrid_params <- model_defaults[[hybrid_full_model_name]]$params
+hybrid_corr_vars <- c(hybrid_params, risk_outcomes)
+hybrid_corr <- cor(hybrid_final_df[hybrid_corr_vars], use = "complete.obs")
+
+# Plot correlations
+corrplot(behav_corr, method = "color", type = "upper", diag = FALSE, 
+         title = "Behavioral Measures", mar = c(0,0,1,0))
+corrplot(rl_corr, method = "color", type = "upper", diag = FALSE, 
+         title = "RL Parameters", mar = c(0,0,1,0))
+corrplot(hybrid_corr, method = "color", type = "upper", diag = FALSE, 
+         title = "Hybrid Parameters", mar = c(0,0,1,0))
+```
+
+## Age and Pubertal Timing Distribution
+
+```{r development-distribution}
+# Examine age distribution
+ggplot(risk.data, aes(x = age)) +
+  geom_histogram(binwidth = 0.25, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = mean(risk.data$age, na.rm = TRUE), color = "red", linetype = "dashed") +
+  labs(title = "Age Distribution", x = "Age (years)", y = "Count")
+
+# Examine pubertal timing distribution
+ggplot(risk.data, aes(x = pubertaltiming)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Pubertal Timing Distribution", x = "Pubertal Timing", y = "Count")
+
+risk.data %>% 
+  create_puberty_metrics() %>%
+  ggplot(aes(x = pubertyage_num)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Pubertal Age Distribution", x = "Pubertal Age", y = "Count")
+
+# Examine age by grade
+ggplot(risk.data, aes(x = factor(grade12, labels = c("10th Grade", "12th Grade")), y = age)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(title = "Age Distribution by Grade", x = "Grade", y = "Age (years)")
+```
+
+# Model Comparison Analysis
+
+## Function to Compare Model Types
+
+```{r define-comparison-function}
+# Function to compare different model types for predicting risk behaviors
+compare_models <- function(outcome, df_behav, df_rl, df_hybrid) {
+  # Prepare empty results dataframe
+  results <- data.frame(
+    outcome = character(),
+    model_type = character(),
+    AIC = numeric(),
+    BIC = numeric(),
+    r2m = numeric(),
+    r2c = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Raw behavioral model
+  behav_formula <- paste(outcome, "~ good_bad_ratio + money + (1|schoolid)")
+  behav_model <- try_fit_model(behav_formula, df_behav)
+  
+  # Calculate R2 with handling for lm vs lmer models
+  if ("lmerModLmerTest" %in% class(behav_model)) {
+    behav_r2 <- r.squaredGLMM(behav_model)
+    behav_r2m <- behav_r2[1]
+    behav_r2c <- behav_r2[2]
+  } else {
+    behav_r2m <- summary(behav_model)$r.squared
+    behav_r2c <- behav_r2m
+  }
+  
+  results <- rbind(results, data.frame(
+    outcome = outcome,
+    model_type = "Raw Behavioral",
+    AIC = AIC(behav_model),
+    BIC = BIC(behav_model),
+    r2m = behav_r2m,
+    r2c = behav_r2c
+  ))
+  
+  # Motivational parameters - RL model
+  motiv_params_rl <- c("gain", "loss")
+  motiv_formula_rl <- paste(outcome, "~", paste(motiv_params_rl, collapse = " + "), 
+                          "+ (1|schoolid)")
+  motiv_model_rl <- try_fit_model(motiv_formula_rl, df_rl)
+  
+  # Calculate R2
+  if ("lmerModLmerTest" %in% class(motiv_model_rl)) {
+    motiv_r2_rl <- r.squaredGLMM(motiv_model_rl)
+    motiv_r2m_rl <- motiv_r2_rl[1]
+    motiv_r2c_rl <- motiv_r2_rl[2]
+  } else {
+    motiv_r2m_rl <- summary(motiv_model_rl)$r.squared
+    motiv_r2c_rl <- motiv_r2m_rl
+  }
+  
+  results <- rbind(results, data.frame(
+    outcome = outcome,
+    model_type = "Motivational (RL)",
+    AIC = AIC(motiv_model_rl),
+    BIC = BIC(motiv_model_rl),
+    r2m = motiv_r2m_rl,
+    r2c = motiv_r2c_rl
+  ))
+  
+  # Motivational parameters - Hybrid model
+  motiv_formula_hybrid <- paste(outcome, "~", paste(motiv_params_rl, collapse = " + "), 
+                              "+ (1|schoolid)")
+  motiv_model_hybrid <- try_fit_model(motiv_formula_hybrid, df_hybrid)
+  
+  # Calculate R2
+  if ("lmerModLmerTest" %in% class(motiv_model_hybrid)) {
+    motiv_r2_hybrid <- r.squaredGLMM(motiv_model_hybrid)
+    motiv_r2m_hybrid <- motiv_r2_hybrid[1]
+    motiv_r2c_hybrid <- motiv_r2_hybrid[2]
+  } else {
+    motiv_r2m_hybrid <- summary(motiv_model_hybrid)$r.squared
+    motiv_r2c_hybrid <- motiv_r2m_hybrid
+  }
+  
+  results <- rbind(results, data.frame(
+    outcome = outcome,
+    model_type = "Motivational (Hybrid)",
+    AIC = AIC(motiv_model_hybrid),
+    BIC = BIC(motiv_model_hybrid),
+    r2m = motiv_r2m_hybrid,
+    r2c = motiv_r2c_hybrid
+  ))
+  
+  # Cognitive parameters - RL model
+  cognitive_params <- c("update", ifelse("retend" %in% colnames(df_rl), "retend", "decay"))
+  if(all(cognitive_params %in% colnames(df_rl))) {
+    cog_formula_rl <- paste(outcome, "~", paste(cognitive_params, collapse = " + "), 
+                          "+ (1|schoolid)")
+    cog_model_rl <- try_fit_model(cog_formula_rl, df_rl)
+    
+    # Calculate R2
+    if ("lmerModLmerTest" %in% class(cog_model_rl)) {
+      cog_r2_rl <- r.squaredGLMM(cog_model_rl)
+      cog_r2m_rl <- cog_r2_rl[1]
+      cog_r2c_rl <- cog_r2_rl[2]
+    } else {
+      cog_r2m_rl <- summary(cog_model_rl)$r.squared
+      cog_r2c_rl <- cog_r2m_rl
+    }
+    
+    results <- rbind(results, data.frame(
+      outcome = outcome,
+      model_type = "Cognitive (RL)",
+      AIC = AIC(cog_model_rl),
+      BIC = BIC(cog_model_rl),
+      r2m = cog_r2m_rl,
+      r2c = cog_r2c_rl
+    ))
+  }
+  
+  # Cognitive parameters - Hybrid model
+  if(all(cognitive_params %in% colnames(df_hybrid))) {
+    cog_formula_hybrid <- paste(outcome, "~", paste(cognitive_params, collapse = " + "), 
+                              "+ (1|schoolid)")
+    cog_model_hybrid <- try_fit_model(cog_formula_hybrid, df_hybrid)
+    
+    # Calculate R2
+    if ("lmerModLmerTest" %in% class(cog_model_hybrid)) {
+      cog_r2_hybrid <- r.squaredGLMM(cog_model_hybrid)
+      cog_r2m_hybrid <- cog_r2_hybrid[1]
+      cog_r2c_hybrid <- cog_r2_hybrid[2]
+    } else {
+      cog_r2m_hybrid <- summary(cog_model_hybrid)$r.squared
+      cog_r2c_hybrid <- cog_r2m_hybrid
+    }
+    
+    results <- rbind(results, data.frame(
+      outcome = outcome,
+      model_type = "Cognitive (Hybrid)",
+      AIC = AIC(cog_model_hybrid),
+      BIC = BIC(cog_model_hybrid),
+      r2m = cog_r2m_hybrid,
+      r2c = cog_r2c_hybrid
+    ))
+  }
+  
+  # DDM parameters
+  ddm_params <- c("boundary", "tau", "beta")
+  available_ddm <- ddm_params[ddm_params %in% colnames(df_hybrid)]
+  
+  if(length(available_ddm) > 0) {
+    ddm_formula <- paste(outcome, "~", paste(available_ddm, collapse = " + "), 
+                       "+ (1|schoolid)")
+    ddm_model <- try_fit_model(ddm_formula, df_hybrid)
+    
+    # Calculate R2
+    if ("lmerModLmerTest" %in% class(ddm_model)) {
+      ddm_r2 <- r.squaredGLMM(ddm_model)
+      ddm_r2m <- ddm_r2[1]
+      ddm_r2c <- ddm_r2[2]
+    } else {
+      ddm_r2m <- summary(ddm_model)$r.squared
+      ddm_r2c <- ddm_r2m
+    }
+    
+    results <- rbind(results, data.frame(
+      outcome = outcome,
+      model_type = "DDM Parameters",
+      AIC = AIC(ddm_model),
+      BIC = BIC(ddm_model),
+      r2m = ddm_r2m,
+      r2c = ddm_r2c
+    ))
+  }
+  
+  # Combined motivational and cognitive - RL model
+  combined_params_rl <- c(motiv_params_rl, cognitive_params)
+  available_combined_rl <- combined_params_rl[combined_params_rl %in% colnames(df_rl)]
+  
+  if(length(available_combined_rl) > 0) {
+    combined_formula_rl <- paste(outcome, "~", paste(available_combined_rl, collapse = " + "), 
+                               "+ (1|schoolid)")
+    combined_model_rl <- try_fit_model(combined_formula_rl, df_rl)
+    
+    # Calculate R2
+    if ("lmerModLmerTest" %in% class(combined_model_rl)) {
+      combined_r2_rl <- r.squaredGLMM(combined_model_rl)
+      combined_r2m_rl <- combined_r2_rl[1]
+      combined_r2c_rl <- combined_r2_rl[2]
+    } else {
+      combined_r2m_rl <- summary(combined_model_rl)$r.squared
+      combined_r2c_rl <- combined_r2m_rl
+    }
+    
+    results <- rbind(results, data.frame(
+      outcome = outcome,
+      model_type = "Motiv+Cognitive (RL)",
+      AIC = AIC(combined_model_rl),
+      BIC = BIC(combined_model_rl),
+      r2m = combined_r2m_rl,
+      r2c = combined_r2c_rl
+    ))
+  }
+  
+  # Combined motivational and cognitive - Hybrid model
+  combined_params_hybrid <- c(motiv_params_rl, cognitive_params)
+  available_combined_hybrid <- combined_params_hybrid[combined_params_hybrid %in% colnames(df_hybrid)]
+  
+  if(length(available_combined_hybrid) > 0) {
+    combined_formula_hybrid <- paste(outcome, "~", paste(available_combined_hybrid, collapse = " + "), 
+                                   "+ (1|schoolid)")
+    combined_model_hybrid <- try_fit_model(combined_formula_hybrid, df_hybrid)
+    
+    # Calculate R2
+    if ("lmerModLmerTest" %in% class(combined_model_hybrid)) {
+      combined_r2_hybrid <- r.squaredGLMM(combined_model_hybrid)
+      combined_r2m_hybrid <- combined_r2_hybrid[1]
+      combined_r2c_hybrid <- combined_r2_hybrid[2]
+    } else {
+      combined_r2m_hybrid <- summary(combined_model_hybrid)$r.squared
+      combined_r2c_hybrid <- combined_r2m_hybrid
+    }
+    
+    results <- rbind(results, data.frame(
+      outcome = outcome,
+      model_type = "Motiv+Cognitive (Hybrid)",
+      AIC = AIC(combined_model_hybrid),
+      BIC = BIC(combined_model_hybrid),
+      r2m = combined_r2m_hybrid,
+      r2c = combined_r2c_hybrid
+    ))
+  }
+  
+  return(results)
+}
+```
+
+## Compare Models for Each Risk Outcome
+
+```{r model-comparison}
+# Run comparison for each risk outcome
+all_comparisons <- data.frame()
+
+for (outcome in risk_outcomes) {
+  comparison <- compare_models(outcome, behav_final_df, rl_final_df, hybrid_final_df)
+  all_comparisons <- rbind(all_comparisons, comparison)
+}
+
+# Display comparison results
+kable(all_comparisons, caption = "Model Comparison Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Visualize comparison
+ggplot(all_comparisons, aes(x = model_type, y = r2m, fill = model_type)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~outcome, scales = "free_y") +
+  labs(title = "Variance Explained by Different Model Types",
+       x = "Model Type", y = "Marginal R²") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Gender Differences Analysis
+
+## Parameter Group Analysis by Gender
+
+```{r parameter-groups}
+# Define parameter groups for conceptual organization
+evidence_params <- c("drift_con", "con")
+response_params <- c("tau", "beta", "boundary")
+reward_params <- c("gain", "loss")
+update_params <- c("update", ifelse("retend" %in% colnames(rl_final_df), "retend", "decay"))
+
+# Function to analyze gender differences for parameter groups
+analyze_gender_differences <- function(outcome, df) {
+  # Evidence accumulation parameters
+  if (all(evidence_params %in% colnames(df))) {
+    evidence_formula <- paste(outcome, "~", 
+                            paste(paste0(evidence_params, "*male"), collapse = " + "), 
+                            "+ (1|schoolid)")
+    evidence_model <- try_fit_model(evidence_formula, df)
+  } else {
+    evidence_model <- NULL
+  }
+  
+  # Response caution parameters
+  if (all(response_params %in% colnames(df))) {
+    response_formula <- paste(outcome, "~", 
+                            paste(paste0(response_params, "*male"), collapse = " + "), 
+                            "+ (1|schoolid)")
+    response_model <- try_fit_model(response_formula, df)
+  } else {
+    response_model <- NULL
+  }
+  
+  # Reward learning parameters
+  if (all(reward_params %in% colnames(df))) {
+    reward_formula <- paste(outcome, "~", 
+                          paste(paste0(reward_params, "*male"), collapse = " + "), 
+                          "+ (1|schoolid)")
+    reward_model <- try_fit_model(reward_formula, df)
+  } else {
+    reward_model <- NULL
+  }
+  
+  # Experience updating parameters
+  if (all(update_params %in% colnames(df))) {
+    update_formula <- paste(outcome, "~", 
+                          paste(paste0(update_params, "*male"), collapse = " + "), 
+                          "+ (1|schoolid)")
+    update_model <- try_fit_model(update_formula, df)
+  } else {
+    update_model <- NULL
+  }
+  
+  return(list(
+    outcome = outcome,
+    evidence_model = if(exists("evidence_model")) evidence_model else NULL,
+    response_model = if(exists("response_model")) response_model else NULL,
+    reward_model = if(exists("reward_model")) reward_model else NULL,
+    update_model = if(exists("update_model")) update_model else NULL
+  ))
+}
+```
+
+## Run Gender Difference Analysis
+
+```{r gender-analysis}
+# Analyze gender differences for each risk outcome
+gender_results_behavioral <- list()
+gender_results_rl <- list()
+gender_results_hybrid <- list()
+
+for (outcome in risk_outcomes) {
+  gender_results_behavioral[[outcome]] <- analyze_gender_differences(outcome, behav_final_df)
+  gender_results_rl[[outcome]] <- analyze_gender_differences(outcome, rl_final_df)
+  gender_results_hybrid[[outcome]] <- analyze_gender_differences(outcome, hybrid_final_df)
+}
+
+# Extract significant gender interactions
+extract_significant_interactions <- function(model_results, interaction_term = "male") {
+  if (is.null(model_results)) return(NULL)
+  
+  if ("lmerModLmerTest" %in% class(model_results)) {
+    coefs <- summary(model_results)$coefficients
+  } else {
+    coefs <- summary(model_results)$coefficients
+    # For lm models, we need different handling
+    if (!any(grepl(interaction_term, rownames(coefs)))) return(NULL)
+  }
+  
+  interaction_rows <- grep(paste0(":", interaction_term), rownames(coefs))
+  
+  if (length(interaction_rows) == 0) return(NULL)
+  
+  significant_interactions <- data.frame(
+    parameter = gsub(paste0(":", interaction_term), "", rownames(coefs)[interaction_rows]),
+    estimate = coefs[interaction_rows, "Estimate"],
+    std_error = coefs[interaction_rows, "Std. Error"],
+    t_value = coefs[interaction_rows, "t value"],
+    p_value = ifelse("lmerModLmerTest" %in% class(model_results), 
+                     coefs[interaction_rows, "Pr(>|t|)"],
+                     coefs[interaction_rows, ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)]),
+    significant = ifelse("lmerModLmerTest" %in% class(model_results), 
+                         coefs[interaction_rows, "Pr(>|t|)"] < 0.05,
+                         coefs[interaction_rows, ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)] < 0.05)
+  )
+  
+  return(significant_interactions)
+}
+
+# Function to collect significant interactions
+collect_significant_interactions <- function(gender_results) {
+  significant_gender_interactions <- data.frame()
+  
+  for (outcome in risk_outcomes) {
+    result <- gender_results[[outcome]]
+    
+    # Reward learning parameters (since this applies to all model types)
+    if (!is.null(result$reward_model)) {
+      reward_interactions <- extract_significant_interactions(result$reward_model)
+      if (!is.null(reward_interactions)) {
+        reward_interactions$outcome <- outcome
+        reward_interactions$parameter_group <- "Reward Learning"
+        significant_gender_interactions <- rbind(significant_gender_interactions, reward_interactions)
+      }
+    }
+    
+    # Experience updating parameters
+    if (!is.null(result$update_model)) {
+      update_interactions <- extract_significant_interactions(result$update_model)
+      if (!is.null(update_interactions)) {
+        update_interactions$outcome <- outcome
+        update_interactions$parameter_group <- "Experience Updating"
+        significant_gender_interactions <- rbind(significant_gender_interactions, update_interactions)
+      }
+    }
+    
+    # Consistency parameters (Con parameters)
+    if (!is.null(result$evidence_model)) {
+      evidence_interactions <- extract_significant_interactions(result$evidence_model)
+      if (!is.null(evidence_interactions)) {
+        evidence_interactions$outcome <- outcome
+        evidence_interactions$parameter_group <- "Evidence Consistency"
+        significant_gender_interactions <- rbind(significant_gender_interactions, evidence_interactions)
+      }
+    }
+    
+    # Response caution parameters (hybrid model only)
+    if (!is.null(result$response_model)) {
+      response_interactions <- extract_significant_interactions(result$response_model)
+      if (!is.null(response_interactions)) {
+        response_interactions$outcome <- outcome
+        response_interactions$parameter_group <- "Response Caution/Other"
+        significant_gender_interactions <- rbind(significant_gender_interactions, response_interactions)
+      }
+    }
+  }
+  
+  return(significant_gender_interactions)
+}
+
+# Collect significant interactions for each model type
+significant_gender_interactions_rl <- collect_significant_interactions(gender_results_rl)
+significant_gender_interactions_hybrid <- collect_significant_interactions(gender_results_hybrid)
+
+# Analyze behavioral measures for gender differences
+analyze_behav_gender_differences <- function(outcome, df) {
+  behav_formula <- paste(outcome, "~", 
+                        paste(paste0(c("good_play_ratio", "money", "bad_play_ratio", "good_bad_ratio", "bad_pass_ratio", "good_choice_ratio"), "*male"), collapse = " + "), 
+                        "+ (1|schoolid)")
+  behav_model <- try_fit_model(behav_formula, df)
+  
+  return(list(outcome = outcome, behav_model = behav_model))
+}
+
+# Collect behavioral gender differences
+behav_gender_results <- list()
+for (outcome in risk_outcomes) {
+  behav_gender_results[[outcome]] <- analyze_behav_gender_differences(outcome, behav_final_df)
+}
+
+significant_gender_interactions_behav <- data.frame()
+for (outcome in risk_outcomes) {
+  result <- behav_gender_results[[outcome]]
+  
+  behav_interactions <- extract_significant_interactions(result$behav_model)
+  if (!is.null(behav_interactions)) {
+    behav_interactions$outcome <- outcome
+    behav_interactions$parameter_group <- "Behavioral Measures"
+    significant_gender_interactions_behav <- rbind(significant_gender_interactions_behav, behav_interactions)
+  }
+}
+
+# Display significant gender interactions
+cat("\n### Significant Gender Interactions for Behavioral Measures\n")
+if (nrow(significant_gender_interactions_behav) > 0) {
+  kable(significant_gender_interactions_behav, caption = "Significant Gender Interactions - Behavioral Measures") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  
+  # Visualize significant gender interactions
+  ggplot(significant_gender_interactions_behav, 
+         aes(x = parameter, y = estimate, fill = outcome)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), 
+                  position = position_dodge(width = 0.9), width = 0.25) +
+    labs(title = "Gender Differences in Behavioral Measures",
+         subtitle = "Parameter × Male Interactions",
+         x = "Parameter", 
+         y = "Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+} else {
+  cat("No significant gender interactions found for behavioral measures.\n")
+}
+
+cat("\n### Significant Gender Interactions for RL Parameters\n")
+if (nrow(significant_gender_interactions_rl) > 0) {
+  kable(significant_gender_interactions_rl, caption = "Significant Gender Interactions - RL Parameters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  
+  # Visualize significant gender interactions
+  ggplot(significant_gender_interactions_rl, 
+         aes(x = parameter, y = estimate, fill = outcome)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), 
+                  position = position_dodge(width = 0.9), width = 0.25) +
+    facet_wrap(~parameter_group, scales = "free_x") +
+    labs(title = "Gender Differences in RL Parameters",
+         subtitle = "Parameter × Male Interactions",
+         x = "Parameter", 
+         y = "Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+} else {
+  cat("No significant gender interactions found for RL parameters.\n")
+}
+
+cat("\n### Significant Gender Interactions for Hybrid Parameters\n")
+if (nrow(significant_gender_interactions_hybrid) > 0) {
+  kable(significant_gender_interactions_hybrid, caption = "Significant Gender Interactions - Hybrid Parameters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  
+  # Visualize significant gender interactions
+  ggplot(significant_gender_interactions_hybrid, 
+         aes(x = parameter, y = estimate, fill = outcome)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), 
+                  position = position_dodge(width = 0.9), width = 0.25) +
+    facet_wrap(~parameter_group, scales = "free_x") +
+    labs(title = "Gender Differences in Hybrid Parameters",
+         subtitle = "Parameter × Male Interactions",
+         x = "Parameter", 
+         y = "Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+} else {
+  cat("No significant gender interactions found for hybrid parameters.\n")
+}
+```
+
+# Developmental Analysis
+
+## Grade and Pubertal Timing Effects on Parameters
+
+# Developmental Analysis section - consolidated approach
+```{r developmental-effects-combined}
+# Function to analyze developmental effects on parameters
+analyze_developmental_effects <- function(param, df) {
+  # Grade effect only
+  grade_formula <- paste(param, "~ grade12 + (1|schoolid)")
+  grade_model <- try_fit_model(grade_formula, df)
+  
+  # Pubertal timing effect only
+  puberty_formula <- paste(param, "~ time_since_puberty + (1|schoolid)")
+  puberty_model <- try_fit_model(puberty_formula, df)
+  
+  # Combined model with both factors
+  combined_formula <- paste(param, "~ grade12 + time_since_puberty + (1|schoolid)")
+  combined_model <- try_fit_model(combined_formula, df)
+  
+  # Return results
+  return(list(
+    parameter = param,
+    grade_model = grade_model,
+    puberty_model = puberty_model,
+    combined_model = combined_model
+  ))
+}
+
+# Extract significant developmental effects with combined model results
+extract_developmental_effects <- function(model_list) {
+  result_df <- data.frame(
+    parameter = character(),
+    grade_effect = numeric(),
+    grade_p = numeric(),
+    puberty_effect = numeric(),
+    puberty_p = numeric(),
+    combined_grade_effect = numeric(),
+    combined_grade_p = numeric(),
+    combined_puberty_effect = numeric(),
+    combined_puberty_p = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (param in names(model_list)) {
+    models <- model_list[[param]]
+    
+    # Extract grade effect from separate model
+    if ("lmerMod" %in% class(models$grade_model)) {
+      grade_coef <- summary(models$grade_model)$coefficients["grade1212th grade", ]
+      grade_p_col <- "Pr(>|t|)"
+    } else {
+      grade_coef <- summary(models$grade_model)$coefficients["grade1212th grade", ]
+      grade_p_col <- ifelse("Pr(>|t|)" %in% colnames(summary(models$grade_model)$coefficients), 
+                           "Pr(>|t|)", 4)
+    }
+    
+    # Extract puberty effect from separate model
+    if ("lmerMod" %in% class(models$puberty_model)) {
+      puberty_coef <- summary(models$puberty_model)$coefficients["time_since_puberty", ]
+      puberty_p_col <- "Pr(>|t|)"
+    } else {
+      puberty_coef <- summary(models$puberty_model)$coefficients["time_since_puberty", ]
+      puberty_p_col <- ifelse("Pr(>|t|)" %in% colnames(summary(models$puberty_model)$coefficients), 
+                             "Pr(>|t|)", 4)
+    }
+    
+    # Extract combined model effects
+    if ("lmerMod" %in% class(models$combined_model)) {
+      combined_coefs <- summary(models$combined_model)$coefficients
+      combined_grade_coef <- combined_coefs["grade1212th grade", ]
+      combined_puberty_coef <- combined_coefs["time_since_puberty", ]
+      combined_p_col <- "Pr(>|t|)"
+    } else {
+      combined_coefs <- summary(models$combined_model)$coefficients
+      combined_grade_coef <- combined_coefs["grade1212th grade", ]
+      combined_puberty_coef <- combined_coefs["time_since_puberty", ]
+      combined_p_col <- ifelse("Pr(>|t|)" %in% colnames(combined_coefs), 
+                              "Pr(>|t|)", 4)
+    }
+    
+    result_df <- rbind(result_df, data.frame(
+      parameter = param,
+      # Effects from separate models
+      grade_effect = grade_coef["Estimate"],
+      grade_p = grade_coef[grade_p_col],
+      puberty_effect = puberty_coef["Estimate"],
+      puberty_p = puberty_coef[puberty_p_col],
+      # Effects from combined model
+      combined_grade_effect = combined_grade_coef["Estimate"],
+      combined_grade_p = combined_grade_coef[combined_p_col],
+      combined_puberty_effect = combined_puberty_coef["Estimate"],
+      combined_puberty_p = combined_puberty_coef[combined_p_col],
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  # Add significance flags
+  result_df$grade_sig <- result_df$grade_p < 0.05
+  result_df$puberty_sig <- result_df$puberty_p < 0.05
+  result_df$combined_grade_sig <- result_df$combined_grade_p < 0.05
+  result_df$combined_puberty_sig <- result_df$combined_puberty_p < 0.05
+  
+  return(result_df)
+}
+
+# Run analysis for all three model types
+# 1. Behavioral measures
+dev_results_behav <- list()
+for (param in c("good_play_ratio", "money", "bad_play_ratio", "good_choice_ratio", "bad_pass_ratio")) {
+  dev_results_behav[[param]] <- analyze_developmental_effects(param, behav_final_df)
+}
+developmental_effects_behav <- extract_developmental_effects(dev_results_behav)
+
+# 2. RL parameters
+dev_results_rl <- list()
+for (param in model_defaults[[full_model_name]]$params) {
+  dev_results_rl[[param]] <- analyze_developmental_effects(param, rl_final_df)
+}
+developmental_effects_rl <- extract_developmental_effects(dev_results_rl)
+
+# 3. Hybrid parameters
+dev_results_hybrid <- list()
+for (param in model_defaults[[hybrid_full_model_name]]$params) {
+  dev_results_hybrid[[param]] <- analyze_developmental_effects(param, hybrid_final_df)
+}
+developmental_effects_hybrid <- extract_developmental_effects(dev_results_hybrid)
+
+# Check for multicollinearity between grade and time since puberty
+cat("\n### Assessing multicollinearity between developmental measures\n")
+cor_dev <- cor(as.numeric(behav_final_df$grade12), behav_final_df$time_since_puberty, use="complete.obs")
+print(cor_dev)
+
+# Display results for combined models
+cat("\n### Behavioral Metrics - Developmental Effects (Combined Model)\n")
+kable(developmental_effects_behav %>% 
+      select(parameter, combined_grade_effect, combined_grade_p, combined_grade_sig, 
+             combined_puberty_effect, combined_puberty_p, combined_puberty_sig), 
+      caption = "Developmental Effects on Behavioral Metrics (Controlling for Both Factors)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+cat("\n### RL Parameters - Developmental Effects (Combined Model)\n")
+kable(developmental_effects_rl %>% 
+      select(parameter, combined_grade_effect, combined_grade_p, combined_grade_sig, 
+             combined_puberty_effect, combined_puberty_p, combined_puberty_sig), 
+      caption = "Developmental Effects on RL Parameters (Controlling for Both Factors)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+cat("\n### Hybrid Parameters - Developmental Effects (Combined Model)\n")
+kable(developmental_effects_hybrid %>% 
+      select(parameter, combined_grade_effect, combined_grade_p, combined_grade_sig, 
+             combined_puberty_effect, combined_puberty_p, combined_puberty_sig), 
+      caption = "Developmental Effects on Hybrid Parameters (Controlling for Both Factors)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create a unified plot showing the unique contributions from the combined model
+# Create parameter grouping for better organization
+parameter_grouping <- function(param_name) {
+  if (param_name %in% c("good_play_ratio", "money", "bad_play_ratio", "good_choice_ratio", "bad_pass_ratio")) {
+    return("Behavioral Performance")
+  } else if (param_name %in% c("boundary", "tau", "beta")) {
+    return("DDM Parameters")
+  } else if (param_name %in% c("gain", "loss")) {
+    return("Motivation Parameters")
+  } else if (param_name %in% c("update", ifelse("retend" %in% colnames(rl_final_df), "retend", "decay"))) {
+    return("Cognitive Parameters")
+  } else if (param_name %in% c("con", "drift_con")) {
+    return("Consistency Parameters")
+  } else {
+    return("Other Parameters")
+  }
+}
+
+# Define a parameter display order (for within-group sorting)
+parameter_order <- c(
+  # Behavioral
+  "good_play_ratio", "good_choice_ratio", "bad_play_ratio", "money", "bad_pass_ratio",
+  # DDM
+  "boundary", "tau", "beta",
+  # Motivation
+  "gain", "loss",
+  # Cognitive
+  "update", ifelse("retend" %in% colnames(rl_final_df), "retend", "decay"),
+  # Con
+  "drift_con", "con"
+)
+
+# Create data for plotting individual models (non-combined)
+dev_plot_data_individual <- bind_rows(
+  developmental_effects_behav %>% 
+    select(parameter, grade_effect, grade_sig, puberty_effect, puberty_sig) %>%
+    mutate(model_type = "Behavioral"),
+  developmental_effects_rl %>% 
+    select(parameter, grade_effect, grade_sig, puberty_effect, puberty_sig) %>%
+    mutate(model_type = "RL"),
+  developmental_effects_hybrid %>% 
+    select(parameter, grade_effect, grade_sig, puberty_effect, puberty_sig) %>%
+    mutate(model_type = "Hybrid")
+) %>%
+  pivot_longer(cols = c(grade_effect, puberty_effect),
+               names_to = "effect_type",
+               values_to = "effect_size") %>%
+  mutate(
+    significance = case_when(
+      effect_type == "grade_effect" & grade_sig ~ "Significant",
+      effect_type == "puberty_effect" & puberty_sig ~ "Significant",
+      TRUE ~ "Non-significant"
+    ),
+    effect_type = case_when(
+      effect_type == "grade_effect" ~ "Grade (12th vs 10th)",
+      effect_type == "puberty_effect" ~ "Time Since Puberty",
+      TRUE ~ effect_type
+    ),
+    param_group = sapply(parameter, parameter_grouping),
+    # Create an ordering for parameters within groups
+    parameter = factor(parameter, levels = parameter_order)
+  )
+
+# Create data for plotting combined models
+dev_plot_data_combined <- bind_rows(
+  developmental_effects_behav %>% 
+    select(parameter, combined_grade_effect, combined_grade_sig, combined_puberty_effect, combined_puberty_sig) %>%
+    mutate(model_type = "Behavioral"),
+  developmental_effects_rl %>% 
+    select(parameter, combined_grade_effect, combined_grade_sig, combined_puberty_effect, combined_puberty_sig) %>%
+    mutate(model_type = "RL"),
+  developmental_effects_hybrid %>% 
+    select(parameter, combined_grade_effect, combined_grade_sig, combined_puberty_effect, combined_puberty_sig) %>%
+    mutate(model_type = "Hybrid")
+) %>%
+  pivot_longer(cols = c(combined_grade_effect, combined_puberty_effect),
+               names_to = "effect_type",
+               values_to = "effect_size") %>%
+  mutate(
+    significance = case_when(
+      effect_type == "combined_grade_effect" & combined_grade_sig ~ "Significant",
+      effect_type == "combined_puberty_effect" & combined_puberty_sig ~ "Significant",
+      TRUE ~ "Non-significant"
+    ),
+    effect_type = case_when(
+      effect_type == "combined_grade_effect" ~ "Grade (12th vs 10th)",
+      effect_type == "combined_puberty_effect" ~ "Time Since Puberty",
+      TRUE ~ effect_type
+    ),
+    param_group = sapply(parameter, parameter_grouping),
+    # Create an ordering for parameters within groups
+    parameter = factor(parameter, levels = parameter_order)
+  )
+
+# Define a consistent group order
+param_group_order <- c("Behavioral Performance", "DDM Parameters", 
+                       "Motivation Parameters", "Cognitive Parameters", "Consistency Parameters", "Other Parameters")
+
+# Plot 1: Individual model effects (Grade and Time Since Puberty fit separately)
+ggplot(dev_plot_data_individual, aes(x = parameter, y = effect_size, fill = significance)) +
+  geom_bar(stat = "identity") +
+  facet_grid(model_type ~ param_group + effect_type, scales = "free_x", space = "free_x",
+             labeller = labeller(param_group = label_wrap_gen(width = 15))) +
+  labs(title = "Developmental Effects on Parameters",
+       subtitle = "Grade and Time Since Puberty in Separate Models",
+       x = "Parameter", 
+       y = "Effect Size (Standardized)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 9),
+        panel.spacing = unit(0.5, "lines")) +
+  scale_fill_manual(values = c("Significant" = "darkblue", "Non-significant" = "lightblue"))
+
+# Plot 2: Combined model effects (controlling for other factor)
+ggplot(dev_plot_data_combined, aes(x = parameter, y = effect_size, fill = significance)) +
+  geom_bar(stat = "identity") +
+  facet_grid(model_type ~ param_group + effect_type, scales = "free_x", space = "free_x",
+             labeller = labeller(param_group = label_wrap_gen(width = 15))) +
+  labs(title = "Developmental Effects on Parameters from Combined Models",
+       subtitle = "Effects when Both Grade and Time Since Puberty are Included",
+       x = "Parameter", 
+       y = "Effect Size (Standardized)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 9),
+        panel.spacing = unit(0.5, "lines")) +
+  scale_fill_manual(values = c("Significant" = "darkblue", "Non-significant" = "lightblue"))
+```
+
+# Parameter-Performance Relationship Analysis
+
+## Parameters Predicting Performance Metrics
+
+```{r parameter-performance}
+# Function to analyze how computational parameters predict behavioral performance
+analyze_performance_predictors <- function(param_df, behav_df) {
+  # Merge parameter and behavioral data
+  combined_df <- param_df %>%
+    inner_join(behav_df %>% select(sid, good_play_ratio, money, bad_play_ratio, good_bad_ratio, bad_pass_ratio, good_choice_ratio), by = "sid")
+  
+  # Define performance metrics
+  performance_metrics <- c("good_play_ratio", "money", "bad_play_ratio", "good_bad_ratio", "bad_pass_ratio", "good_choice_ratio")
+  
+  # Define parameter groups
+  rl_params <- model_defaults[[full_model_name]]$params
+  hybrid_params <- model_defaults[[hybrid_full_model_name]]$params
+  
+  # Use whichever parameters are available
+  available_params <- colnames(param_df)[colnames(param_df) %in% c(rl_params, hybrid_params)]
+  
+  results <- list()
+  
+  # For each performance metric, fit a model with all available parameters
+  for (metric in performance_metrics) {
+    formula_str <- paste(metric, "~", paste(available_params, collapse = " + "), "+ (1|schoolid)")
+    model <- try_fit_model(formula_str, combined_df)
+    
+    # Store model
+    results[[metric]] <- model
+  }
+  
+  return(results)
+}
+
+# Analyze parameters predicting performance for RL and hybrid models
+performance_predictors_rl <- analyze_performance_predictors(rl_final_df, behav_final_df)
+performance_predictors_hybrid <- analyze_performance_predictors(hybrid_final_df, behav_final_df)
+
+# Function to summarize significant predictors
+summarize_performance_predictors <- function(model_list) {
+  summary_df <- data.frame(
+    performance_metric = character(),
+    parameter = character(),
+    estimate = numeric(),
+    p_value = numeric(),
+    significant = logical(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (metric in names(model_list)) {
+    model <- model_list[[metric]]
+    
+    if ("lmerMod" %in% class(model)) {
+      coefs <- summary(model)$coefficients
+      intercept_row <- which(rownames(coefs) == "(Intercept)")
+      if (length(intercept_row) > 0) {
+        param_rows <- (1:nrow(coefs))[-intercept_row]
+        
+        for (i in param_rows) {
+          summary_df <- rbind(summary_df, data.frame(
+            performance_metric = metric,
+            parameter = rownames(coefs)[i],
+            estimate = coefs[i, "Estimate"],
+            p_value = coefs[i, "Pr(>|t|)"],
+            significant = coefs[i, "Pr(>|t|)"] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+    } else {
+      coefs <- summary(model)$coefficients
+      intercept_row <- which(rownames(coefs) == "(Intercept)")
+      if (length(intercept_row) > 0) {
+        param_rows <- (1:nrow(coefs))[-intercept_row]
+        p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+        
+        for (i in param_rows) {
+          summary_df <- rbind(summary_df, data.frame(
+            performance_metric = metric,
+            parameter = rownames(coefs)[i],
+            estimate = coefs[i, "Estimate"],
+            p_value = coefs[i, p_col],
+            significant = coefs[i, p_col] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+    }
+  }
+  
+  return(summary_df)
+}
+
+# Summarize predictors
+performance_summary_rl <- summarize_performance_predictors(performance_predictors_rl)
+performance_summary_hybrid <- summarize_performance_predictors(performance_predictors_hybrid)
+
+# Display significant predictors
+cat("\n### RL Parameters Predicting Performance\n")
+kable(performance_summary_rl %>% filter(significant), 
+      caption = "Significant RL Parameters Predicting Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+cat("\n### Hybrid Parameters Predicting Performance\n")
+kable(performance_summary_hybrid %>% filter(significant), 
+      caption = "Significant Hybrid Parameters Predicting Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Visualize significant predictors
+ggplot(performance_summary_rl %>% filter(significant), 
+       aes(x = parameter, y = estimate, fill = performance_metric)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "How RL Parameters Predict Task Performance",
+       x = "Parameter", 
+       y = "Effect Size") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(performance_summary_hybrid %>% filter(significant), 
+       aes(x = parameter, y = estimate, fill = performance_metric)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "How Hybrid Parameters Predict Task Performance",
+       x = "Parameter", 
+       y = "Effect Size") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Developmental Differences in Parameter-Performance Relationship
+
+```{r developmental-parameter-performance}
+# Function to analyze developmental interactions in parameter-performance relationships
+analyze_developmental_interactions <- function(param_df, behav_df, performance_summary_rl, performance_summary_hybrid) {
+  # Merge parameter and behavioral data
+  combined_df <- param_df %>%
+    inner_join(behav_df %>% select(sid, good_play_ratio, money, bad_pass_ratio, good_choice_ratio, bad_play_ratio), by = "sid")
+  
+  # Define key performance metrics (limiting to reduce complexity)
+  performance_metrics <- c("good_play_ratio", "money", "bad_pass_ratio", "good_choice_ratio", "bad_play_ratio")
+  
+  # Use parameters that were significant in previous analysis
+  significant_params_rl <- performance_summary_rl %>% 
+    filter(significant) %>% 
+    pull(parameter) %>% 
+    unique()
+  
+  significant_params_hybrid <- performance_summary_hybrid %>% 
+    filter(significant) %>% 
+    pull(parameter) %>% 
+    unique()
+  
+  # Use whichever parameters are significant and available
+  available_params <- colnames(param_df)[colnames(param_df) %in% c(significant_params_rl, significant_params_hybrid)]
+  
+  results <- list()
+  
+  # For each performance metric and significant parameter, test for developmental interactions
+  for (metric in performance_metrics) {
+    for (param in available_params) {
+      # Grade interaction
+      grade_formula <- paste(metric, "~", param, "*grade12 + (1|schoolid)")
+      grade_model <- try_fit_model(grade_formula, combined_df)
+      
+      # Puberty interaction
+      puberty_formula <- paste(metric, "~", param, "*time_since_puberty + (1|schoolid)")
+      puberty_model <- try_fit_model(puberty_formula, combined_df)
+      
+      # Combined model with both developmental factors
+      combined_formula <- paste(metric, "~", param, "*grade12 +", param, "*time_since_puberty + (1|schoolid)")
+      combined_model <- try_fit_model(combined_formula, combined_df)
+      
+      # Store models
+      results[[paste(metric, param, "grade", sep = "_")]] <- grade_model
+      results[[paste(metric, param, "puberty", sep = "_")]] <- puberty_model
+      results[[paste(metric, param, "combined", sep = "_")]] <- combined_model
+    }
+  }
+  
+  return(results)
+}
+
+# Function to extract significant developmental interactions
+extract_developmental_interactions <- function(model_list) {
+  summary_df <- data.frame(
+    model_name = character(),
+    interaction_term = character(),
+    estimate = numeric(),
+    p_value = numeric(),
+    significant = logical(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (model_name in names(model_list)) {
+    model <- model_list[[model_name]]
+    
+    # Split model name to get components
+    parts <- strsplit(model_name, "_")[[1]]
+    metric <- parts[1]
+    param <- parts[2]
+    dev_factor <- parts[3]
+    
+    # Process based on dev_factor
+    if (dev_factor == "grade") {
+      interaction_term <- paste0(param, ":grade1212th grade")
+      
+      # Extract coefficient info
+      if ("lmerModLmerTest" %in% class(model)) {
+        coefs <- summary(model)$coefficients
+        if (interaction_term %in% rownames(coefs)) {
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = interaction_term,
+            estimate = coefs[interaction_term, "Estimate"],
+            p_value = coefs[interaction_term, "Pr(>|t|)"],
+            significant = coefs[interaction_term, "Pr(>|t|)"] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      } else {
+        coefs <- summary(model)$coefficients
+        if (interaction_term %in% rownames(coefs)) {
+          p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+          
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = interaction_term,
+            estimate = coefs[interaction_term, "Estimate"],
+            p_value = coefs[interaction_term, p_col],
+            significant = coefs[interaction_term, p_col] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+      
+    } else if (dev_factor == "puberty") {
+      interaction_term <- paste0(param, ":time_since_puberty")
+      
+      # Extract coefficient info
+      if ("lmerModLmerTest" %in% class(model)) {
+        coefs <- summary(model)$coefficients
+        if (interaction_term %in% rownames(coefs)) {
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = interaction_term,
+            estimate = coefs[interaction_term, "Estimate"],
+            p_value = coefs[interaction_term, "Pr(>|t|)"],
+            significant = coefs[interaction_term, "Pr(>|t|)"] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      } else {
+        coefs <- summary(model)$coefficients
+        if (interaction_term %in% rownames(coefs)) {
+          p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+          
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = interaction_term,
+            estimate = coefs[interaction_term, "Estimate"],
+            p_value = coefs[interaction_term, p_col],
+            significant = coefs[interaction_term, p_col] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+      
+    } else if (dev_factor == "combined") {
+      # For combined models, check both interactions
+      grade_interaction <- paste0(param, ":grade1212th grade")
+      puberty_interaction <- paste0(param, ":time_since_puberty")
+      
+      # Process both interactions
+      if ("lmerModLmerTest" %in% class(model)) {
+        coefs <- summary(model)$coefficients
+        # Check grade interaction
+        if (grade_interaction %in% rownames(coefs)) {
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = grade_interaction,
+            estimate = coefs[grade_interaction, "Estimate"],
+            p_value = coefs[grade_interaction, "Pr(>|t|)"],
+            significant = coefs[grade_interaction, "Pr(>|t|)"] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+        # Check puberty interaction
+        if (puberty_interaction %in% rownames(coefs)) {
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = puberty_interaction,
+            estimate = coefs[puberty_interaction, "Estimate"],
+            p_value = coefs[puberty_interaction, "Pr(>|t|)"],
+            significant = coefs[puberty_interaction, "Pr(>|t|)"] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      } else {
+        coefs <- summary(model)$coefficients
+        p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+        
+        # Check grade interaction
+        if (grade_interaction %in% rownames(coefs)) {
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = grade_interaction,
+            estimate = coefs[grade_interaction, "Estimate"],
+            p_value = coefs[grade_interaction, p_col],
+            significant = coefs[grade_interaction, p_col] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+        # Check puberty interaction
+        if (puberty_interaction %in% rownames(coefs)) {
+          summary_df <- rbind(summary_df, data.frame(
+            model_name = model_name,
+            interaction_term = puberty_interaction,
+            estimate = coefs[puberty_interaction, "Estimate"],
+            p_value = coefs[puberty_interaction, p_col],
+            significant = coefs[puberty_interaction, p_col] < 0.05,
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+    }
+  }
+  
+  # Add extracted components for easier interpretation
+  summary_df <- summary_df %>%
+    mutate(
+      metric = sapply(strsplit(model_name, "_"), function(x) x[1]),
+      parameter = gsub(":grade1212th grade|:time_since_puberty", "", interaction_term),
+      dev_factor = case_when(
+        grepl(":grade", interaction_term) ~ "Grade",
+        grepl(":time_since_puberty", interaction_term) ~ "Time Since Puberty",
+        TRUE ~ "Unknown"
+      )
+    )
+  
+  return(summary_df)
+}
+
+# Call analyze function with required data
+dev_interactions_rl <- analyze_developmental_interactions(rl_final_df, behav_final_df, 
+                                                         performance_summary_rl, performance_summary_hybrid)
+dev_interactions_hybrid <- analyze_developmental_interactions(hybrid_final_df, behav_final_df, 
+                                                            performance_summary_rl, performance_summary_hybrid)
+
+# Extract significant interactions
+dev_interactions_summary_rl <- extract_developmental_interactions(dev_interactions_rl)
+dev_interactions_summary_hybrid <- extract_developmental_interactions(dev_interactions_hybrid)
+
+# Display significant interactions
+cat("\n### Developmental Interactions in RL Parameter-Performance Relationships\n")
+if (nrow(dev_interactions_summary_rl %>% filter(significant)) > 0) {
+  kable(dev_interactions_summary_rl %>% filter(significant) %>% select(metric, parameter, dev_factor, estimate, p_value), 
+        caption = "Significant Developmental Interactions - RL Parameters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  cat("No significant developmental interactions found for RL parameters.\n")
+}
+
+cat("\n### Developmental Interactions in Hybrid Parameter-Performance Relationships\n")
+if (nrow(dev_interactions_summary_hybrid %>% filter(significant)) > 0) {
+  kable(dev_interactions_summary_hybrid %>% filter(significant) %>% select(metric, parameter, dev_factor, estimate, p_value), 
+        caption = "Significant Developmental Interactions - Hybrid Parameters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  cat("No significant developmental interactions found for hybrid parameters.\n")
+}
+
+# Visualize significant interactions
+if (nrow(dev_interactions_summary_rl %>% filter(significant)) > 0) {
+  ggplot(dev_interactions_summary_rl %>% filter(significant), 
+         aes(x = parameter, y = estimate, fill = metric)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    facet_wrap(~dev_factor, scales = "free_x") +
+    labs(title = "Developmental Differences in RL Parameter-Performance Relationships",
+         x = "Parameter", 
+         y = "Interaction Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+if (nrow(dev_interactions_summary_hybrid %>% filter(significant)) > 0) {
+  ggplot(dev_interactions_summary_hybrid %>% filter(significant), 
+         aes(x = parameter, y = estimate, fill = metric)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    facet_wrap(~dev_factor, scales = "free_x") +
+    labs(title = "Developmental Differences in Hybrid Parameter-Performance Relationships",
+         x = "Parameter", 
+         y = "Interaction Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+
+## Gender Differences in Parameter-Performance Relationship
+
+```{r gender-parameter-performance}
+# Function to analyze gender interactions in parameter-performance relationships
+analyze_gender_interactions <- function(param_df, behav_df, performance_summary_rl, performance_summary_hybrid) {
+  # Merge parameter and behavioral data
+  combined_df <- param_df %>%
+    inner_join(behav_df %>% select(sid, good_play_ratio, money, bad_pass_ratio, good_choice_ratio, bad_play_ratio), by = "sid")
+  
+  # Define key performance metrics (limiting to reduce complexity)
+  performance_metrics <- c("good_play_ratio", "money", "bad_pass_ratio", "good_choice_ratio", "bad_play_ratio")
+  
+  # Use parameters that were significant in previous analysis
+  significant_params_rl <- performance_summary_rl %>% 
+    filter(significant) %>% 
+    pull(parameter) %>% 
+    unique()
+  
+  significant_params_hybrid <- performance_summary_hybrid %>% 
+    filter(significant) %>% 
+    pull(parameter) %>% 
+    unique()
+  
+  # Use whichever parameters are significant and available
+  available_params <- colnames(param_df)[colnames(param_df) %in% c(significant_params_rl, significant_params_hybrid)]
+  
+  results <- list()
+  
+  # For each performance metric and significant parameter, test for gender interactions
+  for (metric in performance_metrics) {
+    for (param in available_params) {
+      # Gender interaction
+      gender_formula <- paste(metric, "~", param, "*male + (1|schoolid)")
+      gender_model <- try_fit_model(gender_formula, combined_df)
+      
+      # Store model
+      results[[paste(metric, param, sep = "_")]] <- gender_model
+    }
+  }
+  
+  return(results)
+}
+
+# Function to extract significant gender interactions
+extract_gender_interactions <- function(model_list) {
+  summary_df <- data.frame(
+    model_name = character(),
+    interaction_term = character(),
+    estimate = numeric(),
+    p_value = numeric(),
+    significant = logical(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (model_name in names(model_list)) {
+    model <- model_list[[model_name]]
+    
+    # Split model name to get components
+    parts <- strsplit(model_name, "_")[[1]]
+    metric <- parts[1]
+    param <- parts[2]
+    
+    # Identify the interaction term to look for
+    interaction_term <- paste0(param, ":male")
+    
+    if ("lmerModLmerTest" %in% class(model)) {
+      coefs <- summary(model)$coefficients
+      if (interaction_term %in% rownames(coefs)) {
+        summary_df <- rbind(summary_df, data.frame(
+          model_name = model_name,
+          interaction_term = interaction_term,
+          estimate = coefs[interaction_term, "Estimate"],
+          p_value = coefs[interaction_term, "Pr(>|t|)"],
+          significant = coefs[interaction_term, "Pr(>|t|)"] < 0.05,
+          stringsAsFactors = FALSE
+        ))
+      }
+    } else {
+      coefs <- summary(model)$coefficients
+      if (interaction_term %in% rownames(coefs)) {
+        p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+        
+        summary_df <- rbind(summary_df, data.frame(
+          model_name = model_name,
+          interaction_term = interaction_term,
+          estimate = coefs[interaction_term, "Estimate"],
+          p_value = coefs[interaction_term, p_col],
+          significant = coefs[interaction_term, p_col] < 0.05,
+          stringsAsFactors = FALSE
+        ))
+      }
+    }
+  }
+  
+  # Add extracted components for easier interpretation
+  summary_df <- summary_df %>%
+    mutate(
+      metric = sapply(strsplit(model_name, "_"), function(x) x[1]),
+      parameter = gsub(":male", "", interaction_term)
+    )
+  
+  return(summary_df)
+}
+
+# Call analyze function with required data
+gender_interactions_rl <- analyze_gender_interactions(rl_final_df, behav_final_df,
+                                                    performance_summary_rl, performance_summary_hybrid)
+gender_interactions_hybrid <- analyze_gender_interactions(hybrid_final_df, behav_final_df,
+                                                        performance_summary_rl, performance_summary_hybrid)
+
+# Extract significant interactions
+gender_interactions_summary_rl <- extract_gender_interactions(gender_interactions_rl)
+gender_interactions_summary_hybrid <- extract_gender_interactions(gender_interactions_hybrid)
+
+# Display significant interactions
+cat("\n### Gender Interactions in RL Parameter-Performance Relationships\n")
+if (nrow(gender_interactions_summary_rl %>% filter(significant)) > 0) {
+  kable(gender_interactions_summary_rl %>% filter(significant) %>% select(metric, parameter, estimate, p_value), 
+        caption = "Significant Gender Interactions - RL Parameters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  cat("No significant gender interactions found for RL parameters.\n")
+}
+
+cat("\n### Gender Interactions in Hybrid Parameter-Performance Relationships\n")
+if (nrow(gender_interactions_summary_hybrid %>% filter(significant)) > 0) {
+  kable(gender_interactions_summary_hybrid %>% filter(significant) %>% select(metric, parameter, estimate, p_value), 
+        caption = "Significant Gender Interactions - Hybrid Parameters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  cat("No significant gender interactions found for hybrid parameters.\n")
+}
+
+# Visualize significant interactions
+if (nrow(gender_interactions_summary_rl %>% filter(significant)) > 0) {
+  ggplot(gender_interactions_summary_rl %>% filter(significant), 
+         aes(x = parameter, y = estimate, fill = metric)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    labs(title = "Gender Differences in RL Parameter-Performance Relationships",
+         x = "Parameter", 
+         y = "Interaction Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+if (nrow(gender_interactions_summary_hybrid %>% filter(significant)) > 0) {
+  ggplot(gender_interactions_summary_hybrid %>% filter(significant), 
+         aes(x = parameter, y = estimate, fill = metric)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    labs(title = "Gender Differences in Hybrid Parameter-Performance Relationships",
+         x = "Parameter", 
+         y = "Interaction Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+# Combined Model Analysis
+
+## Identify Key Predictive Parameters
+
+```{r key-parameters}
+# Function to identify key predictive parameters for each risk outcome
+identify_key_parameters <- function(outcome, df, model_name = NULL, param_list = NULL) {
+  # Get appropriate parameters based on model type
+  if (!is.null(param_list)) {
+    # Use provided parameter list (for behavioral measures)
+    all_params <- param_list
+  } else if (!is.null(model_name)) {
+    # Use model defaults (for RL and hybrid models)
+    all_params <- colnames(df)[colnames(df) %in% model_defaults[[model_name]]$params]
+  } else {
+    # Fallback - use all numeric columns except certain ones
+    numeric_cols <- sapply(df, is.numeric)
+    exclude_cols <- c("sid", "grpid", "v_groupnumber", "male", "grade12", "time_since_puberty", 
+                      risk_outcomes)
+    numeric_cols[names(df) %in% exclude_cols] <- FALSE
+    all_params <- names(df)[numeric_cols]
+  }
+  
+  # Full model with parameters
+  full_formula <- paste(outcome, "~", paste(all_params, collapse = " + "), 
+                       "+ (1|schoolid)")
+  full_model <- try_fit_model(full_formula, df)
+  
+  # Extract coefficients and p-values
+  if ("lmerModLmerTest" %in% class(full_model)) {
+    coefs <- summary(full_model)$coefficients
+    p_col <- "Pr(>|t|)"
+  } else {
+    coefs <- summary(full_model)$coefficients
+    p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+  }
+  
+  param_rows <- match(all_params, rownames(coefs))
+  param_rows <- param_rows[!is.na(param_rows)]
+  
+  # Identify significant parameters (p < 0.10)
+  significant_params <- rownames(coefs)[param_rows[coefs[param_rows, p_col] < 0.10]]
+  
+  # Return results
+  return(list(
+    outcome = outcome,
+    full_model = full_model,
+    significant_params = significant_params,
+    all_coefficients = coefs[param_rows, ]
+  ))
+}
+
+# Define behavioral parameters
+behav_params <- c("good_play_ratio", "money", "bad_play_ratio", "good_bad_ratio", "bad_pass_ratio", "good_choice_ratio")
+
+# Identify key parameters for each risk outcome and model type
+key_params_behav <- list()
+key_params_rl <- list()
+key_params_hybrid <- list()
+
+for (outcome in risk_outcomes) {
+  # Behavioral model
+  key_params_behav[[outcome]] <- identify_key_parameters(outcome, behav_final_df, param_list = behav_params)
+  
+  # RL model
+  key_params_rl[[outcome]] <- identify_key_parameters(outcome, rl_final_df, model_name = full_model_name)
+  
+  # Hybrid model
+  key_params_hybrid[[outcome]] <- identify_key_parameters(outcome, hybrid_final_df, model_name = hybrid_full_model_name)
+}
+
+# Create summary of key parameters for each model type
+create_key_params_summary <- function(key_params_results) {
+  summary_df <- data.frame(
+    outcome = character(),
+    significant_parameters = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (outcome in risk_outcomes) {
+    summary_df <- rbind(summary_df, data.frame(
+      outcome = outcome,
+      significant_parameters = paste(key_params_results[[outcome]]$significant_params, collapse = ", "),
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  return(summary_df)
+}
+
+key_params_summary_behav <- create_key_params_summary(key_params_behav)
+key_params_summary_rl <- create_key_params_summary(key_params_rl)
+key_params_summary_hybrid <- create_key_params_summary(key_params_hybrid)
+
+# Display key parameters for each model type
+cat("\n### Key Predictive Parameters - Behavioral Measures\n")
+kable(key_params_summary_behav, caption = "Key Predictive Behavioral Measures by Risk Outcome") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+cat("\n### Key Predictive Parameters - RL Model\n")
+kable(key_params_summary_rl, caption = "Key Predictive RL Parameters by Risk Outcome") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+cat("\n### Key Predictive Parameters - Hybrid Model\n")
+kable(key_params_summary_hybrid, caption = "Key Predictive Hybrid Parameters by Risk Outcome") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+```
+
+## Final Models with Gender and Developmental Factors
+
+```{r final-models}
+# Function to create focused model for each outcome
+create_focused_model <- function(outcome, key_params, df, gender_interactions, model_type) {
+  # Base formula with key parameters
+  base_formula <- paste(outcome, "~", paste(key_params, collapse = " + "))
+  
+  # Add gender effects for parameters with significant gender interactions
+  gender_params <- c()
+  for (param in key_params) {
+    # Filter the gender interactions based on model type and outcome
+    relevant_interactions <- gender_interactions[
+      gender_interactions$outcome == outcome & 
+      gender_interactions$parameter == param,
+    ]
+    
+    if(nrow(relevant_interactions) > 0) {
+      gender_params <- c(gender_params, param)
+    }
+  }
+  
+  # Add gender interaction terms
+  if(length(gender_params) > 0) {
+    gender_formula <- paste(paste0(gender_params, "*male"), collapse = " + ")
+    formula_str <- paste(base_formula, "+", gender_formula)
+  } else {
+    formula_str <- paste(base_formula, "+ male")
+  }
+  
+  # Add developmental factors
+  formula_str <- paste(formula_str, "+ grade12 + time_since_puberty")
+  
+  # Add random effects and controls
+  formula_str <- paste(formula_str, "+ v_groupnumber + (1|schoolid)")
+  
+  # Fit model
+  model <- try_fit_model(formula_str, df)
+  
+  return(list(
+    outcome = outcome,
+    model_type = model_type,
+    formula = formula_str,
+    model = model,
+    summary = summary(model)
+  ))
+}
+
+# Create focused models for each risk outcome and model type
+focused_models_behav <- list()
+focused_models_rl <- list()
+focused_models_hybrid <- list()
+
+for (outcome in risk_outcomes) {
+  # Behavioral model
+  behav_key_params <- key_params_behav[[outcome]]$significant_params
+  if(length(behav_key_params) > 0) {
+    focused_models_behav[[outcome]] <- create_focused_model(
+      outcome, behav_key_params, behav_final_df, 
+      significant_gender_interactions_behav, "Behavioral"
+    )
+  }
+  
+  # RL model
+  rl_key_params <- key_params_rl[[outcome]]$significant_params
+  if(length(rl_key_params) > 0) {
+    focused_models_rl[[outcome]] <- create_focused_model(
+      outcome, rl_key_params, rl_final_df, 
+      significant_gender_interactions_rl, "RL"
+    )
+  }
+  
+  # Hybrid model
+  hybrid_key_params <- key_params_hybrid[[outcome]]$significant_params
+  if(length(hybrid_key_params) > 0) {
+    focused_models_hybrid[[outcome]] <- create_focused_model(
+      outcome, hybrid_key_params, hybrid_final_df, 
+      significant_gender_interactions_hybrid, "Hybrid"
+    )
+  }
+}
+
+# Function to display model summaries by model type
+display_model_summaries <- function(model_list, type_name) {
+  cat(paste0("\n\n# Final Models - ", type_name, "\n"))
+  
+  if (length(model_list) == 0) {
+    cat("No significant parameters found for any risk outcome.\n")
+    return()
+  }
+  
+  for (outcome in names(model_list)) {
+    cat(paste0("\n## Final ", type_name, " Model for ", outcome, "\n"))
+    cat("Formula:", model_list[[outcome]]$formula, "\n\n")
+    print(model_list[[outcome]]$summary)
+  }
+}
+
+# Display model summaries by model type
+display_model_summaries(focused_models_behav, "Behavioral")
+display_model_summaries(focused_models_rl, "RL")
+display_model_summaries(focused_models_hybrid, "Hybrid")
+
+# Function to extract significant predictors from models
+extract_significant_predictors <- function(model_list) {
+  result_df <- data.frame(
+    outcome = character(),
+    model_type = character(),
+    parameter = character(),
+    estimate = numeric(),
+    std_error = numeric(),
+    t_value = numeric(),
+    p_value = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (outcome in names(model_list)) {
+    model_info <- model_list[[outcome]]
+    model <- model_info$model
+    model_type <- model_info$model_type
+    
+    if ("lmerModLmerTest" %in% class(model)) {
+      coefs <- summary(model)$coefficients
+      p_col <- "Pr(>|t|)"
+    } else {
+      coefs <- summary(model)$coefficients
+      p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+    }
+    
+    # Get all rows except intercept
+    pred_rows <- rownames(coefs)[-1]
+    
+    for (pred in pred_rows) {
+      if (coefs[pred, p_col] < 0.05) {
+        result_df <- rbind(result_df, data.frame(
+          outcome = outcome,
+          model_type = model_type,
+          parameter = pred,
+          estimate = coefs[pred, "Estimate"],
+          std_error = coefs[pred, "Std. Error"],
+          t_value = coefs[pred, "t value"],
+          p_value = coefs[pred, p_col],
+          stringsAsFactors = FALSE
+        ))
+      }
+    }
+  }
+  
+  return(result_df)
+}
+
+# Extract significant predictors for each model type
+significant_predictors_behav <- extract_significant_predictors(focused_models_behav)
+significant_predictors_rl <- extract_significant_predictors(focused_models_rl)
+significant_predictors_hybrid <- extract_significant_predictors(focused_models_hybrid)
+
+# Combine all significant predictors
+all_significant_predictors <- rbind(
+  significant_predictors_behav,
+  significant_predictors_rl,
+  significant_predictors_hybrid
+)
+
+# Function to display and visualize significant predictors
+display_significant_predictors <- function(pred_df, title_suffix = "") {
+  if (nrow(pred_df) > 0) {
+    kable(pred_df, caption = paste0("Significant Predictors in Final Models", title_suffix)) %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+    
+    # Visualize significant predictors
+    ggplot(pred_df, aes(x = parameter, y = estimate, fill = outcome)) +
+      geom_bar(stat = "identity", position = position_dodge()) +
+      geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), 
+                    position = position_dodge(width = 0.9), width = 0.25) +
+      labs(title = paste0("Significant Predictors of Risk Behaviors", title_suffix),
+           x = "Parameter", 
+           y = "Effect Size") +
+      facet_wrap(~model_type, scales = "free_x") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  } else {
+    cat(paste0("No significant predictors found in final models", title_suffix, ".\n"))
+  }
+}
+
+# Display all significant predictors together
+cat("\n### All Significant Predictors\n")
+display_significant_predictors(all_significant_predictors)
+
+# Display significant predictors by model type
+cat("\n### Significant Predictors - Behavioral Models\n")
+display_significant_predictors(significant_predictors_behav, " - Behavioral Models")
+
+cat("\n### Significant Predictors - RL Models\n")
+display_significant_predictors(significant_predictors_rl, " - RL Models")
+
+cat("\n### Significant Predictors - Hybrid Models\n")
+display_significant_predictors(significant_predictors_hybrid, " - Hybrid Models")
+```
+
+
+
+# Parameter Interpretation
+
+Before discussing the implications, let's clarify the interpretation of the model parameters:
+
+```{r parameter-definitions, echo=FALSE}
+parameter_definitions <- data.frame(
+  Parameter = c("boundary", "tau", "beta", "drift_con", "gain", "loss", "update", "decay"),
+  Type = c("DDM", "DDM", "DDM", "DDM", "RL", "RL", "RL", "RL"),
+  Definition = c(
+    "Decision threshold - higher values indicate more cautious decision-making requiring more evidence",
+    "Non-decision time - cognitive processing time unrelated to the decision process",
+    "Response bias - tendency to favor one response option over another",
+    "Drift rate consistancy - Influence of learning on drift rate",
+    "Reward sensitivity",
+    "Punishment sensitivity",
+    "Value updating rate - how quickly expected values are updated based on new information",
+    "Memory decay rate - how quickly prior information is forgotten"
+  )
+)
+
+kable(parameter_definitions, caption = "Decision Model Parameter Definitions") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+```
+
+# Hypothesis-Driven Model Comparison with AICc and FDR Correction
+# -------------------------------------------------------------
+
+suppressPackageStartupMessages({
+  library(AICcmodavg)
+  library(texreg)
+  library(kableExtra)
+  library(ggplot2)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+})
+
+#' Visualize parameters for each supported model individually
+#' 
+#' @param results Results from analyze_hypothesis_outcome
+#' @param outcome The risk outcome to visualize
+#' @return List of ggplot objects
+visualize_supported_models_individually <- function(results, outcome) {
+  if (length(results$models) == 0 || nrow(results$supported_models) == 0) {
+    return(NULL)
+  }
+  
+  # Get supported models
+  supported_model_names <- results$supported_models$Modnames
+  
+  # Create a list to store plots for each model
+  model_plots <- list()
+  
+  # For each supported model, create a parameter plot
+  for (model_name in supported_model_names) {
+    # Extract model information
+    model_row <- results$supported_models[results$supported_models$Modnames == model_name, ]
+    hypothesis <- model_row$Hypothesis
+    aicc_weight <- model_row$AICcWt
+    
+    # Extract parameters from this model
+    param_data <- results$param_results[results$param_results$model_name == model_name, ]
+    
+    if (nrow(param_data) == 0) {
+      next
+    }
+    
+    # Create parameter groupings for visualization
+    param_data$param_group <- sapply(param_data$parameter, function(param) {
+      if (grepl("^gain|^loss", param)) return("Motivation")
+      if (grepl("^update|^decay|^retend", param)) return("Learning")
+      if (grepl("^boundary|^tau|^beta", param)) return("DDM/Decision")
+      if (grepl("^drift_con$", param)) return("Evidence (Hybrid)")
+      if (grepl("^con$", param)) return("Evidence (RL)")
+      if (grepl("^good_|^bad_|^money", param)) return("Performance")
+      if (grepl(":male$", param)) return("Gender Interaction")
+      if (grepl("^male$", param)) return("Gender")
+      if (grepl("^grade12|^time_since_puberty", param)) return("Developmental")
+      return("Other")
+    })
+    
+    # Create cleaner parameter labels
+    param_data$param_label <- sapply(param_data$parameter, function(param) {
+      # For interactions, format as "Parameter × Gender"
+      if (grepl(":male$", param)) {
+        base_param <- gsub(":male$", "", param)
+        return(paste0(base_param, " × Gender"))
+      }
+      return(param)
+    })
+    
+    # Order parameter groups
+    group_order <- c("Performance", "Motivation", "Learning", "DDM/Decision", 
+                     "Evidence (RL)", "Evidence (Hybrid)", "Gender Interaction", 
+                     "Gender", "Developmental", "Other")
+    param_data$param_group <- factor(param_data$param_group, levels = group_order)
+    
+    # Create visualization for this model
+    p <- ggplot(param_data, 
+                aes(x = param_label, y = estimate)) +
+      geom_bar(stat = "identity", fill = "steelblue") +
+      geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), 
+                    width = 0.25) +
+      geom_text(aes(label = ifelse(significant, "*", ""), y = ifelse(estimate >= 0, 
+                                                                     estimate + std_error, 
+                                                                     estimate - std_error)), 
+                vjust = ifelse(param_data$estimate >= 0, -0.5, 1.5)) +
+      facet_wrap(~param_group, scales = "free_x") +
+      labs(title = paste("Parameter Estimates -", outcome),
+           subtitle = paste0(hypothesis, " Hypothesis (AICc weight = ", round(aicc_weight, 3), ")"),
+           x = "Parameter", 
+           y = "Standardized Estimate") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    model_plots[[model_name]] <- p
+  }
+  
+  return(model_plots)
+}
+
+#' Build hypothesis-driven models for each outcome and model type
+#' 
+#' @param outcome The risk outcome variable name
+#' @param df The dataframe containing the data
+#' @param model_type String identifying the model type ("behavioral", "rl", "hybrid")
+#' @return List containing models and their formulas
+build_hypothesis_models <- function(outcome, df, model_type) {
+  # Initialize model list and formula tracking
+  models <- list()
+  model_formulas <- list()
+  
+  # Base formula components
+  random_effects <- "(1|schoolid)"
+  
+  # 1. Behavioral Models
+  if (model_type == "behavioral") {
+    # Define hypotheses
+    hypotheses <- list(
+      individual_play = "good_play_ratio",
+      individual_choice = "good_choice_ratio",
+      money_only = "money",
+      play_behavior = "good_play_ratio + bad_play_ratio",
+      choice_performance = "good_choice_ratio + bad_play_ratio",
+      full_performance = "good_choice_ratio + bad_play_ratio + money"
+    )
+  }
+  
+  # 2. RL Models
+  else if (model_type == "rl") {
+    # Check which parameters are available in the model
+    available_params <- colnames(df)[colnames(df) %in% model_defaults[[full_model_name]]$params]
+    
+    # Check for update/decay parameters
+    cognitive_params <- available_params[available_params %in% c("update", "decay", "retend")]
+    cognitive_string <- paste(cognitive_params, collapse = " + ")
+    
+    # Define hypotheses
+    hypotheses <- list(
+      motivation = "gain + loss",
+      cognitive = cognitive_string,
+      motivation_cognitive = paste("gain + loss +", cognitive_string),
+      full_rl = paste(available_params, collapse = " + ")
+    )
+  }
+  
+  # 3. Hybrid Models
+  else if (model_type == "hybrid") {
+    # Check which parameters are available in the model
+    available_params <- colnames(df)[colnames(df) %in% model_defaults[[hybrid_full_model_name]]$params]
+    
+    # Identify parameter groups
+    boundary_params <- available_params[grepl("^boundary", available_params)]
+    boundary_string <- paste(boundary_params, collapse = " + ")
+    
+    ddm_params <- available_params[available_params %in% c("boundary", "tau", "beta", "boundary1", "tau1")]
+    ddm_string <- paste(ddm_params, collapse = " + ")
+    
+    cognitive_params <- available_params[available_params %in% c("update", "decay", "retend")]
+    cognitive_string <- paste(cognitive_params, collapse = " + ")
+    
+    # Define hypotheses
+    hypotheses <- list(
+      boundary_only = boundary_string,
+      full_ddm = ddm_string,
+      motivation = "gain + loss",
+      cognitive = cognitive_string,
+      ddm_motivation = paste(ddm_string, "+ gain + loss"),
+      ddm_cognitive = paste(ddm_string, "+", cognitive_string),
+      full_hybrid = paste(available_params, collapse = " + ")
+    )
+  }
+  
+  # Build models for each hypothesis
+  for (hyp_name in names(hypotheses)) {
+    param_string <- hypotheses[[hyp_name]]
+    
+    # Skip if parameter string is empty
+    if (param_string == "") next
+    
+    # 1. Basic model (no controls)
+    formula_str <- paste(outcome, "~", param_string, "+", random_effects)
+    model_name <- paste(outcome, model_type, hyp_name, "basic", sep="_")
+    models[[model_name]] <- try_fit_model(formula_str, df)
+    model_formulas[[model_name]] <- formula_str
+    
+    # 2. With gender as control
+    formula_str <- paste(outcome, "~", param_string, "+ male +", random_effects)
+    model_name <- paste(outcome, model_type, hyp_name, "gender", sep="_")
+    models[[model_name]] <- try_fit_model(formula_str, df)
+    model_formulas[[model_name]] <- formula_str
+    
+    # 3. With gender interactions for motivation parameters (only for relevant hypotheses)
+    if (grepl("gain|loss", param_string)) {
+      # Create formula with gender interactions only for motivation parameters
+      other_params <- gsub("gain \\+ loss", "", param_string)
+      if (other_params != "") {
+        formula_str <- paste(outcome, "~ (gain + loss) * male +", other_params, "+", random_effects)
+      } else {
+        formula_str <- paste(outcome, "~ (gain + loss) * male +", random_effects)
+      }
+      model_name <- paste(outcome, model_type, hyp_name, "gender_int", sep="_")
+      models[[model_name]] <- try_fit_model(formula_str, df)
+      model_formulas[[model_name]] <- formula_str
+    }
+    
+    # 4. With developmental controls
+    formula_str <- paste(outcome, "~", param_string, "+ grade12 + time_since_puberty +", random_effects)
+    model_name <- paste(outcome, model_type, hyp_name, "dev", sep="_")
+    models[[model_name]] <- try_fit_model(formula_str, df)
+    model_formulas[[model_name]] <- formula_str
+    
+    # 5. Full controls (gender + developmental)
+    formula_str <- paste(outcome, "~", param_string, "+ male + grade12 + time_since_puberty +", random_effects)
+    model_name <- paste(outcome, model_type, hyp_name, "full", sep="_")
+    models[[model_name]] <- try_fit_model(formula_str, df)
+    model_formulas[[model_name]] <- formula_str
+    
+    # 6. Full controls with gender interaction for motivation
+    if (grepl("gain|loss", param_string)) {
+      # Create formula with gender interactions only for motivation parameters
+      other_params <- gsub("gain \\+ loss", "", param_string)
+      if (other_params != "") {
+        formula_str <- paste(outcome, "~ (gain + loss) * male +", other_params, 
+                             "+ grade12 + time_since_puberty +", random_effects)
+      } else {
+        formula_str <- paste(outcome, "~ (gain + loss) * male", 
+                             "+ grade12 + time_since_puberty +", random_effects)
+      }
+      model_name <- paste(outcome, model_type, hyp_name, "full_gender_int", sep="_")
+      models[[model_name]] <- try_fit_model(formula_str, df)
+      model_formulas[[model_name]] <- formula_str
+    }
+  }
+  
+  # Return the list of models and their formulas
+  return(list(models = models, formulas = model_formulas))
+}
+
+#' Compare models and extract parameter information with FDR correction
+#' 
+#' @param outcome The risk outcome variable name
+#' @param df The dataframe containing the data
+#' @param model_type String identifying the model type ("behavioral", "rl", "hybrid")
+#' @return List containing model comparison and parameter results
+analyze_hypothesis_outcome <- function(outcome, df, model_type) {
+  # Build models
+  model_results <- build_hypothesis_models(outcome, df, model_type)
+  models <- model_results$models
+  model_formulas <- model_results$formulas
+  
+  # Skip if no models were successfully built
+  if (length(models) == 0) {
+    return(list(
+      outcome = outcome,
+      model_type = model_type,
+      models = list(),
+      aicc_results = data.frame(),
+      param_results = data.frame(),
+      formulas = list(),
+      supported_models = data.frame()
+    ))
+  }
+  
+  # Convert model names to vector for AICc comparison
+  model_names <- names(models)
+  
+  # Compare models using AICc
+  aictab_input <- models
+  aicc_result <- aictab(cand.set = aictab_input, modnames = model_names)
+  aicc_df <- as.data.frame(aicc_result)
+  
+  # Add model formulas to AICc table for reference
+  aicc_df$Formula <- unlist(model_formulas[match(aicc_df$Modnames, model_names)])
+  
+  # Extract hypothesis names from model names
+  aicc_df$Hypothesis <- sapply(aicc_df$Modnames, function(name) {
+    parts <- strsplit(name, "_")[[1]]
+    if (length(parts) >= 4) {
+      return(parts[3])  # Extract hypothesis name from model name
+    } else {
+      return(NA)
+    }
+  })
+  
+  # Extract control type from model names
+  aicc_df$Control <- sapply(aicc_df$Modnames, function(name) {
+    parts <- strsplit(name, "_")[[1]]
+    if (length(parts) >= 5) {
+      return(parts[4])  # Extract control type from model name
+    } else {
+      return("basic")
+    }
+  })
+  
+  # Identify models with substantial support (AICc weight > 0.1)
+  supported_models <- aicc_df[aicc_df$AICcWt > 0.1, ]
+  
+  # Calculate hypothesis weights (sum of AICc weights for each hypothesis)
+  hypothesis_weights <- tapply(aicc_df$AICcWt, aicc_df$Hypothesis, sum)
+  hypothesis_weights_df <- data.frame(
+    Hypothesis = names(hypothesis_weights),
+    TotalWeight = as.numeric(hypothesis_weights)
+  )
+  hypothesis_weights_df <- hypothesis_weights_df[order(hypothesis_weights_df$TotalWeight, decreasing = TRUE), ]
+  
+  # Extract parameter estimates and p-values for FDR correction
+  # We'll organize by hypothesis to apply FDR within each hypothesis group
+  param_results <- data.frame(
+    outcome = character(),
+    model_type = character(),
+    model_name = character(),
+    hypothesis = character(),
+    parameter = character(),
+    estimate = numeric(),
+    std_error = numeric(),
+    t_value = numeric(),
+    p_value = numeric(),
+    aicc_weight = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(models)) {
+    model_name <- model_names[i]
+    model <- models[[i]]
+    
+    # Extract hypothesis name
+    hypothesis <- NA
+    parts <- strsplit(model_name, "_")[[1]]
+    if (length(parts) >= 4) {
+      hypothesis <- parts[3]
+    }
+    
+    # Get AICc weight
+    aicc_weight <- aicc_df$AICcWt[aicc_df$Modnames == model_name]
+    
+    if ("lmerModLmerTest" %in% class(model)) {
+      coefs <- summary(model)$coefficients
+      p_col <- "Pr(>|t|)"
+    } else {
+      coefs <- summary(model)$coefficients
+      p_col <- ifelse("Pr(>|t|)" %in% colnames(coefs), "Pr(>|t|)", 4)
+    }
+    
+    # Extract model parameters (excluding intercept and standard controls)
+    param_rows <- rownames(coefs)
+    param_rows <- param_rows[!grepl("^\\(Intercept\\)$|^schoolid", param_rows)]
+    
+    for (param in param_rows) {
+      param_results <- rbind(param_results, data.frame(
+        outcome = outcome,
+        model_type = model_type,
+        model_name = model_name,
+        hypothesis = hypothesis,
+        parameter = param,
+        estimate = coefs[param, "Estimate"],
+        std_error = coefs[param, "Std. Error"],
+        t_value = coefs[param, "t value"],
+        p_value = coefs[param, p_col],
+        aicc_weight = aicc_weight,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  
+  # Apply FDR correction to p-values within each hypothesis
+  if (nrow(param_results) > 0) {
+    # Initialize p_adjusted column
+    param_results$p_adjusted <- NA
+    param_results$significant <- FALSE
+    
+    # Apply FDR correction within each hypothesis
+    for (hyp in unique(param_results$hypothesis)) {
+      if (is.na(hyp)) next
+      
+      hyp_rows <- which(param_results$hypothesis == hyp)
+      param_results$p_adjusted[hyp_rows] <- p.adjust(param_results$p_value[hyp_rows], method = "fdr")
+      param_results$significant[hyp_rows] <- param_results$p_adjusted[hyp_rows] < 0.05
+    }
+  }
+  
+  # Return results
+  return(list(
+    outcome = outcome,
+    model_type = model_type,
+    models = models,
+    aicc_results = aicc_df,
+    param_results = param_results,
+    formulas = model_formulas,
+    supported_models = supported_models,
+    hypothesis_weights = hypothesis_weights_df
+  ))
+}
+
+#' Visualize parameters from supported models (AICc weight > 0.1)
+#' 
+#' @param results Results from analyze_hypothesis_outcome
+#' @param outcome The risk outcome to visualize
+#' @return ggplot object
+visualize_supported_models <- function(results, outcome) {
+  if (length(results$models) == 0 || nrow(results$supported_models) == 0) {
+    return(NULL)
+  }
+  
+  # Get supported models
+  supported_model_names <- results$supported_models$Modnames
+  
+  # Extract parameters from supported models
+  param_data <- results$param_results[results$param_results$model_name %in% supported_model_names, ]
+  
+  if (nrow(param_data) == 0) {
+    return(NULL)
+  }
+  
+  # Create parameter groupings for visualization
+  param_data$param_group <- sapply(param_data$parameter, function(param) {
+    if (grepl("^gain|^loss", param)) return("Motivation")
+    if (grepl("^update|^decay|^retend", param)) return("Learning")
+    if (grepl("^boundary|^tau|^beta", param)) return("DDM/Decision")
+    if (grepl("^drift_con$", param)) return("Evidence (Hybrid)")
+    if (grepl("^con$", param)) return("Evidence (RL)")
+    if (grepl("^good_|^bad_|^money", param)) return("Performance")
+    if (grepl(":male$", param)) return("Gender Interaction")
+    if (grepl("^male$", param)) return("Gender")
+    if (grepl("^grade12|^time_since_puberty", param)) return("Developmental")
+    return("Other")
+  })
+  
+  # Create cleaner parameter labels
+  param_data$param_label <- sapply(param_data$parameter, function(param) {
+    # For interactions, format as "Parameter × Gender"
+    if (grepl(":male$", param)) {
+      base_param <- gsub(":male$", "", param)
+      return(paste0(base_param, " × Gender"))
+    }
+    return(param)
+  })
+  
+  # Add model label for visualization
+  param_data$model_label <- sapply(param_data$model_name, function(name) {
+    parts <- strsplit(name, "_")[[1]]
+    if (length(parts) >= 5) {
+      return(paste(parts[3], parts[4], sep="_"))  # Hypothesis + control type
+    } else if (length(parts) >= 4) {
+      return(paste(parts[3], "basic", sep="_"))
+    } else {
+      return(name)
+    }
+  })
+  
+  # Create visualization
+  ggplot(param_data, 
+         aes(x = param_label, y = estimate, fill = model_label)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), 
+                  position = position_dodge(width = 0.9), width = 0.25) +
+    facet_wrap(~param_group, scales = "free_x") +
+    geom_text(aes(label = ifelse(significant, "*", ""), y = ifelse(estimate >= 0, 
+                                                                   estimate + std_error, 
+                                                                   estimate - std_error)), 
+              position = position_dodge(width = 0.9), vjust = ifelse(param_data$estimate >= 0, -0.5, 1.5)) +
+    labs(title = paste("Parameter Estimates for", outcome, "- Supported Models (AICc weight > 0.1)"),
+         subtitle = "* indicates significance after FDR correction",
+         x = "Parameter", 
+         y = "Standardized Estimate",
+         fill = "Model") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom")
+}
+
+#' Create gender interaction plots for significant interactions
+#' 
+#' @param results Results from analyze_hypothesis_outcome
+#' @param outcome The risk outcome to visualize
+#' @return List of ggplot objects
+create_interaction_plots <- function(results, outcome) {
+  if (length(results$models) == 0 || nrow(results$supported_models) == 0) {
+    return(NULL)
+  }
+  
+  # Get supported models
+  supported_model_names <- results$supported_models$Modnames
+  
+  # Find significant gender interactions in supported models
+  interaction_data <- results$param_results[
+    results$param_results$model_name %in% supported_model_names & 
+      results$param_results$significant & 
+      grepl(":male$", results$param_results$parameter), ]
+  
+  if (nrow(interaction_data) == 0) {
+    return(NULL)
+  }
+  
+  # Initialize list to store plots
+  interaction_plots <- list()
+  
+  # For each significant interaction, create visualization
+  for (i in 1:nrow(interaction_data)) {
+    interaction <- interaction_data[i, ]
+    model_name <- interaction$model_name
+    parameter <- gsub(":male$", "", interaction$parameter)
+    model <- results$models[[model_name]]
+    
+    # Extract hypothesis and control type for plot title
+    parts <- strsplit(model_name, "_")[[1]]
+    hypothesis <- parts[3]
+    control_type <- ifelse(length(parts) >= 5, parts[4], "basic")
+    
+    # Create data for interaction plot
+    if ("lmerModLmerTest" %in% class(model)) {
+      fixed_effects <- fixef(model)
+    } else {
+      fixed_effects <- coef(model)
+    }
+    
+    # Find main effect and interaction terms
+    main_effect <- fixed_effects[parameter]
+    interaction_effect <- fixed_effects[paste0(parameter, ":male")]
+    intercept <- fixed_effects["(Intercept)"]
+    male_effect <- ifelse("male" %in% names(fixed_effects), fixed_effects["male"], 0)
+    
+    # Create plotting data
+    plot_data <- data.frame(
+      param_value = c(-1, 0, 1), # Standardized parameter values
+      female = intercept + main_effect * c(-1, 0, 1),
+      male = intercept + male_effect + (main_effect + interaction_effect) * c(-1, 0, 1)
+    )
+    
+    # Reshape for plotting
+    plot_data_long <- tidyr::pivot_longer(plot_data, cols = c("female", "male"), 
+                                          names_to = "gender", values_to = "outcome_value")
+    
+    # Create plot
+    p <- ggplot(plot_data_long, aes(x = param_value, y = outcome_value, color = gender, group = gender)) +
+      geom_line() +
+      geom_point() +
+      labs(title = paste("Gender Interaction for", parameter, "on", outcome),
+           subtitle = paste("Hypothesis:", hypothesis, "| Control:", control_type,
+                            "| AICc weight:", round(interaction$aicc_weight, 3)),
+           x = parameter, 
+           y = outcome,
+           color = "Gender") +
+      theme_minimal()
+    
+    interaction_plots[[paste(model_name, parameter, sep="_")]] <- p
+  }
+  
+  return(interaction_plots)
+}
+
+# Run analysis for all outcomes and model types
+# --------------------------------------------
+
+# Define risk outcomes
+risk_outcomes <- c("bsss_sd", "ysr_attentionproblems", "ysr_maggressive_t", "ysr_mconduct_t")
+
+# Run analyses
+cat("\n# Hypothesis-Driven Model Comparison Analysis\n")
+
+behavioral_results <- list()
+rl_results <- list()
+hybrid_results <- list()
+
+for (outcome in risk_outcomes) {
+  cat(paste0("\nAnalyzing models for: ", outcome, "...\n"))
+  behavioral_results[[outcome]] <- analyze_hypothesis_outcome(outcome, behav_final_df, "behavioral")
+  rl_results[[outcome]] <- analyze_hypothesis_outcome(outcome, rl_final_df, "rl")
+  hybrid_results[[outcome]] <- analyze_hypothesis_outcome(outcome, hybrid_final_df, "hybrid")
+}
+
+# Display results
+cat("\n# Model Comparison Results\n")
+
+for (outcome in risk_outcomes) {
+  cat(paste0("\n## Models for ", outcome, "\n"))
+  
+  # Function to display model results with hypothesis weights
+  display_model_results <- function(results, model_type) {
+    cat(paste0("\n### ", model_type, " Models\n"))
+    
+    if (length(results$models) == 0 || nrow(results$aicc_results) == 0) {
+      cat("No models were successfully built for this outcome and model type.\n")
+      return()
+    }
+    
+    # Display hypothesis weights
+    cat("\n#### Hypothesis Evidence Weights\n")
+    kable(results$hypothesis_weights, digits = 4, 
+          caption = paste("Evidence Weights for Hypotheses -", model_type, "Models")) %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+      print()
+    
+    # Display supported models (AICc weight > 0.1)
+    cat("\n#### Supported Models (AICc weight > 0.1)\n")
+    if (nrow(results$supported_models) > 0) {
+      kable(results$supported_models[, c("Modnames", "Hypothesis", "Control", "K", "AICc", "Delta_AICc", "AICcWt")], 
+            caption = paste("Supported", model_type, "Models for", outcome),
+            digits = 4) %>%
+        kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+        print()
+      
+      # Display formulas for supported models
+      cat("\n**Model formulas:**\n\n")
+      for (i in 1:nrow(results$supported_models)) {
+        model_name <- results$supported_models$Modnames[i]
+        formula <- results$supported_models$Formula[i]
+        cat(paste0("- **", model_name, "**: ", formula, "\n"))
+      }
+    } else {
+      cat("No models had substantial support (AICc weight > 0.1) for this outcome and model type.\n")
+    }
+  }
+  
+  # Display results for each model type
+  display_model_results(behavioral_results[[outcome]], "Behavioral")
+  display_model_results(rl_results[[outcome]], "RL")
+  display_model_results(hybrid_results[[outcome]], "Hybrid")
+}
+
+# Parameter estimates for supported models
+cat("\n# Parameter Estimates for Supported Models\n")
+
+for (outcome in risk_outcomes) {
+  cat(paste0("\n## Parameters for ", outcome, "\n"))
+  
+  # Function to display parameter estimates for supported models
+  display_parameter_estimates <- function(results, model_type) {
+    cat(paste0("\n### ", model_type, " Parameters\n"))
+    
+    if (length(results$models) == 0 || nrow(results$supported_models) == 0) {
+      cat("No supported models for this outcome and model type.\n")
+      return()
+    }
+    
+    # Get supported models
+    supported_model_names <- results$supported_models$Modnames
+    
+    # Extract significant parameters from supported models
+    significant_params <- results$param_results[
+      results$param_results$model_name %in% supported_model_names & 
+        results$param_results$significant, ]
+    
+    if (nrow(significant_params) > 0) {
+      # Add model information for display
+      significant_params$hypothesis <- sapply(significant_params$model_name, function(name) {
+        parts <- strsplit(name, "_")[[1]]
+        if (length(parts) >= 4) {
+          return(parts[3])
+        } else {
+          return(NA)
+        }
+      })
+      
+      significant_params$control <- sapply(significant_params$model_name, function(name) {
+        parts <- strsplit(name, "_")[[1]]
+        if (length(parts) >= 5) {
+          return(parts[4])
+        } else {
+          return("basic")
+        }
+      })
+      
+      # Display table of significant parameters
+      kable(significant_params[, c("parameter", "hypothesis", "control", "estimate", 
+                                   "std_error", "p_value", "p_adjusted", "aicc_weight")], 
+            caption = paste("Significant Parameters in Supported", model_type, "Models for", outcome),
+            digits = 4) %>%
+        kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+        print()
+    } else {
+      cat("No significant parameters after FDR correction in supported models.\n")
+    }
+    
+    # Visualize parameters from supported models
+    # Visualize parameters from supported models
+    cat("\n#### Parameter Visualization\n")
+    model_plots <- visualize_supported_models_individually(results, outcome)
+    if (!is.null(model_plots) && length(model_plots) > 0) {
+      for (model_name in names(model_plots)) {
+        print(model_plots[[model_name]])
+      }
+    } else {
+      cat("No parameter plots available for supported models.\n")
+    }
+    
+    # Create gender interaction plots
+    interaction_plots <- create_interaction_plots(results, outcome)
+    if (!is.null(interaction_plots) && length(interaction_plots) > 0) {
+      cat("\n#### Gender Interaction Plots\n")
+      for (i in 1:length(interaction_plots)) {
+        print(interaction_plots[[i]])
+      }
+    }
+  }
+  
+  # Display parameter estimates for each model type
+  display_parameter_estimates(behavioral_results[[outcome]], "Behavioral")
+  display_parameter_estimates(rl_results[[outcome]], "RL")
+  display_parameter_estimates(hybrid_results[[outcome]], "Hybrid")
+}
+
+# Theoretical Implications Section
+cat("\n# Theoretical Implications\n")
+
+# For each hypothesis, check evidence across outcomes
+all_hypothesis_weights <- data.frame()
+
+for (outcome in risk_outcomes) {
+  # Behavioral
+  if (length(behavioral_results[[outcome]]$models) > 0 && 
+      nrow(behavioral_results[[outcome]]$hypothesis_weights) > 0) {
+    hyp_weights <- behavioral_results[[outcome]]$hypothesis_weights
+    hyp_weights$outcome <- outcome
+    hyp_weights$model_type <- "Behavioral"
+    all_hypothesis_weights <- rbind(all_hypothesis_weights, hyp_weights)
+  }
+  
+  # RL
+  if (length(rl_results[[outcome]]$models) > 0 && 
+      nrow(rl_results[[outcome]]$hypothesis_weights) > 0) {
+    hyp_weights <- rl_results[[outcome]]$hypothesis_weights
+    hyp_weights$outcome <- outcome
+    hyp_weights$model_type <- "RL"
+    all_hypothesis_weights <- rbind(all_hypothesis_weights, hyp_weights)
+  }
+  
+  # Hybrid
+  if (length(hybrid_results[[outcome]]$models) > 0 && 
+      nrow(hybrid_results[[outcome]]$hypothesis_weights) > 0) {
+    hyp_weights <- hybrid_results[[outcome]]$hypothesis_weights
+    hyp_weights$outcome <- outcome
+    hyp_weights$model_type <- "Hybrid"
+    all_hypothesis_weights <- rbind(all_hypothesis_weights, hyp_weights)
+  }
+}
+
+if (nrow(all_hypothesis_weights) > 0) {
+  # Create a hypothesis evidence heatmap across outcomes
+  hypothesis_matrix <- reshape2::acast(all_hypothesis_weights, 
+                                       Hypothesis ~ model_type + outcome, 
+                                       value.var = "TotalWeight")
+  
+  # Replace NAs with zeros
+  hypothesis_matrix[is.na(hypothesis_matrix)] <- 0
+  
+  # Display hypothesis evidence weights across outcomes
+  cat("\n## Hypothesis Evidence Across Outcomes\n")
+  
+  # Convert matrix to data frame for kable
+  hypothesis_df <- as.data.frame(hypothesis_matrix)
+  hypothesis_df$Hypothesis <- rownames(hypothesis_matrix)
+  hypothesis_df <- hypothesis_df[, c(ncol(hypothesis_df), 1:(ncol(hypothesis_df)-1))]
+  
+  kable(hypothesis_df, digits = 3,
+        caption = "Evidence Weights for Each Hypothesis Across Outcomes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = TRUE) %>%
+    print()
+  
+  # Create a heatmap for hypothesis evidence
+  hyp_heatmap_data <- reshape2::melt(hypothesis_matrix)
+  names(hyp_heatmap_data) <- c("Hypothesis", "Model_Outcome", "Weight")
+  
+  # Split Model_Outcome into separate columns
+  hyp_heatmap_data <- tidyr::separate(hyp_heatmap_data, Model_Outcome, 
+                                      into = c("Model", "Outcome"), sep = "_")
+  
+  # Plot heatmap
+  ggplot(hyp_heatmap_data, aes(x = Outcome, y = Hypothesis, fill = Weight)) +
+    geom_tile(color = "white") +
+    facet_wrap(~ Model, scales = "free_x") +
+    scale_fill_gradient(low = "white", high = "steelblue") +
+    labs(title = "Hypothesis Evidence Across Outcomes",
+         x = "Risk Outcome", 
+         y = "Hypothesis",
+         fill = "Evidence Weight") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+# Collect significant parameters across outcomes
+all_significant_params <- data.frame()
+
+for (outcome in risk_outcomes) {
+  # Only include parameters from supported models (AICc weight > 0.1)
+  
+  # Behavioral
+  if (length(behavioral_results[[outcome]]$models) > 0 && 
+      nrow(behavioral_results[[outcome]]$supported_models) > 0) {
+    
+    supported_models <- behavioral_results[[outcome]]$supported_models$Modnames
+    significant_params <- behavioral_results[[outcome]]$param_results[
+      behavioral_results[[outcome]]$param_results$model_name %in% supported_models &
+        behavioral_results[[outcome]]$param_results$significant, ]
+    
+    if (nrow(significant_params) > 0) {
+      significant_params$outcome <- outcome
+      all_significant_params <- rbind(all_significant_params, significant_params)
+    }
+  }
+  
+  # RL
+  if (length(rl_results[[outcome]]$models) > 0 && 
+      nrow(rl_results[[outcome]]$supported_models) > 0) {
+    
+    supported_models <- rl_results[[outcome]]$supported_models$Modnames
+    significant_params <- rl_results[[outcome]]$param_results[
+      rl_results[[outcome]]$param_results$model_name %in% supported_models &
+        rl_results[[outcome]]$param_results$significant, ]
+    
+    if (nrow(significant_params) > 0) {
+      significant_params$outcome <- outcome
+      all_significant_params <- rbind(all_significant_params, significant_params)
+    }
+  }
+  
+  # Hybrid
+  if (length(hybrid_results[[outcome]]$models) > 0 && 
+      nrow(hybrid_results[[outcome]]$supported_models) > 0) {
+    
+    supported_models <- hybrid_results[[outcome]]$supported_models$Modnames
+    significant_params <- hybrid_results[[outcome]]$param_results[
+      hybrid_results[[outcome]]$param_results$model_name %in% supported_models &
+        hybrid_results[[outcome]]$param_results$significant, ]
+    
+    if (nrow(significant_params) > 0) {
+      significant_params$outcome <- outcome
+      all_significant_params <- rbind(all_significant_params, significant_params)
+    }
+  }
+}
+
+if (nrow(all_significant_params) > 0) {
+  # Find parameters that are significant across multiple outcomes
+  param_counts <- table(all_significant_params$parameter)
+  multi_outcome_params <- names(param_counts[param_counts > 1])
+  
+  if (length(multi_outcome_params) > 0) {
+    cat("\n## Parameters Significant Across Multiple Outcomes\n")
+    
+    for (param in multi_outcome_params) {
+      param_data <- all_significant_params[all_significant_params$parameter == param, ]
+      outcomes_affected <- unique(param_data$outcome)
+      
+      cat(paste0("- **", param, "** significantly predicts: ", 
+                 paste(outcomes_affected, collapse = ", "), "\n"))
+      
+      for (outcome in outcomes_affected) {
+        outcome_data <- param_data[param_data$outcome == outcome, ]
+        for (i in 1:nrow(outcome_data)) {
+          row <- outcome_data[i, ]
+          effect_dir <- ifelse(row$estimate > 0, "positive", "negative")
+          model_type <- row$model_type
+          hyp_name <- row$hypothesis
+          
+          cat(paste0("  - ", outcome, " (", model_type, ", ", hyp_name, " hypothesis): ", 
+                     effect_dir, " effect (β = ", round(row$estimate, 3), 
+                     ", p-adjusted = ", round(row$p_adjusted, 3), 
+                     ", AICc weight = ", round(row$aicc_weight, 3), ")\n"))
+        }
+      }
+      cat("\n")
+    }
+  }
+}
+
+# Create a parameter significance heatmap
+if (nrow(all_significant_params) > 0) {
+  # Create parameter groups for better visualization
+  all_significant_params$param_group <- sapply(all_significant_params$parameter, function(param) {
+    if (grepl("^gain|^loss", param)) return("Motivation")
+    if (grepl("^update|^decay|^retend", param)) return("Learning")
+    if (grepl("^boundary|^tau|^beta", param)) return("DDM/Decision")
+    if (grepl("^drift_con$", param)) return("Evidence (Hybrid)")
+    if (grepl("^con$", param)) return("Evidence (RL)")
+    if (grepl("^good_|^bad_|^money", param)) return("Performance")
+    if (grepl(":male$", param)) {
+      base_param <- gsub(":male$", "", param)
+      if (grepl("^gain|^loss", base_param)) return("Motivation × Gender")
+      if (grepl("^update|^decay|^retend", base_param)) return("Learning × Gender")
+      if (grepl("^boundary|^tau|^beta", base_param)) return("DDM/Decision × Gender")
+      return("Other × Gender")
+    }
+    if (grepl("^male$", param)) return("Gender")
+    if (grepl("^grade12|^time_since_puberty", param)) return("Developmental")
+    return("Other")
+  })
+  
+  # Create cleaner parameter labels
+  all_significant_params$clean_parameter <- sapply(all_significant_params$parameter, function(param) {
+    if (grepl(":male$", param)) {
+      base_param <- gsub(":male$", "", param)
+      return(paste0(base_param, " × Gender"))
+    }
+    return(param)
+  })
+  
+  # Create data for heatmap
+  param_effect_data <- all_significant_params %>%
+    dplyr::group_by(model_type, outcome, clean_parameter, param_group) %>%
+    dplyr::summarize(
+      avg_estimate = mean(estimate),
+      max_aicc_weight = max(aicc_weight),
+      .groups = 'drop'
+    )
+  
+  # Set consistent parameter group order
+  group_order <- c("Performance", "Motivation", "Learning", "DDM/Decision", 
+                   "Evidence (RL)", "Evidence (Hybrid)", "Motivation × Gender", 
+                   "Learning × Gender", "DDM/Decision × Gender", "Other × Gender",
+                   "Gender", "Developmental", "Other")
+  param_effect_data$param_group <- factor(param_effect_data$param_group, levels = group_order)
+  
+  # Plot heatmap
+  cat("\n## Parameter Significance Patterns\n")
+  
+  # Create heatmap of effect sizes
+  ggplot(param_effect_data, 
+         aes(x = outcome, y = clean_parameter, fill = avg_estimate)) +
+    geom_tile(color = "white", alpha = 0.8) +
+    geom_text(aes(label = "*", 
+                  color = ifelse(abs(avg_estimate) > 0.5, "white", "black")),
+              size = 5) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+    scale_color_identity() +
+    facet_grid(param_group ~ model_type, scales = "free_y", space = "free_y") +
+    labs(title = "Parameter Effects Across Risk Outcomes",
+         subtitle = "* indicates significance after FDR correction (AICc weight > 0.1)",
+         x = "Risk Outcome", 
+         y = "Parameter",
+         fill = "Effect Size") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_text(size = 8),
+          strip.text.y = element_text(angle = 0),
+          panel.spacing = unit(0.5, "lines"))
+}
+
+# Theoretical discussion of findings
+cat("\n## Key Theoretical Findings\n\n")
+
+cat("Based on our hypothesis-driven analysis, we can draw several theoretical conclusions about the computational mechanisms underlying adolescent risk behaviors:\n\n")
+
+# Check if motivation parameters are important across outcomes
+if (nrow(all_significant_params) > 0) {
+  motivation_params <- all_significant_params[grepl("^gain|^loss", all_significant_params$parameter), ]
+  if (nrow(motivation_params) > 0) {
+    motivation_outcomes <- unique(motivation_params$outcome)
+    
+    cat("### Motivation Parameters\n\n")
+    cat(paste0("Reward sensitivity parameters (gain, loss) significantly predict ", 
+               ifelse(length(motivation_outcomes) > 1, 
+                      paste0("multiple risk behaviors: ", paste(motivation_outcomes, collapse = ", ")), 
+                      paste0("risk behavior: ", motivation_outcomes)), 
+               ".\n\n"))
+    
+    # Examine gain vs loss patterns
+    gain_params <- motivation_params[grepl("^gain", motivation_params$parameter), ]
+    loss_params <- motivation_params[grepl("^loss", motivation_params$parameter), ]
+    
+    if (nrow(gain_params) > 0) {
+      gain_effect_dir <- ifelse(mean(gain_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Reward sensitivity (gain)** ", gain_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(gain_params$estimate) > 0, 
+                        "adolescents who are more sensitive to rewards tend to engage in more risk behaviors.",
+                        "adolescents who are less sensitive to rewards tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+    
+    if (nrow(loss_params) > 0) {
+      loss_effect_dir <- ifelse(mean(loss_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Punishment sensitivity (loss)** ", loss_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(loss_params$estimate) > 0, 
+                        "adolescents who are more sensitive to punishments tend to engage in more risk behaviors.",
+                        "adolescents who are less sensitive to punishments tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+  }
+  
+  # Check cognitive parameters
+  cognitive_params <- all_significant_params[grepl("^update|^decay|^retend", all_significant_params$parameter), ]
+  if (nrow(cognitive_params) > 0) {
+    cognitive_outcomes <- unique(cognitive_params$outcome)
+    
+    cat("### Learning Parameters\n\n")
+    cat(paste0("Learning parameters (update, decay) significantly predict ", 
+               ifelse(length(cognitive_outcomes) > 1, 
+                      paste0("multiple risk behaviors: ", paste(cognitive_outcomes, collapse = ", ")), 
+                      paste0("risk behavior: ", cognitive_outcomes)), 
+               ".\n\n"))
+    
+    # Examine specific learning parameter patterns
+    update_params <- cognitive_params[grepl("^update", cognitive_params$parameter), ]
+    decay_params <- cognitive_params[grepl("^decay", cognitive_params$parameter), ]
+    
+    if (nrow(update_params) > 0) {
+      update_effect_dir <- ifelse(mean(update_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Learning rate (update)** ", update_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(update_params$estimate) > 0, 
+                        "adolescents who update their value expectations more quickly tend to engage in more risk behaviors.",
+                        "adolescents who update their value expectations more slowly tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+    
+    if (nrow(decay_params) > 0) {
+      decay_effect_dir <- ifelse(mean(decay_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Memory decay** ", decay_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(decay_params$estimate) > 0, 
+                        "adolescents who forget previous experiences more quickly tend to engage in more risk behaviors.",
+                        "adolescents who maintain memory of previous experiences longer tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+  }
+  
+  # Check DDM parameters
+  ddm_params <- all_significant_params[grepl("^boundary|^tau|^beta", all_significant_params$parameter), ]
+  if (nrow(ddm_params) > 0) {
+    ddm_outcomes <- unique(ddm_params$outcome)
+    
+    cat("### Decision Process Parameters\n\n")
+    cat(paste0("Decision process parameters (boundary, tau, beta) significantly predict ", 
+               ifelse(length(ddm_outcomes) > 1, 
+                      paste0("multiple risk behaviors: ", paste(ddm_outcomes, collapse = ", ")), 
+                      paste0("risk behavior: ", ddm_outcomes)), 
+               ".\n\n"))
+    
+    # Examine specific DDM parameter patterns
+    boundary_params <- ddm_params[grepl("^boundary", ddm_params$parameter), ]
+    tau_params <- ddm_params[grepl("^tau", ddm_params$parameter), ]
+    beta_params <- ddm_params[grepl("^beta", ddm_params$parameter), ]
+    
+    if (nrow(boundary_params) > 0) {
+      boundary_effect_dir <- ifelse(mean(boundary_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Decision threshold (boundary)** ", boundary_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(boundary_params$estimate) > 0, 
+                        "adolescents who require more evidence before making decisions tend to engage in more risk behaviors.",
+                        "adolescents who make decisions with less evidence tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+    
+    if (nrow(tau_params) > 0) {
+      tau_effect_dir <- ifelse(mean(tau_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Non-decision time (tau)** ", tau_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(tau_params$estimate) > 0, 
+                        "adolescents with longer cognitive processing times tend to engage in more risk behaviors.",
+                        "adolescents with shorter cognitive processing times tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+    
+    if (nrow(beta_params) > 0) {
+      beta_effect_dir <- ifelse(mean(beta_params$estimate) > 0, "positively", "negatively")
+      cat(paste0("- **Response bias (beta)** ", beta_effect_dir, " predicts risk behaviors, suggesting that ",
+                 ifelse(mean(beta_params$estimate) > 0, 
+                        "adolescents with stronger response biases tend to engage in more risk behaviors.",
+                        "adolescents with weaker response biases tend to engage in more risk behaviors."),
+                 "\n\n"))
+    }
+  }
+  
+  # Check gender interactions
+  gender_int_params <- all_significant_params[grepl(":male", all_significant_params$parameter), ]
+  if (nrow(gender_int_params) > 0) {
+    gender_int_outcomes <- unique(gender_int_params$outcome)
+    
+    cat("### Gender Differences\n\n")
+    cat(paste0("Gender significantly moderates the relationship between computational parameters and ", 
+               ifelse(length(gender_int_outcomes) > 1, 
+                      paste0("multiple risk behaviors: ", paste(gender_int_outcomes, collapse = ", ")), 
+                      paste0("risk behavior: ", gender_int_outcomes)), 
+               ".\n\n"))
+    
+    # Examine specific gender interaction patterns
+    for (param in unique(gsub(":male", "", gender_int_params$parameter))) {
+      param_ints <- gender_int_params[grepl(paste0(param, ":male"), gender_int_params$parameter), ]
+      if (nrow(param_ints) > 0) {
+        param_effect_dir <- ifelse(mean(param_ints$estimate) > 0, "stronger", "weaker")
+        cat(paste0("- The relationship between **", param, "** and risk behaviors is ", param_effect_dir, 
+                   " for males compared to females.\n\n"))
+      }
+    }
+  }
+  
+  # Check developmental parameters
+  dev_params <- all_significant_params[grepl("^grade12|^time_since_puberty", all_significant_params$parameter), ]
+  if (nrow(dev_params) > 0) {
+    dev_outcomes <- unique(dev_params$outcome)
+    
+    cat("### Developmental Effects\n\n")
+    cat(paste0("Developmental factors significantly predict ", 
+               ifelse(length(dev_outcomes) > 1, 
+                      paste0("multiple risk behaviors: ", paste(dev_outcomes, collapse = ", ")), 
+                      paste0("risk behavior: ", dev_outcomes)), 
+               ".\n\n"))
+    
+    # Examine specific developmental parameter patterns
+    grade_params <- dev_params[grepl("^grade12", dev_params$parameter), ]
+    puberty_params <- dev_params[grepl("^time_since_puberty", dev_params$parameter), ]
+    
+    if (nrow(grade_params) > 0) {
+      grade_effect_dir <- ifelse(mean(grade_params$estimate) > 0, "higher", "lower")
+      cat(paste0("- **Grade level** is associated with ", grade_effect_dir, " risk behaviors, suggesting developmental changes in risk-taking.\n\n"))
+    }
+    
+    if (nrow(puberty_params) > 0) {
+      puberty_effect_dir <- ifelse(mean(puberty_params$estimate) > 0, "higher", "lower")
+      cat(paste0("- **Time since puberty** is associated with ", puberty_effect_dir, " risk behaviors, suggesting pubertal timing effects on risk-taking.\n\n"))
+    }
+  }
+}

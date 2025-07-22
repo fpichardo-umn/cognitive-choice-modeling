@@ -1,0 +1,40 @@
+name: "vppdeltag"
+description: "Value Plus Perseveration (General) Model with Delta Update"
+task: "igt_mod"
+response_type: "choice"
+
+parameters:
+  gain:
+    range: [0, 2]
+    transform: "none"
+    prior: "normal(1, 0.5)"
+  
+  loss:
+    range: [0, 10]
+    transform: "none"
+    prior: "normal(1, 1)"
+  
+  con:
+    range: [-5, 5]
+    transform: "none"
+    prior: "normal(1, 1)"
+  
+  update:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+
+  k:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+
+  w:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+
+  ep:
+    range:  [0, inf]
+    transform: ""
+    prior: "normal(0, 1)"

@@ -1,0 +1,283 @@
+---
+title: "Model Comparison Analysis: {{TASK}}"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(reshape2)
+library(corrplot)
+library(cowplot)
+library(here)
+
+# Data for comparison
+models <- c({{MODELS}})
+task <- "{{TASK}}"
+group <- "{{GROUP}}"
+recovery_data <- read.csv("{{DATA_FILE}}")
+
+# Create standardized data
+standardized_data <- recovery_data %>%
+  group_by(model, parameter) %>%
+  mutate(
+    true_value_std = (true_value - mean(true_value, na.rm=TRUE)) / 
+                    (sd(true_value, na.rm=TRUE) + 1e-10),
+    recovered_value_std = (recovered_value - mean(true_value, na.rm=TRUE)) / 
+                         (sd(true_value, na.rm=TRUE) + 1e-10)
+  ) %>%
+  ungroup()
+```
+
+## Model Comparison Overview: {{TASK}}
+
+This document presents a comprehensive comparison of different computational models applied to the **{{TASK}}** task with group type **{{GROUP}}**. The comparison uses parameter recovery analysis and various information criteria to evaluate model performance.
+
+### Models Compared
+
+The following models are included in this comparison:
+
+```{r model_list, results='asis'}
+models_df <- data.frame(Model = models)
+kable(models_df, caption = "Models Included in Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Parameter Recovery Performance
+
+Parameter recovery is a critical validation step that demonstrates a model's ability to accurately estimate its parameters. Here, we compare how well each model can recover its parameters from simulated data with known parameter values.
+
+### Overall Recovery Metrics
+
+```{r overall_metrics, fig.width=10, fig.height=6}
+# Calculate standardized metrics by model using standardized_data instead of recovery_data
+model_summary <- standardized_data %>%
+  group_by(model) %>%
+  summarize(
+    correlation = cor(true_value_std, recovered_value_std, use="pairwise.complete.obs"),
+    rmse = sqrt(mean((true_value_std - recovered_value_std)^2, na.rm=TRUE)),
+    bias = mean(recovered_value_std - true_value_std, na.rm=TRUE),
+    .groups = "drop"
+  )
+
+# Display overall metrics
+kable(model_summary, caption = "Overall Model Recovery Performance (Standardized)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Plot standardized metrics comparison
+model_summary_long <- model_summary %>%
+  pivot_longer(cols = -model, names_to = "metric", values_to = "value")
+
+ggplot(model_summary_long, aes(x = model, y = value, fill = model)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~metric, scales = "free_y") +
+  labs(title = "Model Comparison - Recovery Metrics (Standardized)", 
+       x = "Model", 
+       y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The table and plot above show the overall performance of each model in terms of parameter recovery. Lower RMSE and bias values indicate better recovery. Higher correlation indicates better recovery consistency.
+
+### Parameter-Specific Recovery
+
+```{r parameter_recovery, fig.width=12, fig.height=8}
+# Group parameter recovery by model and parameter
+param_recovery <- recovery_data %>%
+  group_by(model, parameter) %>%
+  summarize(
+    correlation = cor(true_value, recovered_value, use="pairwise.complete.obs"),
+    rmse = sqrt(mean((true_value - recovered_value)^2, na.rm=TRUE)),
+    bias = mean(recovered_value - true_value, na.rm=TRUE),
+    relative_bias = mean((recovered_value - true_value) / pmax(0.0001, abs(true_value)), na.rm=TRUE),
+    .groups = "drop"
+  )
+
+# Display parameter metrics
+kable(param_recovery, caption = "Parameter Recovery by Model") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  collapse_rows(columns = 1, valign = "top")
+
+# Plot parameter recovery metrics (correlation)
+ggplot(param_recovery, aes(x = model, y = correlation, fill = model)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~parameter, scales = "free_y") +
+  labs(title = "Parameter Recovery - Correlation", 
+       x = "Model", 
+       y = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot parameter recovery metrics (RMSE)
+ggplot(param_recovery, aes(x = model, y = rmse, fill = model)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~parameter, scales = "free_y") +
+  labs(title = "Parameter Recovery - RMSE", 
+       x = "Model", 
+       y = "RMSE") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The above plots show the recovery performance for each parameter across models. This helps identify which parameters are reliably recovered in each model.
+
+### Recovery Plots for Common Parameters
+
+```{r common_params, fig.width=12, fig.height=10}
+# Identify common parameters across models
+common_params <- recovery_data %>%
+  group_by(parameter) %>%
+  summarize(num_models = length(unique(model))) %>%
+  filter(num_models > 1) %>%
+  pull(parameter)
+
+if(length(common_params) > 0) {
+  # Plot recovery for common parameters
+  recovery_data %>%
+    filter(parameter %in% common_params) %>%
+    ggplot(aes(x = true_value, y = recovered_value, color = model)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", se = FALSE) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Recovery of Common Parameters", 
+         x = "True Value", 
+         y = "Recovered Value") +
+    theme_minimal()
+}
+```
+
+The plots above show how well different models recover the same parameters. This allows for direct comparison of parameter recovery performance across models.
+
+## Parameter Distributions
+
+```{r parameter_distributions, fig.width=12, fig.height=10}
+# Plot distributions of recovered parameters
+recovery_data %>%
+  ggplot(aes(x = recovered_value, fill = model)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~parameter, scales = "free") +
+  labs(title = "Distribution of Recovered Parameters", 
+       x = "Parameter Value", 
+       y = "Density") +
+  theme_minimal()
+```
+
+The above plots show the distributions of recovered parameter values for each model. This helps understand how the parameters are distributed and whether there are systematic differences between models.
+
+## Parameter Correlations
+
+```{r parameter_correlations, fig.width=16, fig.height=12}
+# For each model, plot a correlation matrix between parameters
+for(current_model in models) {
+  # Get data for this model
+  model_data <- recovery_data[recovery_data$model == current_model,]
+  
+  # Create wide format data for correlation analysis
+  wide_data <- model_data %>%
+    select(subject_id, parameter, recovered_value) %>%
+    pivot_wider(names_from = parameter, values_from = recovered_value)
+  
+  # Create correlation matrix (only if we have sufficient parameters)
+  if(ncol(wide_data) > 2) { # Need at least 2 parameters for correlation
+    cor_matrix <- cor(wide_data[,-1], use = "pairwise.complete.obs")
+    
+    # Plot correlation matrix
+    par(mfrow = c(1, 1))
+    corrplot(cor_matrix, method = "color", type = "upper", 
+            addCoef.col = "black", tl.col = "black", tl.srt = 45,
+            title = paste("Parameter Correlations -", current_model))
+  } else {
+    # Print message if not enough parameters
+    cat("Not enough parameters to calculate correlations for model:", current_model, "\n")
+  }
+}
+```
+
+The correlation matrices above show how parameters correlate with each other within each model. Strong correlations indicate potential parameter trade-offs or redundancy.
+
+## Recovery Error Analysis
+
+```{r error_analysis, fig.width=12, fig.height=8}
+# Calculate errors and plot
+recovery_data %>%
+  mutate(error = recovered_value - true_value) %>%
+  ggplot(aes(x = error, fill = model)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~parameter, scales = "free") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Recovery Error Distribution", 
+       x = "Error (Recovered - True)", 
+       y = "Density") +
+  theme_minimal()
+
+# Plot error vs true value
+recovery_data %>%
+  mutate(error = recovered_value - true_value) %>%
+  ggplot(aes(x = true_value, y = error, color = model)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~parameter, scales = "free") +
+  labs(title = "Recovery Error vs True Value", 
+       x = "True Parameter Value", 
+       y = "Error") +
+  theme_minimal()
+```
+
+The error analysis plots show the distribution of recovery errors for each parameter and model, as well as how errors relate to the true parameter values. Systematic patterns in these plots may indicate parameter recovery issues.
+
+## Model Complexity and Information Criteria
+
+```{r info_criteria_placeholder, fig.width=10, fig.height=6}
+# This is a placeholder for model comparison based on information criteria
+# In practice, you would load file fitting results with LOO, WAIC, etc.
+
+# Placeholder code for illustration
+# info_criteria <- data.frame(
+#   model = models,
+#   num_params = sample(3:8, length(models), replace = TRUE),
+#   loo = rnorm(length(models), -100, 10),
+#   waic = rnorm(length(models), -100, 10)
+# )
+# 
+# kable(info_criteria, caption = "Model Comparison - Information Criteria") %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"))
+# 
+# # Plot information criteria
+# info_criteria_long <- info_criteria %>%
+#   pivot_longer(cols = c(loo, waic), names_to = "criterion", values_to = "value")
+# 
+# ggplot(info_criteria_long, aes(x = model, y = value, fill = model)) +
+#   geom_bar(stat = "identity") +
+#   facet_wrap(~criterion, scales = "free_y") +
+#   labs(title = "Model Comparison - Information Criteria", 
+#        x = "Model", 
+#        y = "Value") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Summary and Recommendations
+
+When comparing models, consider the following factors:
+1. **Parameter recovery** - How reliably does the model recover its parameters?
+2. **Model complexity** - How many parameters does the model have?
+3. **Information criteria** - Which model provides the best fit according to LOO, WAIC, etc.?
+4. **Theoretical plausibility** - Is the model consistent with psychological theory?
+
+Based on the parameter recovery analysis, we can observe:
+- [Insert summary observations about which models perform best]
+- [Insert summary of which parameters are most reliably recovered]
+- [Insert recommendations for model selection based on the analysis]
+
+To make a final model selection, these results should be combined with information criteria from real data fitting.

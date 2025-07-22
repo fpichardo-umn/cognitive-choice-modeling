@@ -1,0 +1,1349 @@
+---
+title: "Modified Iowa Gambling Task: Cleaned Data Analysis"
+date: "2025-03-08"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(viridis)
+library(scales)
+library(foreign)  # For reading SPSS files
+library(gridExtra)
+library(psych)    # For descriptive statistics
+```
+
+# Data Loading and Initial Preparation
+
+```{r load-data}
+# Define the path to the SPSS file - replace with actual path
+PROJ_DIR <- here::here()
+DATA_DIR <- file.path(PROJ_DIR, "Data")
+SAFE_DATA_DIR <- file.path(DATA_DIR, "AHRB")
+wave1.sav.file <- file.path(SAFE_DATA_DIR, "modigt_data_Wave1.sav")
+
+# Load the data
+wave1.raw <- read.spss(wave1.sav.file, to.data.frame = TRUE)
+
+# Filter for the first 500 participants
+participant_ids <- unique(wave1.raw$sid)#[1:500]
+data <- wave1.raw[wave1.raw$sid %in% participant_ids, ]
+
+# Create initial trial-level dataset
+trial_data <- data %>%
+  mutate(
+    # Convert variables to appropriate types
+    play_choice = v_response == 2,  # TRUE if played, FALSE if passed
+    good_deck = v_targetdeck %in% c(3, 4),  # Decks C & D are advantageous
+    rt = latency / 1000,  # Convert RT to seconds
+    
+    # Create deck labels
+    deck_label = case_when(
+      v_targetdeck == 1 ~ "A",
+      v_targetdeck == 2 ~ "B",
+      v_targetdeck == 3 ~ "C",
+      v_targetdeck == 4 ~ "D"
+    ),
+    
+    # Identify training block
+    is_training = count_igtblocks == 1
+  )
+
+# Print basic data summary
+cat("Initial data summary:\n")
+cat("Total number of trials:", nrow(trial_data), "\n")
+cat("Number of participants:", length(unique(trial_data$sid)), "\n")
+cat("Play choices:", sum(trial_data$play_choice), "(", round(mean(trial_data$play_choice)*100, 1), "%)\n")
+cat("Pass choices:", sum(!trial_data$play_choice), "(", round(mean(!trial_data$play_choice)*100, 1), "%)\n")
+cat("Training trials:", sum(trial_data$is_training), "(", round(mean(trial_data$is_training)*100, 1), "%)\n")
+```
+
+# Data Cleaning
+
+## RT-Based Trial Removal
+
+We'll remove trials with RT < 50ms (likely anticipatory responses) and RT ≥ 4s (timeout trials).
+
+```{r rt-cleaning}
+# Identify RT thresholds
+min_rt <- 0.1  # 100ms
+max_rt <- 2.6   # 2.6 seconds
+
+# Check trials outside RT bounds
+low_rt_trials <- trial_data$rt < min_rt
+high_rt_trials <- trial_data$rt >= max_rt
+
+# Generate RT cleaning statistics
+cat("RT-based trial removal:\n")
+cat("Trials with RT <", min_rt, "seconds:", sum(low_rt_trials), 
+    "(", round(mean(low_rt_trials)*100, 2), "%)\n")
+cat("Trials with RT ≥", max_rt, "seconds:", sum(high_rt_trials), 
+    "(", round(mean(high_rt_trials)*100, 2), "%)\n")
+
+# Break down by play/pass
+cat("\nBreakdown by response type:\n")
+cat("Low RT & Play:", sum(low_rt_trials & trial_data$play_choice), "\n")
+cat("Low RT & Pass:", sum(low_rt_trials & !trial_data$play_choice), "\n")
+cat("High RT & Play:", sum(high_rt_trials & trial_data$play_choice), "\n")
+cat("High RT & Pass:", sum(high_rt_trials & !trial_data$play_choice), "\n")
+
+# Apply RT filtering
+valid_rt_data <- trial_data %>%
+  filter(rt >= min_rt, rt < max_rt)
+
+# Calculate per-participant removal stats
+participant_rt_stats <- trial_data %>%
+  group_by(sid) %>%
+  summarize(
+    total_trials = n(),
+    low_rt_trials = sum(rt < min_rt),
+    high_rt_trials = sum(rt >= max_rt),
+    valid_rt_trials = sum(rt >= min_rt & rt < max_rt),
+    pct_removed = 100 * (1 - valid_rt_trials / total_trials),
+    .groups = "drop"
+  )
+
+# Display distribution of removed trials per participant
+ggplot(participant_rt_stats, aes(x = pct_removed)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Percentage of Trials Removed per Participant Due to RT Thresholds",
+       x = "Percentage of Trials Removed", y = "Count")
+
+# Summary of per-participant removal stats
+rt_removal_summary <- participant_rt_stats %>%
+  summarize(
+    min_removed = min(pct_removed),
+    q25_removed = quantile(pct_removed, 0.25),
+    median_removed = median(pct_removed),
+    mean_removed = mean(pct_removed),
+    q75_removed = quantile(pct_removed, 0.75),
+    max_removed = max(pct_removed),
+    .groups = "drop"
+  )
+
+kable(rt_removal_summary, 
+      caption = "Summary of Percentage of Trials Removed per Participant (RT Thresholds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+```
+
+## RT Distributions (All Data)
+
+```{r rt-distributions_pre_clean}
+# Calculate overall RT statistics
+rt_stats <- trial_data %>%
+  select(rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+
+rt_stats = rbind(rt_stats, trial_data %>%
+  filter(v_response == 2) %>%
+  select(rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+)
+
+rt_stats = rbind(rt_stats, trial_data %>%
+  filter(!v_response == 2) %>%
+  select(rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+)
+
+rownames(rt_stats) = c("all", "play", "pass")
+
+sid_rt_stats = trial_data %>%
+  group_by(sid) %>%
+  summarize(
+    # RT-related metrics
+    mean_rt = mean(rt, na.rm = TRUE),
+    median_rt = median(rt, na.rm = TRUE),
+    mean_play_rt = mean(rt[play_choice], na.rm = TRUE),
+    median_play_rt = median(rt[play_choice], na.rm = TRUE),
+    mean_pass_rt = mean(rt[!play_choice], na.rm = TRUE),
+    median_pass_rt = median(rt[!play_choice], na.rm = TRUE),
+    
+    # Add RT quantiles when we have sufficient data
+    # Overall RT quantiles
+    rt_q10 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.1, na.rm = TRUE) else NA,
+    rt_q30 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.3, na.rm = TRUE) else NA,
+    rt_q50 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.5, na.rm = TRUE) else NA,
+    rt_q70 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.7, na.rm = TRUE) else NA,
+    rt_q90 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.9, na.rm = TRUE) else NA,
+    
+    # Play RT quantiles
+    play_rt_q10 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.1, na.rm = TRUE) else NA,
+    play_rt_q30 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.3, na.rm = TRUE) else NA,
+    play_rt_q50 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.5, na.rm = TRUE) else NA,
+    play_rt_q70 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.7, na.rm = TRUE) else NA,
+    play_rt_q90 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.9, na.rm = TRUE) else NA,
+    
+    # Pass RT quantiles
+    pass_rt_q10 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.1, na.rm = TRUE) else NA,
+    pass_rt_q30 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.3, na.rm = TRUE) else NA,
+    pass_rt_q50 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.5, na.rm = TRUE) else NA,
+    pass_rt_q70 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.7, na.rm = TRUE) else NA,
+    pass_rt_q90 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.9, na.rm = TRUE) else NA,
+    
+    .groups = "drop"
+  )
+
+# Display RT statistics table
+kable(rt_stats, 
+      caption = "Descriptive Statistics for Reaction Times (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Prepare data for RT density plots
+rt_long <- trial_data %>%
+  mutate(response_type = if_else(v_response == 2, "Play", "Pass")) %>%
+  select(sid, rt, response_type)
+
+# Create density plot for overall RTs by response type
+ggplot(rt_long, aes(x = rt, fill = response_type)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Play" = "blue", "Pass" = "red")) +
+  theme_minimal() +
+  xlim(0, 3.5) +  # Limit to reasonable RT range below max_rt
+  labs(title = "RT Distributions by Response Type",
+       x = "Reaction Time (seconds)", y = "Density",
+       fill = "Response Type")
+
+# Calculate RT quantiles statistics
+rt_quantiles <- sid_rt_stats %>%
+  select(contains("rt_q")) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+
+# Display RT quantiles table
+kable(rt_quantiles, 
+      caption = "Descriptive Statistics for RT Quantiles (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create data frame for RT quantile plots
+quantile_names <- c("10%", "30%", "50%", "70%", "90%")
+quantile_values <- list(
+  "Overall" = colMeans(sid_rt_stats[, c("rt_q10", "rt_q30", "rt_q50", "rt_q70", "rt_q90")], na.rm = TRUE),
+  "Play" = colMeans(sid_rt_stats[, c("play_rt_q10", "play_rt_q30", "play_rt_q50", "play_rt_q70", "play_rt_q90")], na.rm = TRUE),
+  "Pass" = colMeans(sid_rt_stats[, c("pass_rt_q10", "pass_rt_q30", "pass_rt_q50", "pass_rt_q70", "pass_rt_q90")], na.rm = TRUE)
+)
+
+quantile_df <- data.frame(
+  Quantile = rep(quantile_names, 3),
+  RT = c(unlist(quantile_values$Overall), unlist(quantile_values$Play), unlist(quantile_values$Pass)),
+  Response_Type = factor(rep(c("Overall", "Play", "Pass"), each = 5), 
+                         levels = c("Overall", "Play", "Pass"))
+)
+
+# Plot RT quantiles
+ggplot(quantile_df, aes(x = Quantile, y = RT, group = Response_Type, color = Response_Type)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c("Overall" = "purple", "Play" = "blue", "Pass" = "red")) +
+  labs(title = "RT Quantiles by Response Type",
+       x = "Quantile", y = "Reaction Time (seconds)",
+       color = "Response Type")
+```
+
+### RT Distributions (Clean Data)
+```{r rt-distributions_clean}
+# Calculate overall RT statistics
+rt_stats <- valid_rt_data %>%
+  select(rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+
+rt_stats = rbind(rt_stats, valid_rt_data %>%
+  filter(v_response == 2) %>%
+  select(rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+)
+
+rt_stats = rbind(rt_stats, valid_rt_data %>%
+  filter(!v_response == 2) %>%
+  select(rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+)
+
+rownames(rt_stats) = c("all", "play", "pass")
+
+sid_rt_stats = valid_rt_data %>%
+  group_by(sid) %>%
+  summarize(
+    # RT-related metrics
+    mean_rt = mean(rt, na.rm = TRUE),
+    median_rt = median(rt, na.rm = TRUE),
+    mean_play_rt = mean(rt[play_choice], na.rm = TRUE),
+    median_play_rt = median(rt[play_choice], na.rm = TRUE),
+    mean_pass_rt = mean(rt[!play_choice], na.rm = TRUE),
+    median_pass_rt = median(rt[!play_choice], na.rm = TRUE),
+    
+    # Add RT quantiles when we have sufficient data
+    # Overall RT quantiles
+    rt_q10 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.1, na.rm = TRUE) else NA,
+    rt_q30 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.3, na.rm = TRUE) else NA,
+    rt_q50 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.5, na.rm = TRUE) else NA,
+    rt_q70 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.7, na.rm = TRUE) else NA,
+    rt_q90 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.9, na.rm = TRUE) else NA,
+    
+    # Play RT quantiles
+    play_rt_q10 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.1, na.rm = TRUE) else NA,
+    play_rt_q30 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.3, na.rm = TRUE) else NA,
+    play_rt_q50 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.5, na.rm = TRUE) else NA,
+    play_rt_q70 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.7, na.rm = TRUE) else NA,
+    play_rt_q90 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.9, na.rm = TRUE) else NA,
+    
+    # Pass RT quantiles
+    pass_rt_q10 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.1, na.rm = TRUE) else NA,
+    pass_rt_q30 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.3, na.rm = TRUE) else NA,
+    pass_rt_q50 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.5, na.rm = TRUE) else NA,
+    pass_rt_q70 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.7, na.rm = TRUE) else NA,
+    pass_rt_q90 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.9, na.rm = TRUE) else NA,
+    
+    .groups = "drop"
+  )
+
+# Display RT statistics table
+kable(rt_stats, 
+      caption = "Descriptive Statistics for Reaction Times (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Prepare data for RT density plots
+rt_long <- valid_rt_data %>%
+  mutate(response_type = if_else(v_response == 2, "Play", "Pass")) %>%
+  select(sid, rt, response_type)
+
+# Create density plot for overall RTs by response type
+ggplot(rt_long, aes(x = rt, fill = response_type)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Play" = "blue", "Pass" = "red")) +
+  theme_minimal() +
+  xlim(0, 3.5) +  # Limit to reasonable RT range below max_rt
+  labs(title = "RT Distributions by Response Type",
+       x = "Reaction Time (seconds)", y = "Density",
+       fill = "Response Type")
+
+# Calculate RT quantiles statistics
+rt_quantiles <- sid_rt_stats %>%
+  select(contains("rt_q")) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+
+# Display RT quantiles table
+kable(rt_quantiles, 
+      caption = "Descriptive Statistics for RT Quantiles (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create data frame for RT quantile plots
+quantile_names <- c("10%", "30%", "50%", "70%", "90%")
+quantile_values <- list(
+  "Overall" = colMeans(sid_rt_stats[, c("rt_q10", "rt_q30", "rt_q50", "rt_q70", "rt_q90")], na.rm = TRUE),
+  "Play" = colMeans(sid_rt_stats[, c("play_rt_q10", "play_rt_q30", "play_rt_q50", "play_rt_q70", "play_rt_q90")], na.rm = TRUE),
+  "Pass" = colMeans(sid_rt_stats[, c("pass_rt_q10", "pass_rt_q30", "pass_rt_q50", "pass_rt_q70", "pass_rt_q90")], na.rm = TRUE)
+)
+
+quantile_df <- data.frame(
+  Quantile = rep(quantile_names, 3),
+  RT = c(unlist(quantile_values$Overall), unlist(quantile_values$Play), unlist(quantile_values$Pass)),
+  Response_Type = factor(rep(c("Overall", "Play", "Pass"), each = 5), 
+                         levels = c("Overall", "Play", "Pass"))
+)
+
+# Plot RT quantiles
+ggplot(quantile_df, aes(x = Quantile, y = RT, group = Response_Type, color = Response_Type)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c("Overall" = "purple", "Play" = "blue", "Pass" = "red")) +
+  labs(title = "RT Quantiles by Response Type",
+       x = "Quantile", y = "Reaction Time (seconds)",
+       color = "Response Type")
+```
+
+## Play/Pass Ratio Analysis
+
+We'll identify participants with extreme play/pass ratios.
+
+```{r play-pass-ratio}
+# Calculate play ratio per participant
+participant_play_ratio <- valid_rt_data %>%
+  group_by(sid) %>%
+  summarize(
+    total_trials = n(),
+    play_trials = sum(play_choice),
+    pass_trials = sum(!play_choice),
+    play_ratio = play_trials / total_trials,
+    pass_ratio = pass_trials / total_trials,
+    .groups = "drop"
+  )
+
+# Display distribution of play ratios
+ggplot(participant_play_ratio, aes(x = play_ratio)) +
+  geom_histogram(binwidth = 0.05, fill = "salmon", color = "black", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Distribution of Play Ratios Across Participants",
+       x = "Play Ratio", y = "Count")
+
+# Identify extreme play/pass ratio participants
+min_play_ratio <- quantile(participant_play_ratio$play_ratio, 0.025)  # Exclude if less than 20% play choices
+max_play_ratio <- quantile(participant_play_ratio$play_ratio, 0.975)  # Exclude if more than 95% play choices
+
+extreme_ratio_participants <- participant_play_ratio %>%
+  filter(play_ratio < min_play_ratio | play_ratio > max_play_ratio) %>%
+  mutate(
+    exclusion_reason = case_when(
+      play_ratio < min_play_ratio ~ "Too few play choices",
+      play_ratio > max_play_ratio ~ "Too few pass choices"
+    )
+  )
+
+# Display extreme ratio participants
+cat("Participants with extreme play/pass ratios:\n")
+cat("Too few play choices (<", min_play_ratio, "):", 
+    sum(participant_play_ratio$play_ratio < min_play_ratio), "\n")
+cat("Too few pass choices (>", max_play_ratio, "):", 
+    sum(participant_play_ratio$play_ratio > max_play_ratio), "\n")
+cat("Total extreme ratio participants:", nrow(extreme_ratio_participants), 
+    "(", round(nrow(extreme_ratio_participants)/nrow(participant_play_ratio)*100, 1), "%)\n")
+
+# Display table of extreme ratio participants
+if(nrow(extreme_ratio_participants) > 0) {
+  kable(extreme_ratio_participants, 
+        caption = "Participants with Extreme Play/Pass Ratios") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+}
+```
+
+## Trial Count Analysis
+
+We'll identify participants with insufficient valid trials after RT cleaning.
+
+```{r trial-count}
+# Define minimum required trials
+min_trials <- 110
+
+# Identify participants with insufficient trials
+insufficient_trial_participants <- participant_play_ratio %>%
+  filter(total_trials < min_trials) %>%
+  mutate(exclusion_reason = "Insufficient valid trials")
+
+# Display insufficient trial participants
+cat("Participants with insufficient valid trials:\n")
+cat("Less than", min_trials, "valid trials:", nrow(insufficient_trial_participants),
+    "(", round(nrow(insufficient_trial_participants)/nrow(participant_play_ratio)*100, 1), "%)\n")
+
+# Display table of insufficient trial participants
+if(nrow(insufficient_trial_participants) > 0) {
+  kable(insufficient_trial_participants, 
+        caption = "Participants with Insufficient Valid Trials") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+}
+
+# Distribution of valid trials per participant
+ggplot(participant_play_ratio, aes(x = total_trials)) +
+  geom_histogram(binwidth = 5, fill = "lightgreen", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = min_trials, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Distribution of Valid Trials per Participant",
+       subtitle = paste("Red line indicates minimum requirement of", min_trials, "trials"),
+       x = "Number of Valid Trials", y = "Count")
+```
+
+## Combined Exclusion Criteria
+
+We'll now combine all exclusion criteria to identify participants to remove.
+
+```{r combined-exclusions}
+rt_excludes = participant_rt_stats$sid[participant_rt_stats$valid_rt_trials < min_trials]
+# Combine exclusion lists
+exclude_sids <- unique(c(
+  extreme_ratio_participants$sid,
+  insufficient_trial_participants$sid,
+  rt_excludes
+))
+
+# Create comprehensive exclusion summary
+all_participant_stats <- participant_play_ratio %>%
+  left_join(participant_rt_stats %>% select(sid, low_rt_trials, high_rt_trials, pct_removed), by = "sid") %>%
+  mutate(
+    exclude = sid %in% exclude_sids,
+    exclusion_reason = case_when(
+      sid %in% extreme_ratio_participants$sid & play_ratio < min_play_ratio ~ "Too few play choices",
+      sid %in% extreme_ratio_participants$sid & play_ratio > max_play_ratio ~ "Too few pass choices",
+      sid %in% insufficient_trial_participants$sid ~ "Insufficient valid trials",
+      sid %in% rt_excludes ~ "Too few trials after RT bournds",
+      TRUE ~ "Included"
+    )
+  )
+
+# Display summary of exclusions
+excluded_summary <- all_participant_stats %>%
+  group_by(exclusion_reason) %>%
+  summarize(
+    count = n(),
+    percentage = 100 * n() / nrow(all_participant_stats),
+    .groups = "drop"
+  )
+
+kable(excluded_summary, 
+      caption = "Summary of Participant Exclusions") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create clean dataset with excluded participants removed
+clean_trial_data <- valid_rt_data %>%
+  filter(!sid %in% exclude_sids)
+
+# Summarize final clean dataset
+cat("Clean dataset summary:\n")
+cat("Original participants:", length(unique(trial_data$sid)), "\n")
+cat("Excluded participants:", length(exclude_sids), 
+    "(", round(length(exclude_sids)/length(unique(trial_data$sid))*100, 1), "%)\n")
+cat("Remaining participants:", length(unique(clean_trial_data$sid)), "\n")
+cat("Original trials:", nrow(trial_data), "\n")
+cat("Clean trials:", nrow(clean_trial_data), 
+    "(", round(nrow(clean_trial_data)/nrow(trial_data)*100, 1), "%)\n")
+```
+
+# Clean Data Analysis
+
+## Participant-Level Summary Dataset
+
+```{r participant-summary}
+# Create participant-level summary with clean data
+participant_summary <- clean_trial_data %>%
+  group_by(sid) %>%
+  summarize(
+    # RL-related metrics
+    total_money = sum(v_netchange, na.rm = TRUE),
+    good_deck_ratio = sum(good_deck & play_choice, na.rm = TRUE) / sum(play_choice, na.rm = TRUE),
+    skip_ratio = mean(!play_choice, na.rm = TRUE),
+    total_plays = sum(play_choice, na.rm = TRUE),
+    total_trials = n(),
+    
+    # RT-related metrics
+    mean_rt = mean(rt, na.rm = TRUE),
+    median_rt = median(rt, na.rm = TRUE),
+    mean_play_rt = mean(rt[play_choice], na.rm = TRUE),
+    median_play_rt = median(rt[play_choice], na.rm = TRUE),
+    mean_pass_rt = mean(rt[!play_choice], na.rm = TRUE),
+    median_pass_rt = median(rt[!play_choice], na.rm = TRUE),
+    
+    # Add RT quantiles when we have sufficient data
+    # Overall RT quantiles
+    rt_q10 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.1, na.rm = TRUE) else NA,
+    rt_q30 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.3, na.rm = TRUE) else NA,
+    rt_q50 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.5, na.rm = TRUE) else NA,
+    rt_q70 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.7, na.rm = TRUE) else NA,
+    rt_q90 = if(sum(!is.na(rt)) >= 10) quantile(rt, 0.9, na.rm = TRUE) else NA,
+    
+    # Play RT quantiles
+    play_rt_q10 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.1, na.rm = TRUE) else NA,
+    play_rt_q30 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.3, na.rm = TRUE) else NA,
+    play_rt_q50 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.5, na.rm = TRUE) else NA,
+    play_rt_q70 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.7, na.rm = TRUE) else NA,
+    play_rt_q90 = if(sum(play_choice) >= 10) quantile(rt[play_choice], 0.9, na.rm = TRUE) else NA,
+    
+    # Pass RT quantiles
+    pass_rt_q10 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.1, na.rm = TRUE) else NA,
+    pass_rt_q30 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.3, na.rm = TRUE) else NA,
+    pass_rt_q50 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.5, na.rm = TRUE) else NA,
+    pass_rt_q70 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.7, na.rm = TRUE) else NA,
+    pass_rt_q90 = if(sum(!play_choice) >= 10) quantile(rt[!play_choice], 0.9, na.rm = TRUE) else NA,
+    
+    .groups = "drop"
+  )
+```
+
+## Block-Level and Deck-Specific Datasets
+
+```{r specialized-datasets}
+# Create block-level dataset
+block_data <- clean_trial_data %>%
+  group_by(sid, count_igtblocks) %>%
+  summarize(
+    block_money = sum(v_netchange, na.rm = TRUE),
+    block_good_deck_ratio = sum(good_deck & play_choice, na.rm = TRUE) / sum(play_choice, na.rm = TRUE),
+    block_skip_ratio = mean(!play_choice, na.rm = TRUE),
+    block_mean_rt = mean(rt, na.rm = TRUE),
+    block_mean_play_rt = mean(rt[play_choice], na.rm = TRUE),
+    block_mean_pass_rt = mean(rt[!play_choice], na.rm = TRUE),
+    total_trials = n(),
+    is_training = all(is_training),
+    .groups = "drop"
+  )
+
+# Create deck-specific dataset
+deck_data <- clean_trial_data %>%
+  group_by(sid, deck_label) %>%
+  summarize(
+    total_shown = n(),
+    total_selected = sum(play_choice),
+    selection_ratio = total_selected / total_shown,
+    avg_gain = mean(v_gain[play_choice], na.rm = TRUE),
+    avg_loss = mean(v_loss[play_choice], na.rm = TRUE),
+    avg_net = mean(v_netchange[play_choice], na.rm = TRUE),
+    mean_rt_when_shown = mean(rt, na.rm = TRUE),
+    mean_rt_when_selected = mean(rt[play_choice], na.rm = TRUE),
+    mean_rt_when_skipped = mean(rt[!play_choice], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    is_good_deck = deck_label %in% c("C", "D")
+  )
+
+# Create a deck-by-block dataset
+deck_block_data <- clean_trial_data %>%
+  group_by(sid, count_igtblocks, deck_label) %>%
+  summarize(
+    times_shown = n(),
+    times_selected = sum(play_choice),
+    selection_ratio = if(times_shown > 0) times_selected / times_shown else NA,
+    avg_gain = mean(v_gain[play_choice], na.rm = TRUE),
+    avg_loss = mean(v_loss[play_choice], na.rm = TRUE),
+    avg_net = mean(v_netchange[play_choice], na.rm = TRUE),
+    is_training = all(is_training),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    is_good_deck = deck_label %in% c("C", "D")
+  )
+```
+
+# Task Performance Analysis
+
+## Overall Performance Metrics
+
+```{r overall-performance}
+# Calculate descriptive statistics for key metrics
+performance_stats <- participant_summary %>%
+  select(total_money, good_deck_ratio, skip_ratio) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max, skew, kurtosis) %>%
+  round(2)
+
+# Display the statistics table
+kable(performance_stats, 
+      caption = "Descriptive Statistics for Key Performance Metrics (Clean Data)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Histogram of total money
+p1 <- ggplot(participant_summary, aes(x = total_money)) +
+  geom_histogram(binwidth = 100, fill = "skyblue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean(total_money)), color = "red", linetype = "dashed", size = 1) +
+  theme_minimal() +
+  labs(title = "Distribution of Total Money Won",
+       x = "Total Money", y = "Count")
+
+# Histogram of good deck ratio
+p2 <- ggplot(participant_summary, aes(x = good_deck_ratio)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean(good_deck_ratio, na.rm = TRUE)), 
+             color = "red", linetype = "dashed", size = 1) +
+  theme_minimal() +
+  labs(title = "Distribution of Good Deck Selection Ratio",
+       x = "Good Deck Selection Ratio", y = "Count")
+
+# Histogram of skip ratio
+p3 <- ggplot(participant_summary, aes(x = skip_ratio)) +
+  geom_histogram(binwidth = 0.05, fill = "salmon", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean(skip_ratio)), color = "red", linetype = "dashed", size = 1) +
+  theme_minimal() +
+  labs(title = "Distribution of Skip Ratio",
+       x = "Skip Ratio", y = "Count")
+
+# Combine plots
+p1 / p2 / p3
+```
+
+## Training vs. Test Block Performance
+
+```{r training-test-comparison}
+# Calculate mean values per block type across participants
+block_type_summary <- block_data %>%
+  group_by(is_training) %>%
+  summarize(
+    mean_money = mean(block_money, na.rm = TRUE),
+    sd_money = sd(block_money, na.rm = TRUE),
+    mean_good_deck = mean(block_good_deck_ratio, na.rm = TRUE),
+    sd_good_deck = sd(block_good_deck_ratio, na.rm = TRUE),
+    mean_skip = mean(block_skip_ratio, na.rm = TRUE),
+    sd_skip = sd(block_skip_ratio, na.rm = TRUE),
+    mean_rt = mean(block_mean_rt, na.rm = TRUE),
+    sd_rt = sd(block_mean_rt, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display training vs. test comparison
+kable(block_type_summary, 
+      caption = "Training vs. Test Block Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create a training vs. test plot for key metrics
+block_type_long <- block_type_summary %>%
+  pivot_longer(
+    cols = starts_with("mean_"),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  mutate(
+    metric = case_when(
+      metric == "mean_money" ~ "Money Won",
+      metric == "mean_good_deck" ~ "Good Deck Ratio",
+      metric == "mean_skip" ~ "Skip Ratio",
+      metric == "mean_rt" ~ "Mean RT (s)"
+    ),
+    block_type = if_else(is_training, "Training", "Test")
+  )
+
+ggplot(block_type_long, aes(x = block_type, y = value, fill = block_type)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Training" = "orange", "Test" = "skyblue")) +
+  labs(title = "Comparison of Training vs. Test Blocks",
+       x = "", y = "Value",
+       fill = "Block Type")
+```
+
+## Learning Across Test Blocks
+
+```{r block-learning}
+# Filter for test blocks only
+test_block_data <- block_data %>%
+  filter(!is_training)
+
+# Calculate mean values per block across participants
+block_summary <- test_block_data %>%
+  group_by(count_igtblocks) %>%
+  summarize(
+    mean_money = mean(block_money, na.rm = TRUE),
+    lower_money = mean_money - 1.96 * sd(block_money, na.rm = TRUE) / sqrt(n()),
+    upper_money = mean_money + 1.96 * sd(block_money, na.rm = TRUE) / sqrt(n()),
+    
+    mean_good_deck = mean(block_good_deck_ratio, na.rm = TRUE),
+    lower_good_deck = mean_good_deck - 1.96 * sd(block_good_deck_ratio, na.rm = TRUE) / sqrt(n()),
+    upper_good_deck = mean_good_deck + 1.96 * sd(block_good_deck_ratio, na.rm = TRUE) / sqrt(n()),
+    
+    mean_skip = mean(block_skip_ratio, na.rm = TRUE),
+    lower_skip = mean_skip - 1.96 * sd(block_skip_ratio, na.rm = TRUE) / sqrt(n()),
+    upper_skip = mean_skip + 1.96 * sd(block_skip_ratio, na.rm = TRUE) / sqrt(n()),
+    
+    .groups = "drop"
+  )
+
+# Display the block summary table
+kable(block_summary, 
+      caption = "Test Block Performance (with 95% CIs)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Plot learning curves for good deck selection
+p1 <- ggplot(block_summary, aes(x = count_igtblocks, y = mean_good_deck)) +
+  geom_line(size = 1, color = "darkgreen") +
+  geom_point(size = 3, color = "darkgreen") +
+  geom_ribbon(aes(ymin = lower_good_deck, ymax = upper_good_deck), alpha = 0.2, fill = "green") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:6) +
+  ylim(0, 1) +
+  labs(title = "Learning Curve: Good Deck Selection (Test Blocks Only)",
+       subtitle = "Mean with 95% confidence interval",
+       x = "Block", y = "Good Deck Selection Ratio")
+
+# Plot learning curves for money earned
+p2 <- ggplot(block_summary, aes(x = count_igtblocks, y = mean_money)) +
+  geom_line(size = 1, color = "blue") +
+  geom_point(size = 3, color = "blue") +
+  geom_ribbon(aes(ymin = lower_money, ymax = upper_money), alpha = 0.2, fill = "skyblue") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:6) +
+  labs(title = "Money Earned per Test Block",
+       subtitle = "Mean with 95% confidence interval",
+       x = "Block", y = "Money Earned")
+
+# Plot learning curves for skip ratio
+p3 <- ggplot(block_summary, aes(x = count_igtblocks, y = mean_skip)) +
+  geom_line(size = 1, color = "darkred") +
+  geom_point(size = 3, color = "darkred") +
+  geom_ribbon(aes(ymin = lower_skip, ymax = upper_skip), alpha = 0.2, fill = "salmon") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:6) +
+  ylim(0, 1) +
+  labs(title = "Skip Ratio by Test Block",
+       subtitle = "Mean with 95% confidence interval",
+       x = "Block", y = "Skip Ratio")
+
+# Display plots
+p1 / p2 / p3
+
+# Calculate cumulative money earned (test blocks only)
+cumulative_money <- test_block_data %>%
+  arrange(sid, count_igtblocks) %>%
+  group_by(sid) %>%
+  mutate(cumulative_money = cumsum(block_money)) %>%
+  ungroup()
+
+# Calculate mean cumulative money by block
+cum_money_summary <- cumulative_money %>%
+  group_by(count_igtblocks) %>%
+  summarize(
+    mean_cum_money = mean(cumulative_money, na.rm = TRUE),
+    lower_cum_money = mean_cum_money - 1.96 * sd(cumulative_money, na.rm = TRUE) / sqrt(n()),
+    upper_cum_money = mean_cum_money + 1.96 * sd(cumulative_money, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Plot cumulative money earned
+ggplot(cum_money_summary, aes(x = count_igtblocks, y = mean_cum_money)) +
+  geom_line(size = 1, color = "purple") +
+  geom_point(size = 3, color = "purple") +
+  geom_ribbon(aes(ymin = lower_cum_money, ymax = upper_cum_money), alpha = 0.2, fill = "plum") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:6) +
+  labs(title = "Cumulative Money Earned (Test Blocks Only)",
+       subtitle = "Mean with 95% confidence interval",
+       x = "Block", y = "Cumulative Money")
+```
+
+## Deck-Specific Analysis
+
+```{r deck-analysis}
+# Calculate average statistics by deck across participants
+deck_summary <- deck_data %>%
+  group_by(deck_label, is_good_deck) %>%
+  summarize(
+    mean_selection_ratio = mean(selection_ratio, na.rm = TRUE),
+    sd_selection_ratio = sd(selection_ratio, na.rm = TRUE),
+    mean_avg_gain = mean(avg_gain, na.rm = TRUE),
+    mean_avg_loss = mean(avg_loss, na.rm = TRUE),
+    mean_avg_net = mean(avg_net, na.rm = TRUE),
+    mean_rt_selected = mean(mean_rt_when_selected, na.rm = TRUE),
+    mean_rt_skipped = mean(mean_rt_when_skipped, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display deck summary table
+kable(deck_summary, 
+      caption = "Average Performance by Deck") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Plot selection ratio by deck
+ggplot(deck_summary, aes(x = deck_label, y = mean_selection_ratio, fill = is_good_deck)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(aes(ymin = mean_selection_ratio - sd_selection_ratio,
+                   ymax = mean_selection_ratio + sd_selection_ratio),
+               width = 0.2) +
+  scale_fill_manual(values = c("FALSE" = "tomato", "TRUE" = "lightgreen"),
+                    labels = c("Bad Deck", "Good Deck")) +
+  theme_minimal() +
+  ylim(0, 1) +
+  labs(title = "Selection Ratio by Deck",
+       subtitle = "Error bars show ±1 SD",
+       x = "Deck", y = "Selection Ratio",
+       fill = "Deck Type")
+
+# Plot average net outcome by deck
+ggplot(deck_summary, aes(x = deck_label, y = mean_avg_net, fill = is_good_deck)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("FALSE" = "tomato", "TRUE" = "lightgreen"),
+                   labels = c("Bad Deck", "Good Deck")) +
+  theme_minimal() +
+  labs(title = "Average Net Outcome by Deck",
+       x = "Deck", y = "Average Net Outcome",
+       fill = "Deck Type")
+
+# Plot mean RT by deck and response type
+deck_rt_long <- deck_summary %>%
+  select(deck_label, is_good_deck, mean_rt_selected, mean_rt_skipped) %>%
+  pivot_longer(
+    cols = c(mean_rt_selected, mean_rt_skipped),
+    names_to = "response_type",
+    values_to = "mean_rt"
+  ) %>%
+  mutate(
+    response_type = if_else(response_type == "mean_rt_selected", "Play", "Pass")
+  )
+
+ggplot(deck_rt_long, aes(x = deck_label, y = mean_rt, fill = response_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Play" = "blue", "Pass" = "red")) +
+  theme_minimal() +
+  labs(title = "Mean RT by Deck and Response Type",
+       x = "Deck", y = "Mean RT (seconds)",
+       fill = "Response Type")
+
+# Plot deck selection over blocks
+deck_block_summary <- deck_block_data %>%
+  filter(!is_training) %>%  # Exclude training block
+  group_by(count_igtblocks, deck_label, is_good_deck) %>%
+  summarize(
+    mean_selection_ratio = mean(selection_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(deck_block_summary, aes(x = count_igtblocks, y = mean_selection_ratio, 
+                               color = deck_label, linetype = is_good_deck)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  scale_color_brewer(palette = "Set1") +
+  scale_linetype_manual(values = c("FALSE" = "dashed", "TRUE" = "solid"),
+                        labels = c("Bad Deck", "Good Deck")) +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:6) +
+  labs(title = "Deck Selection Ratio Across Test Blocks",
+       x = "Block", y = "Mean Selection Ratio",
+       color = "Deck", linetype = "Deck Type")
+```
+
+# Reaction Time Analysis
+
+## RT Distributions
+
+```{r rt-distributions}
+# Calculate overall RT statistics
+rt_stats <- participant_summary %>%
+  select(mean_rt, median_rt, mean_play_rt, median_play_rt, mean_pass_rt, median_pass_rt) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+
+# Display RT statistics table
+kable(rt_stats, 
+      caption = "Descriptive Statistics for Reaction Times (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Prepare data for RT density plots
+rt_long <- clean_trial_data %>%
+  mutate(response_type = if_else(play_choice, "Play", "Pass")) %>%
+  select(sid, rt, response_type)
+
+# Create density plot for overall RTs by response type
+ggplot(rt_long, aes(x = rt, fill = response_type)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Play" = "blue", "Pass" = "red")) +
+  theme_minimal() +
+  xlim(0, 3.5) +  # Limit to reasonable RT range below max_rt
+  labs(title = "RT Distributions by Response Type",
+       x = "Reaction Time (seconds)", y = "Density",
+       fill = "Response Type")
+
+# Calculate RT quantiles statistics
+rt_quantiles <- participant_summary %>%
+  select(contains("rt_q")) %>%
+  psych::describe() %>%
+  as.data.frame() %>%
+  select(mean, sd, median, min, max) %>%
+  round(3)
+
+# Display RT quantiles table
+kable(rt_quantiles, 
+      caption = "Descriptive Statistics for RT Quantiles (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create data frame for RT quantile plots
+quantile_names <- c("10%", "30%", "50%", "70%", "90%")
+quantile_values <- list(
+  "Overall" = colMeans(participant_summary[, c("rt_q10", "rt_q30", "rt_q50", "rt_q70", "rt_q90")], na.rm = TRUE),
+  "Play" = colMeans(participant_summary[, c("play_rt_q10", "play_rt_q30", "play_rt_q50", "play_rt_q70", "play_rt_q90")], na.rm = TRUE),
+  "Pass" = colMeans(participant_summary[, c("pass_rt_q10", "pass_rt_q30", "pass_rt_q50", "pass_rt_q70", "pass_rt_q90")], na.rm = TRUE)
+)
+
+quantile_df <- data.frame(
+  Quantile = rep(quantile_names, 3),
+  RT = c(unlist(quantile_values$Overall), unlist(quantile_values$Play), unlist(quantile_values$Pass)),
+  Response_Type = factor(rep(c("Overall", "Play", "Pass"), each = 5), 
+                         levels = c("Overall", "Play", "Pass"))
+)
+
+# Plot RT quantiles
+ggplot(quantile_df, aes(x = Quantile, y = RT, group = Response_Type, color = Response_Type)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c("Overall" = "purple", "Play" = "blue", "Pass" = "red")) +
+  labs(title = "RT Quantiles by Response Type",
+       x = "Quantile", y = "Reaction Time (seconds)",
+       color = "Response Type")
+```
+
+## RT Changes Across Blocks
+
+```{r rt-block-changes}
+# Calculate mean RT values per block across participants
+rt_block_summary <- test_block_data %>%  # Using only test blocks
+  group_by(count_igtblocks) %>%
+  summarize(
+    mean_rt = mean(block_mean_rt, na.rm = TRUE),
+    lower_rt = mean_rt - 1.96 * sd(block_mean_rt, na.rm = TRUE) / sqrt(n()),
+    upper_rt = mean_rt + 1.96 * sd(block_mean_rt, na.rm = TRUE) / sqrt(n()),
+    
+    mean_play_rt = mean(block_mean_play_rt, na.rm = TRUE),
+    lower_play_rt = mean_play_rt - 1.96 * sd(block_mean_play_rt, na.rm = TRUE) / sqrt(n()),
+    upper_play_rt = mean_play_rt + 1.96 * sd(block_mean_play_rt, na.rm = TRUE) / sqrt(n()),
+    
+    mean_pass_rt = mean(block_mean_pass_rt, na.rm = TRUE),
+    lower_pass_rt = mean_pass_rt - 1.96 * sd(block_mean_pass_rt, na.rm = TRUE) / sqrt(n()),
+    upper_pass_rt = mean_pass_rt + 1.96 * sd(block_mean_pass_rt, na.rm = TRUE) / sqrt(n()),
+    
+    .groups = "drop"
+  )
+
+# Display the RT block summary table
+kable(rt_block_summary %>% select(count_igtblocks, mean_rt, mean_play_rt, mean_pass_rt), 
+      caption = "Mean RTs by Test Block (seconds)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Prepare data for RT by block plot
+rt_block_long <- rt_block_summary %>%
+  pivot_longer(
+    cols = c(mean_rt, mean_play_rt, mean_pass_rt),
+    names_to = "response_type",
+    values_to = "rt"
+  ) %>%
+  pivot_longer(
+    cols = c(lower_rt, lower_play_rt, lower_pass_rt),
+    names_to = "lower_type",
+    values_to = "lower"
+  ) %>%
+  pivot_longer(
+    cols = c(upper_rt, upper_play_rt, upper_pass_rt),
+    names_to = "upper_type",
+    values_to = "upper"
+  ) %>%
+  filter(
+    (response_type == "mean_rt" & lower_type == "lower_rt" & upper_type == "upper_rt") |
+    (response_type == "mean_play_rt" & lower_type == "lower_play_rt" & upper_type == "upper_play_rt") |
+    (response_type == "mean_pass_rt" & lower_type == "lower_pass_rt" & upper_type == "upper_pass_rt")
+  ) %>%
+  mutate(response_type = case_when(
+    response_type == "mean_rt" ~ "Overall",
+    response_type == "mean_play_rt" ~ "Play",
+    response_type == "mean_pass_rt" ~ "Pass"
+  ))
+
+# Plot RT changes by block
+ggplot(rt_block_long, aes(x = count_igtblocks, y = rt, color = response_type, fill = response_type)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:6) +
+  scale_color_manual(values = c("Overall" = "purple", "Play" = "blue", "Pass" = "red")) +
+  scale_fill_manual(values = c("Overall" = "purple", "Play" = "blue", "Pass" = "red")) +
+  labs(title = "RT Changes Across Test Blocks",
+       subtitle = "Mean with 95% confidence interval",
+       x = "Block", y = "Reaction Time (seconds)",
+       color = "Response Type", fill = "Response Type")
+```
+
+# Individual Differences
+
+## Distribution of Key Metrics
+
+```{r metric-distributions}
+# Calculate correlations between key measures
+# First check which variables exist and have non-NA values
+valid_vars <- sapply(participant_summary, function(x) sum(!is.na(x)) > 0)
+potential_corr_vars <- c("total_money", "good_deck_ratio", "skip_ratio", "mean_rt", "mean_play_rt", "mean_pass_rt")
+corr_vars <- intersect(potential_corr_vars, names(participant_summary)[valid_vars])
+
+# Check if we have at least 2 variables for correlation
+if(length(corr_vars) >= 2) {
+  # Compute correlation matrix
+  corr_matrix <- cor(participant_summary[, corr_vars], use = "pairwise.complete.obs")
+  
+  # Display correlation matrix
+  kable(round(corr_matrix, 2), 
+        caption = "Correlations Between Key Behavioral Measures") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  
+  # Create correlation plot if package available
+  if(requireNamespace("corrplot", quietly = TRUE)) {
+    corrplot::corrplot(corr_matrix, method = "circle", type = "upper", tl.col = "black",
+           addCoef.col = "black", number.cex = 0.7,
+           title = "Correlation Matrix of Key Behavioral Measures")
+  }
+}
+
+# Create boxplots for key metrics to examine individual differences
+metrics_long <- participant_summary %>%
+  select(good_deck_ratio, skip_ratio, mean_play_rt, mean_pass_rt) %>%
+  pivot_longer(cols = everything(), 
+               names_to = "metric", 
+               values_to = "value")
+
+# Create faceted boxplot
+ggplot(metrics_long, aes(x = metric, y = value)) +
+  geom_boxplot(fill = "lightblue", color = "blue") +
+  geom_jitter(width = 0.2, alpha = 0.2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribution of Key Behavioral Metrics Across Participants",
+       x = "", y = "Value")
+```
+
+## Strategy Classification
+
+```{r strategy-classification}
+# Create a scatter plot of good deck ratio vs. skip ratio to visualize potential strategies
+# Remove NAs from plotting data
+plot_data <- participant_summary %>%
+  filter(!is.na(good_deck_ratio), !is.na(skip_ratio))
+
+if(nrow(plot_data) > 0) {
+  # Create scatter plot
+  ggplot(plot_data, aes(x = good_deck_ratio, y = skip_ratio, color = total_money)) +
+    geom_point(alpha = 0.7) +
+    scale_color_viridis_c() +
+    theme_minimal() +
+    labs(title = "Relationship Between Good Deck Selection and Skip Ratio",
+         subtitle = "Color indicates total money won",
+         x = "Good Deck Ratio", y = "Skip Ratio",
+         color = "Total Money")
+  
+  # Define strategy groups
+  strategies <- participant_summary %>%
+    filter(!is.na(good_deck_ratio), !is.na(skip_ratio)) %>%
+    mutate(
+      strategy_group = case_when(
+        good_deck_ratio > 0.7 & skip_ratio < 0.3 ~ "Good deck preferrers",
+        good_deck_ratio < 0.3 & skip_ratio < 0.3 ~ "Bad deck preferrers",
+        skip_ratio > 0.7 ~ "Frequent skippers",
+        TRUE ~ "Mixed strategy"
+      )
+    )
+  
+  # Calculate the proportion of each strategy
+  strategy_counts <- strategies %>%
+    group_by(strategy_group) %>%
+    summarize(
+      count = n(),
+      proportion = n() / nrow(strategies),
+      mean_money = mean(total_money, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Display strategy statistics
+  kable(strategy_counts, 
+        caption = "Distribution of Strategy Groups") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  
+  # Create a bar plot of strategy distribution
+  ggplot(strategy_counts, aes(x = strategy_group, y = proportion, fill = mean_money)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(label = sprintf("%.1f%%", proportion * 100)), vjust = -0.5) +
+    scale_fill_viridis_c() +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Distribution of Strategy Groups",
+         subtitle = "Color indicates mean money won",
+         x = "", y = "Proportion",
+         fill = "Mean Money")
+}
+```
+
+# Individual Learning Rates
+
+```{r learning-rates}
+# Calculate individual learning rates for good deck selection
+learning_rates <- block_data %>%
+  filter(!is_training) %>%  # Exclude training block
+  group_by(sid) %>%
+  do({
+    model <- lm(block_good_deck_ratio ~ count_igtblocks, data = .)
+    data.frame(
+      learning_slope = coef(model)[2],
+      learning_intercept = coef(model)[1],
+      r_squared = summary(model)$r.squared
+    )
+  }) %>%
+  ungroup()
+
+# Display learning rate statistics
+learning_rate_stats <- learning_rates %>%
+  summarize(
+    mean_slope = mean(learning_slope, na.rm = TRUE),
+    sd_slope = sd(learning_slope, na.rm = TRUE),
+    median_slope = median(learning_slope, na.rm = TRUE),
+    min_slope = min(learning_slope, na.rm = TRUE),
+    max_slope = max(learning_slope, na.rm = TRUE),
+    pct_positive = mean(learning_slope > 0, na.rm = TRUE) * 100,
+    mean_r_squared = mean(r_squared, na.rm = TRUE)
+  )
+
+kable(learning_rate_stats, 
+      caption = "Individual Learning Rate Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Distribution of learning slopes
+ggplot(learning_rates, aes(x = learning_slope)) +
+  geom_histogram(binwidth = 0.01, fill = "lightblue", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Distribution of Individual Learning Slopes",
+       subtitle = "Positive values indicate improvement in good deck selection over blocks",
+       x = "Learning Slope", y = "Count")
+
+# Relationship between learning slope and total money
+ggplot(left_join(learning_rates, participant_summary, by = "sid"), 
+       aes(x = learning_slope, y = total_money)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", color = "blue") +
+  theme_minimal() +
+  labs(title = "Relationship Between Learning Rate and Total Money Won",
+       x = "Learning Slope", y = "Total Money Won")
+```
+
+# Summary Statistics for PPC Comparison
+
+This section provides concise summary statistics for all key metrics that are used in posterior predictive checks (PPC).
+
+```{r ppc-stats}
+# Create summary tables for key RL metrics
+rl_metrics_summary <- participant_summary %>%
+  select(total_money, good_deck_ratio, skip_ratio) %>%
+  pivot_longer(cols = everything(), names_to = "metric", values_to = "value") %>%
+  group_by(metric) %>%
+  summarize(
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q25 = quantile(value, 0.25, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    q75 = quantile(value, 0.75, na.rm = TRUE),
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create summary tables for key RT metrics
+rt_metrics_summary <- participant_summary %>%
+  select(mean_rt, median_rt, mean_play_rt, median_play_rt, mean_pass_rt, median_pass_rt) %>%
+  pivot_longer(cols = everything(), names_to = "metric", values_to = "value") %>%
+  group_by(metric) %>%
+  summarize(
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q25 = quantile(value, 0.25, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    q75 = quantile(value, 0.75, na.rm = TRUE),
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create summary tables for RT quantiles
+rt_quantiles_summary <- participant_summary %>%
+  select(contains("_q")) %>%
+  pivot_longer(cols = everything(), names_to = "metric", values_to = "value") %>%
+  group_by(metric) %>%
+  summarize(
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    q025 = quantile(value, 0.025, na.rm = TRUE),
+    q25 = quantile(value, 0.25, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    q75 = quantile(value, 0.75, na.rm = TRUE),
+    q975 = quantile(value, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display all summary tables
+kable(rl_metrics_summary, 
+      caption = "Summary Statistics for RL Metrics (for PPC Comparison)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+kable(rt_metrics_summary, 
+      caption = "Summary Statistics for RT Metrics (for PPC Comparison)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+kable(rt_quantiles_summary, 
+      caption = "Summary Statistics for RT Quantiles (for PPC Comparison)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create a comprehensive table for block-level metrics (test blocks only)
+block_level_metrics <- test_block_data %>%
+  group_by(count_igtblocks) %>%
+  summarize(
+    block_good_deck_ratio_mean = mean(block_good_deck_ratio, na.rm = TRUE),
+    block_good_deck_ratio_sd = sd(block_good_deck_ratio, na.rm = TRUE),
+    block_skip_ratio_mean = mean(block_skip_ratio, na.rm = TRUE),
+    block_skip_ratio_sd = sd(block_skip_ratio, na.rm = TRUE),
+    block_money_mean = mean(block_money, na.rm = TRUE),
+    block_money_sd = sd(block_money, na.rm = TRUE),
+    block_rt_mean = mean(block_mean_rt, na.rm = TRUE),
+    block_rt_sd = sd(block_mean_rt, na.rm = TRUE),
+    block_play_rt_mean = mean(block_mean_play_rt, na.rm = TRUE),
+    block_play_rt_sd = sd(block_mean_play_rt, na.rm = TRUE),
+    block_pass_rt_mean = mean(block_mean_pass_rt, na.rm = TRUE),
+    block_pass_rt_sd = sd(block_mean_pass_rt, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display block-level metrics for PPC
+kable(block_level_metrics, 
+      caption = "Block-Level Metrics for PPC Comparison (Test Blocks Only)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Create deck-specific metrics for PPC
+deck_ppc_metrics <- clean_trial_data %>%
+  filter(!is_training) %>%  # Exclude training block
+  group_by(deck_label) %>%
+  summarize(
+    selection_ratio_mean = mean(play_choice, na.rm = TRUE),
+    selection_ratio_sd = sd(play_choice, na.rm = TRUE),
+    rt_mean = mean(rt, na.rm = TRUE),
+    rt_sd = sd(rt, na.rm = TRUE),
+    rt_play_mean = mean(rt[play_choice], na.rm = TRUE),
+    rt_play_sd = sd(rt[play_choice], na.rm = TRUE),
+    rt_pass_mean = mean(rt[!play_choice], na.rm = TRUE),
+    rt_pass_sd = sd(rt[!play_choice], na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display deck-specific metrics for PPC
+kable(deck_ppc_metrics, 
+      caption = "Deck-Specific Metrics for PPC Comparison (Test Blocks Only)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# The summary statistics can be saved to an RDS file for use in PPC analysis
+# saveRDS(list(
+#   rl_metrics = rl_metrics_summary,
+#   rt_metrics = rt_metrics_summary,
+#   rt_quantiles = rt_quantiles_summary,
+#   block_metrics = block_level_metrics,
+#   deck_metrics = deck_ppc_metrics
+# ), "migt_clean_metrics_for_ppc.rds")
+```
+
+```{r}
+
+```
+

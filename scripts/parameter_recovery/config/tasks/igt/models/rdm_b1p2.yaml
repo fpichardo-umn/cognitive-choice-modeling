@@ -1,0 +1,25 @@
+parameters:
+  boundary1:
+    range: [0, inf]
+    prior: normal(0, 1)
+  boundary:
+    range: [0, inf]
+    prior: normal(0, 1)
+  tau1:
+    range: [RTbound, minRT]
+    prior: normal(0, 1)
+  tau:
+    range: [RTbound, minRT]
+    prior: normal(0, 1)
+  drift_A:
+    range: [0, inf]
+    prior: normal(0, 1)
+  drift_B:
+    range: [0, inf]
+    prior: normal(0, 1)
+  drift_C:
+    range: [0, inf]
+    prior: normal(0, 1)
+  drift_D:
+    range: [0, inf]
+    prior: normal(0, 1)

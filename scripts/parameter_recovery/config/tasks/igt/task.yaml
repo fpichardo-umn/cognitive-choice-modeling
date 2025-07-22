@@ -1,0 +1,36 @@
+name: "igt"
+description: "Standard Iowa Gambling Task"
+
+deck_properties:
+  A:
+    gain: 0.25
+    loss_range: [-0.90, -0.35]
+    prob_gain: 1.00
+    prob_loss: 0.50
+    expected_value: -0.0625
+  B:
+    gain: 0.25
+    loss_range: [-3.25, -3.00]
+    prob_gain: 1.00
+    prob_loss: 0.10
+    expected_value: -0.0625
+  C:
+    gain_range: [0.10, 0.15]
+    loss_range: [-0.20, -0.05]
+    prob_gain: 1.00
+    prob_loss: 0.50
+    expected_value: 0.0625
+  D:
+    gain_range: [0.10, 0.15]
+    loss_range: [-0.65, -0.60]
+    prob_gain: 1.00
+    prob_loss: 0.10
+    expected_value: 0.0625
+
+defaults:
+  n_blocks: 5
+  trials_per_block: 20
+  starting_money: 5.00
+  
+choice_type: "multi-option"  # Standard IGT has 4 choices
+n_options: 4

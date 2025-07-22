@@ -1,0 +1,1660 @@
+---
+title: "Model Comparison Report: igt - luc"
+subtitle: "10_models_15eaa99c"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    code_folding: hide
+    df_print: paged
+params:
+  results_file: "../data/model_comparison_results.rds"
+  task: "igt"
+  cohort: "luc"
+  session: "00"
+  comparison_name: "10_models_15eaa99c"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, 
+                      fig.width = 10, fig.height = 6, dpi = 300)
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(knitr)
+  library(DT)
+  library(plotly)
+  library(here)
+})
+
+# Load results
+results <- readRDS(params$results_file)
+comparison_data <- results$comparison_data
+analysis_results <- results$analysis_results
+models_by_type <- results$models_by_type
+config <- results$config
+
+# Load helper functions
+source(file.path(here::here(), "scripts", "model_comparison", "helpers", "model_comparison_helpers.R"))
+source(file.path(here::here(), "scripts", "model_comparison", "visualization", "comparison_plots.R"))
+source(file.path(here::here(), "scripts", "ppc", "helpers", "task_config.R"))
+```
+
+# Executive Summary
+
+## Key Findings
+
+```{r executive-summary}
+# Create executive summary table
+summary_table <- data.frame(
+  Criterion = character(),
+  Best_Model = character(), 
+  Performance = character(),
+  Notes = character(),
+  stringsAsFactors = FALSE
+)
+
+# Information Criteria Winner
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  best_ic_model <- analysis_results$ic$overall_ranking$model[1]
+  ic_method <- analysis_results$ic$metadata$ic_method
+  delta_col <- grep("^delta_", names(analysis_results$ic$overall_ranking), value = TRUE)[1]
+  best_delta <- analysis_results$ic$overall_ranking[[delta_col]][1]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Criterion = paste("Information Criteria (", toupper(ic_method), ")", sep = ""),
+    Best_Model = best_ic_model,
+    Performance = sprintf("Δ%s = %.2f", toupper(ic_method), best_delta),
+    Notes = analysis_results$ic$overall_ranking$performance_tier[1]
+  ))
+}
+
+# Parameter Recovery Winner
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
+  best_recovery_model <- analysis_results$recovery$model_summary$model[1]
+  best_recovery_score <- analysis_results$recovery$model_summary$mean_correlation[1]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Criterion = "Parameter Recovery",
+    Best_Model = best_recovery_model,
+    Performance = sprintf("r = %.3f", best_recovery_score),
+    Notes = analysis_results$recovery$model_summary$recovery_quality[1]
+  ))
+}
+
+# PPC Winner
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
+  best_ppc_model <- analysis_results$ppc$model_summary$model[1]
+  best_ppc_score <- analysis_results$ppc$model_summary$overall_proportion_extreme[1]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Criterion = "Posterior Predictive Checks",
+    Best_Model = best_ppc_model,
+    Performance = sprintf("%.1f%% extreme", best_ppc_score * 100),
+    Notes = analysis_results$ppc$model_summary$model_quality[1]
+  ))
+}
+
+kable(summary_table, caption = "Model Comparison Summary") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Models Analyzed
+
+```{r models-analyzed}
+models_table <- data.frame(
+  Model = names(comparison_data),
+  Type = sapply(names(comparison_data), classify_model_type),
+  Has_Recovery = sapply(comparison_data, function(x) !is.null(x$recovery)),
+  Has_PPC = sapply(comparison_data, function(x) !is.null(x$ppc)),
+  Has_IC = sapply(comparison_data, function(x) !is.null(x$ic)),
+  stringsAsFactors = FALSE
+)
+
+models_table$Complete <- models_table$Has_Recovery & models_table$Has_PPC & models_table$Has_IC
+
+kable(models_table, caption = "Available Data by Model") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  kableExtra::column_spec(6, background = ifelse(models_table$Complete, "#d4edda", "#f8d7da"))
+```
+
+# Information Criteria Analysis
+
+## Information Criteria Rankings
+
+```{r ic-ranking-table}
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  ic_method <- analysis_results$ic$metadata$ic_method
+  
+  # Display main ranking table
+  display_cols <- c("rank", "model", "model_type")
+  display_cols <- c(display_cols, grep("estimate$|^delta_|_se$|model_weight|performance_tier", 
+                                      names(ic_ranking), value = TRUE))
+  
+  ranking_table <- ic_ranking[display_cols] %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(ranking_table, 
+                caption = paste("Model Ranking by", toupper(ic_method)),
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("performance_tier",
+                    backgroundColor = DT::styleEqual(
+                      c("top_tier", "competitive", "considerable_difference", "strong_difference", "decisive_difference"),
+                      c("#d4edda", "#fff3cd", "#ffeaa7", "#fdcb6e", "#e17055")
+                    ))
+} else {
+  cat("No information criteria results available.")
+}
+```
+
+## Model Selection Evidence
+
+```{r ic-evidence}
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  
+  # Create evidence strength summary
+  evidence_summary <- ic_ranking %>%
+    mutate(
+      evidence_against_best = case_when(
+        performance_tier == "top_tier" ~ "Negligible difference",
+        performance_tier == "competitive" ~ "Weak evidence against",
+        performance_tier == "considerable_difference" ~ "Moderate evidence against", 
+        performance_tier == "strong_difference" ~ "Strong evidence against",
+        performance_tier == "decisive_difference" ~ "Decisive evidence against",
+        TRUE ~ "Unknown"
+      )
+    ) %>%
+    count(evidence_against_best, model_type) %>%
+    pivot_wider(names_from = model_type, values_from = n, values_fill = 0)
+  
+  kable(evidence_summary, caption = "Evidence Strength Summary") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
+
+## Information Criteria Plots
+
+```{r ic-plots, fig.height=8}
+if ("ic" %in% names(analysis_results)) {
+  # Create IC plots
+  ic_plots <- create_ic_plots(analysis_results$ic, models_by_type)
+  
+  # Display ranking plot
+  if (!is.null(ic_plots$ranking_plot)) {
+    print(ic_plots$ranking_plot)
+  }
+  
+  # Display weights plot
+  if (!is.null(ic_plots$weights_plot)) {
+    print(ic_plots$weights_plot)
+  }
+  
+  # Display complexity plot if available
+  if (!is.null(ic_plots$complexity_plot)) {
+    print(ic_plots$complexity_plot)
+  }
+}
+```
+
+## Model Complexity Analysis
+
+```{r complexity-analysis}
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$complexity_analysis) > 0) {
+  complexity_table <- analysis_results$ic$complexity_analysis %>%
+    select(model, model_type, p_eff, complexity_category) %>%
+    arrange(desc(p_eff))
+  
+  kable(complexity_table, caption = "Model Complexity Analysis") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
+
+# Parameter Recovery Analysis
+
+## Parameter Recovery by Construct Groups
+
+```{r recovery-group-summary}
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$group_summary) > 0) {
+  recovery_summary <- analysis_results$recovery$group_summary %>%
+    arrange(desc(mean_correlation)) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(recovery_summary, 
+                caption = "Parameter Recovery Quality by Construct Group",
+                options = list(pageLength = 10, scrollX = TRUE)) %>%
+    DT::formatStyle("recovery_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#f8d7da")
+                    ))
+} else {
+  cat("No parameter recovery results available.")
+}
+```
+
+## Recovery Performance by Model
+
+```{r recovery-model-summary}
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
+  model_recovery <- analysis_results$recovery$model_summary %>%
+    arrange(desc(mean_correlation)) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(model_recovery, 
+                caption = "Parameter Recovery Quality by Model",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("recovery_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#f8d7da")
+                    ))
+}
+```
+
+## Parameter Recovery Visualizations
+
+```{r recovery-plots, fig.height=10}
+if ("recovery" %in% names(analysis_results)) {
+  # Create recovery plots
+  recovery_plots <- generate_all_recovery_plots(analysis_results$recovery, models_by_type)
+  
+  # Display group heatmap
+  if (!is.null(recovery_plots$heatmap)) {
+    print(recovery_plots$heatmap)
+  }
+  
+  # Display model comparison
+  if (!is.null(recovery_plots$comparison)) {
+    print(recovery_plots$comparison)
+  }
+  
+  # Display type comparison
+  if (!is.null(recovery_plots$by_type)) {
+    print(recovery_plots$by_type)
+  }
+}
+```
+
+## Best and Worst Performing Groups
+
+```{r recovery-best-worst}
+if ("recovery" %in% names(analysis_results) && 
+    "best_worst_groups" %in% names(analysis_results$recovery)) {
+  
+  best_worst <- analysis_results$recovery$best_worst_groups
+  
+  # Best groups
+  if (nrow(best_worst$best_groups) > 0) {
+    cat("### Best Recovered Parameter Groupsnn")
+    best_table <- best_worst$best_groups %>%
+      select(group, mean_correlation, recovery_quality, n_models) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(best_table, caption = "Top Parameter Groups by Recovery Quality") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    cat("nn")
+  }
+  
+  # Worst groups
+  if (nrow(best_worst$worst_groups) > 0) {
+    cat("### Most Challenging Parameter Groupsnn")
+    worst_table <- best_worst$worst_groups %>%
+      select(group, mean_correlation, recovery_quality, n_models) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(worst_table, caption = "Most Challenging Parameter Groups") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    cat("nn")
+  }
+  
+  # Poor recovery groups
+  if (nrow(best_worst$poor_groups) > 0) {
+    cat("### Parameter Groups with Poor Recoverynn")
+    poor_table <- best_worst$poor_groups %>%
+      select(group, mean_correlation, recovery_quality, n_models) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(poor_table, caption = "Groups with Poor Recovery (r < 0.4)") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    cat("nn")
+  }
+}
+```
+
+## Cross-Model Type Comparison
+
+```{r recovery-cross-model}
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$cross_model_comparison) > 0) {
+  cross_comparison <- analysis_results$recovery$cross_model_comparison %>%
+    arrange(model_type, desc(mean_correlation)) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(cross_comparison, 
+                caption = "Parameter Recovery by Model Type and Group",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("recovery_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#f8d7da")
+                    ))
+}
+```
+
+## Parameter Recovery Insights
+
+```{r recovery-insights}
+if ("recovery" %in% names(analysis_results)) {
+  cat("### Key Findingsnn")
+  
+  # Overall insights
+  if (nrow(analysis_results$recovery$group_summary) > 0) {
+    best_group <- analysis_results$recovery$group_summary$group[1]
+    best_corr <- analysis_results$recovery$group_summary$mean_correlation[1]
+    worst_group <- tail(analysis_results$recovery$group_summary$group, 1)
+    worst_corr <- tail(analysis_results$recovery$group_summary$mean_correlation, 1)
+    
+    cat("- **Best recovered construct:** ", best_group, " (r = ", round(best_corr, 3), ")n")
+    cat("- **Most challenging construct:** ", worst_group, " (r = ", round(worst_corr, 3), ")nn")
+  }
+  
+  # Model insights
+  if (nrow(analysis_results$recovery$model_summary) > 0) {
+    best_model <- analysis_results$recovery$model_summary$model[1]
+    best_model_corr <- analysis_results$recovery$model_summary$mean_correlation[1]
+    
+    cat("- **Best overall recovery:** ", best_model, " (mean r = ", round(best_model_corr, 3), ")nn")
+  }
+  
+  # Type insights
+  if (nrow(analysis_results$recovery$cross_model_comparison) > 0) {
+    type_summary <- analysis_results$recovery$cross_model_comparison %>%
+      group_by(model_type) %>%
+      summarise(mean_recovery = mean(mean_correlation, na.rm = TRUE), .groups = "drop") %>%
+      arrange(desc(mean_recovery))
+    
+    if (nrow(type_summary) > 1) {
+      best_type <- type_summary$model_type[1]
+      best_type_corr <- type_summary$mean_recovery[1]
+      cat("- **Best model type for recovery:** ", best_type, " (mean r = ", round(best_type_corr, 3), ")nn")
+    }
+  }
+}
+```
+
+# Posterior Predictive Checks
+
+## PPC Performance by Behavioral Domain
+
+```{r ppc-domain-summary}
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$domain_summary) > 0) {
+  domain_summary <- analysis_results$ppc$domain_summary %>%
+    arrange(proportion_extreme) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(domain_summary, 
+                caption = "PPC Performance by Behavioral Domain",
+                options = list(pageLength = 10, scrollX = TRUE)) %>%
+    DT::formatStyle("domain_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "concerning", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#f8d7da")
+                    ))
+} else {
+  cat("No PPC domain results available.")
+}
+```
+
+## PPC Performance by Model
+
+```{r ppc-model-summary}
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
+  model_ppc <- analysis_results$ppc$model_summary %>%
+    arrange(overall_proportion_extreme) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(model_ppc, 
+                caption = "PPC Performance by Model",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("model_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "concerning", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#f8d7da")
+                    ))
+}
+```
+
+## PPC Visualizations
+
+```{r ppc-plots, fig.height=10}
+if ("ppc" %in% names(analysis_results)) {
+  # Create PPC plots
+  ppc_plots <- generate_all_ppc_plots(analysis_results$ppc, models_by_type, params$task)
+  
+  # Display domain heatmap
+  if (!is.null(ppc_plots$domain_heatmap)) {
+    print(ppc_plots$domain_heatmap)
+  }
+  
+  # Display extreme failures
+  if (!is.null(ppc_plots$failure_summary)) {
+    print(ppc_plots$failure_summary)
+  }
+  
+  # Display behavioral patterns
+  if (!is.null(ppc_plots$domain_difficulty)) {
+    print(ppc_plots$domain_difficulty)
+  }
+}
+```
+
+## Extreme PPC Failures
+
+```{r ppc-extreme-failures}
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$extreme_failures) > 0) {
+  # Summarize extreme failures
+  failure_summary <- analysis_results$ppc$extreme_failures %>%
+    count(model, model_type, failure_severity, name = "n_failures") %>%
+    pivot_wider(names_from = failure_severity, values_from = n_failures, values_fill = 0) %>%
+    arrange(desc(severe), desc(moderate), desc(mild))
+  
+  DT::datatable(failure_summary, 
+                caption = "Extreme PPC Failures by Model and Severity",
+                options = list(pageLength = 15, scrollX = TRUE))
+  
+  # Most problematic statistics
+  cat("nn### Most Problematic Statisticsnn")
+  
+  problem_stats <- analysis_results$ppc$extreme_failures %>%
+    count(statistic, failure_severity) %>%
+    pivot_wider(names_from = failure_severity, values_from = n, values_fill = 0) %>%
+    mutate(total_failures = severe + moderate + mild) %>%
+    arrange(desc(total_failures)) %>%
+    head(10)
+  
+  kable(problem_stats, caption = "Statistics with Most Extreme PPP Failures") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+  
+} else {
+  cat("No extreme PPC failures detected across all models.")
+}
+```
+
+## Behavioral Pattern Analysis
+
+```{r ppc-behavioral-patterns}
+if ("ppc" %in% names(analysis_results) && "behavioral_patterns" %in% names(analysis_results$ppc)) {
+  patterns <- analysis_results$ppc$behavioral_patterns
+  
+  # Difficult domains
+  if ("difficult_domains" %in% names(patterns) && nrow(patterns$difficult_domains) > 0) {
+    cat("### Most Challenging Behavioral Domainsnn")
+    
+    difficult_table <- patterns$difficult_domains %>%
+      arrange(desc(mean_proportion_extreme)) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(difficult_table, caption = "Challenging Domains by Model Type") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    cat("nn")
+  }
+  
+  # RT performance by type (if available)
+  if ("rt_performance_by_type" %in% names(patterns) && nrow(patterns$rt_performance_by_type) > 0) {
+    cat("### RT Performance by Model Typenn")
+    
+    rt_table <- patterns$rt_performance_by_type %>%
+      arrange(mean_proportion_extreme) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(rt_table, caption = "RT Pattern Reproduction by Model Type") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    cat("nn")
+  }
+  
+  # Learning performance by type (if available)
+  if ("learning_performance_by_type" %in% names(patterns) && nrow(patterns$learning_performance_by_type) > 0) {
+    cat("### Learning Dynamics Performance by Model Typenn")
+    
+    learning_table <- patterns$learning_performance_by_type %>%
+      arrange(mean_proportion_extreme) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(learning_table, caption = "Learning Pattern Reproduction by Model Type") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    cat("nn")
+  }
+  
+  # Best/worst models by domain
+  if ("model_performance_by_domain" %in% names(patterns) && nrow(patterns$model_performance_by_domain) > 0) {
+    cat("### Best and Worst Models by Domainnn")
+    
+    domain_table <- patterns$model_performance_by_domain %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(domain_table, caption = "Model Performance Range by Behavioral Domain") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+  }
+}
+```
+
+## Task-Specific PPC Analysis
+
+```{r ppc-task-specific}
+if ("ppc" %in% names(analysis_results) && "task_specific_analysis" %in% names(analysis_results$ppc)) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if (params$task == "igt_mod") {
+    # mIGT-specific analysis
+    if ("play_pass_analysis" %in% names(task_analysis) && nrow(task_analysis$play_pass_analysis) > 0) {
+      cat("### Play/Pass Decision Patternsnn")
+      
+      play_pass_table <- task_analysis$play_pass_analysis %>%
+        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
+        arrange(model, statistic)
+      
+      kable(play_pass_table, caption = "Play/Pass PPC Performance by Model") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+      cat("nn")
+    }
+    
+    if ("deck_preference_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_preference_analysis) > 0) {
+      cat("### Deck Preference Patternsnn")
+      
+      deck_table <- task_analysis$deck_preference_analysis %>%
+        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
+        arrange(model, deck)
+      
+      kable(deck_table, caption = "Deck-Specific PPC Performance") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    }
+    
+  } else if (params$task == "igt") {
+    # IGT-specific analysis
+    if ("deck_selection_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_selection_analysis) > 0) {
+      cat("### Deck Selection Patternsnn")
+      
+      deck_table <- task_analysis$deck_selection_analysis %>%
+        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
+        arrange(model, statistic)
+      
+      kable(deck_table, caption = "Deck Selection PPC Performance") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+      cat("nn")
+    }
+    
+    if ("strategy_analysis" %in% names(task_analysis) && nrow(task_analysis$strategy_analysis) > 0) {
+      cat("### Strategy Pattern Analysisnn")
+      
+      strategy_table <- task_analysis$strategy_analysis %>%
+        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
+        arrange(model, statistic)
+      
+      kable(strategy_table, caption = "Strategy-Related PPC Performance") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    }
+  }
+}
+```
+
+## PPC Insights Summary
+
+```{r ppc-insights}
+if ("ppc" %in% names(analysis_results)) {
+  cat("### Key PPC Findingsnn")
+  
+  # Best performing models
+  if (nrow(analysis_results$ppc$model_summary) > 0) {
+    best_ppc_model <- analysis_results$ppc$model_summary$model[1]
+    best_ppc_score <- analysis_results$ppc$model_summary$overall_proportion_extreme[1]
+    
+    cat("- **Best overall PPC performance:** ", best_ppc_model, " (", round(best_ppc_score * 100, 1), "% extreme PPP)n")
+  }
+  
+  # Most challenging domains
+  if (nrow(analysis_results$ppc$domain_summary) > 0) {
+    difficult_domains <- analysis_results$ppc$domain_summary %>%
+      arrange(desc(proportion_extreme)) %>%
+      head(3) %>%
+      pull(domain)
+    
+    cat("- **Most challenging behavioral domains:** ", paste(difficult_domains, collapse = ", "), "n")
+  }
+  
+  # Overall failure rate
+  if (nrow(analysis_results$ppc$extreme_failures) > 0) {
+    total_statistics <- sum(analysis_results$ppc$model_summary$total_statistics, na.rm = TRUE)
+    total_failures <- nrow(analysis_results$ppc$extreme_failures)
+    failure_rate <- round((total_failures / total_statistics) * 100, 1)
+    
+    cat("- **Overall extreme failure rate:** ", failure_rate, "% of all statisticsn")
+  }
+  
+  cat("n")
+}
+```
+
+# Model Type Comparisons
+
+```{r model-type-setup}
+# Calculate cross-type performance metrics
+type_summary <- data.frame()
+
+if (length(models_by_type) > 1) {
+  for (type_name in names(models_by_type)) {
+    type_models <- models_by_type[[type_name]]
+    
+    if (length(type_models) == 0) next
+    
+    type_row <- data.frame(
+      model_type = type_name,
+      n_models = length(type_models),
+      stringsAsFactors = FALSE
+    )
+    
+    # IC performance
+    if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+      type_ic <- analysis_results$ic$overall_ranking %>%
+        filter(model %in% type_models)
+      
+      if (nrow(type_ic) > 0) {
+        # Get the delta column name dynamically
+        delta_col <- grep("^delta_", names(type_ic), value = TRUE)[1]
+        type_row$mean_delta_ic <- mean(type_ic[[delta_col]], na.rm = TRUE)
+        type_row$best_ic_rank <- min(type_ic$rank, na.rm = TRUE)
+        type_row$top_tier_models <- sum(type_ic$performance_tier == "top_tier", na.rm = TRUE)
+      }
+    }
+    
+    # Recovery performance
+    if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
+      type_recovery <- analysis_results$recovery$model_summary %>%
+        filter(model %in% type_models)
+      
+      if (nrow(type_recovery) > 0) {
+        type_row$mean_recovery_correlation <- mean(type_recovery$mean_correlation, na.rm = TRUE)
+        type_row$excellent_recovery_groups <- sum(type_recovery$recovery_quality == "excellent", na.rm = TRUE)
+      }
+    }
+    
+    # PPC performance
+    if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
+      type_ppc <- analysis_results$ppc$model_summary %>%
+        filter(model %in% type_models)
+      
+      if (nrow(type_ppc) > 0) {
+        type_row$mean_ppc_extreme <- mean(type_ppc$overall_proportion_extreme, na.rm = TRUE)
+        type_row$excellent_ppc_models <- sum(type_ppc$model_quality == "excellent", na.rm = TRUE)
+      }
+    }
+    
+    type_summary <- rbind(type_summary, type_row)
+  }
+}
+```
+
+## Performance Overview by Model Type
+
+```{r model-type-overview}
+if (nrow(type_summary) > 0) {
+  display_summary <- type_summary %>%
+    mutate(across(where(is.numeric), ~round(.x, 3))) %>%
+    arrange(mean_delta_ic %||% 999)  # Sort by IC performance if available
+  
+  DT::datatable(display_summary, 
+                caption = "Model Type Performance Summary",
+                options = list(pageLength = 10, scrollX = TRUE)) %>%
+    DT::formatRound(columns = which(sapply(display_summary, is.numeric)), digits = 3)
+} else {
+  cat("Only one model type available for comparison.")
+}
+```
+
+## Information Criteria by Model Type
+
+```{r ic-by-type}
+if ("ic" %in% names(analysis_results) && length(analysis_results$ic$by_type_ranking) > 0) {
+  
+  # Create combined ranking plot
+  combined_rankings <- bind_rows(analysis_results$ic$by_type_ranking, .id = "model_type_group")
+  
+  if (nrow(combined_rankings) > 0) {
+    # Get delta column name
+    delta_col <- grep("^delta_", names(combined_rankings), value = TRUE)[1]
+    
+    # Create plot
+    type_ic_plot <- combined_rankings %>%
+      ggplot(aes(x = !!sym(delta_col), y = reorder(model, !!sym(delta_col)), color = model_type_group)) +
+      geom_point(size = 3) +
+      geom_vline(xintercept = c(2, 4, 7, 10), linetype = "dashed", alpha = 0.5) +
+      facet_wrap(~model_type_group, scales = "free_y", ncol = 1) +
+      scale_color_viridis_d(option = "viridis") +
+      labs(
+        title = "Information Criteria Performance by Model Type",
+        x = paste("Δ", toupper(gsub("delta_", "", delta_col))),
+        y = "Model",
+        color = "Model Type"
+      ) +
+      theme_minimal() +
+      theme(legend.position = "none")
+    
+    print(type_ic_plot)
+  }
+  
+  # Summary table by type
+  ic_type_summary <- combined_rankings %>%
+    group_by(model_type_group) %>%
+    summarise(
+      n_models = n(),
+      best_rank = min(rank, na.rm = TRUE),
+      mean_delta_ic = mean(!!sym(delta_col), na.rm = TRUE),
+      top_tier_count = sum(performance_tier == "top_tier", na.rm = TRUE),
+      competitive_count = sum(performance_tier %in% c("top_tier", "competitive"), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(mean_delta_ic)
+  
+  kable(ic_type_summary, 
+        caption = "Information Criteria Summary by Model Type",
+        digits = 3) %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
+
+## Parameter Recovery by Model Type
+
+```{r recovery-by-type}
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$cross_model_comparison) > 0) {
+  
+  # Recovery performance by type and group
+  recovery_type_plot <- analysis_results$recovery$cross_model_comparison %>%
+    ggplot(aes(x = group, y = mean_correlation, fill = model_type)) +
+    geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
+    geom_errorbar(aes(ymin = mean_correlation - sd_correlation, 
+                      ymax = mean_correlation + sd_correlation),
+                  position = position_dodge(width = 0.8), width = 0.3) +
+    scale_fill_viridis_d(name = "Model Type", option = "viridis") +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+    labs(
+      title = "Parameter Recovery by Model Type and Construct Group",
+      x = "Parameter Group",
+      y = "Mean Recovery Correlation",
+      caption = "Error bars show ±1 SD across models"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom"
+    )
+  
+  print(recovery_type_plot)
+  
+  # Summary statistics
+  recovery_type_summary <- analysis_results$recovery$cross_model_comparison %>%
+    group_by(model_type) %>%
+    summarise(
+      n_groups = n_distinct(group),
+      n_models = first(n_models),
+      overall_mean_correlation = mean(mean_correlation, na.rm = TRUE),
+      excellent_groups = sum(recovery_quality == "excellent", na.rm = TRUE),
+      good_or_better_groups = sum(recovery_quality %in% c("excellent", "good"), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(overall_mean_correlation))
+  
+  kable(recovery_type_summary, 
+        caption = "Parameter Recovery Summary by Model Type",
+        digits = 3) %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
+
+## PPC Performance by Model Type
+
+```{r ppc-by-type}
+if ("ppc" %in% names(analysis_results) && "behavioral_patterns" %in% names(analysis_results$ppc) &&
+    "difficult_domains" %in% names(analysis_results$ppc$behavioral_patterns)) {
+  
+  difficult_domains <- analysis_results$ppc$behavioral_patterns$difficult_domains
+  
+  if (nrow(difficult_domains) > 0) {
+    # PPC performance by type and domain
+    ppc_type_plot <- difficult_domains %>%
+      ggplot(aes(x = domain, y = mean_proportion_extreme, fill = model_type)) +
+      geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
+      scale_fill_viridis_d(name = "Model Type", option = "viridis") +
+      scale_y_continuous(labels = scales::percent_format()) +
+      labs(
+        title = "PPC Extreme Failure Rate by Model Type and Domain",
+        x = "Behavioral Domain",
+        y = "Mean Proportion Extreme PPP",
+        caption = "Lower values indicate better performance"
+      ) +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom"
+      )
+    
+    print(ppc_type_plot)
+  }
+  
+  # Summary by type
+  if (nrow(analysis_results$ppc$model_summary) > 0) {
+    ppc_type_summary <- analysis_results$ppc$model_summary %>%
+      group_by(model_type) %>%
+      summarise(
+        n_models = n(),
+        mean_proportion_extreme = mean(overall_proportion_extreme, na.rm = TRUE),
+        excellent_models = sum(model_quality == "excellent", na.rm = TRUE),
+        good_or_better_models = sum(model_quality %in% c("excellent", "good"), na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(mean_proportion_extreme)
+    
+    kable(ppc_type_summary, 
+          caption = "PPC Performance Summary by Model Type",
+          digits = 3) %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+  }
+}
+```
+
+## Model Type Capabilities and Recommendations
+
+### Specialized Capabilities by Model Type
+
+```{r specialized-capabilities, results='asis'}
+if (nrow(type_summary) > 0) {
+  for (i in 1:nrow(type_summary)) {
+    type_name <- type_summary$model_type[i]
+    cat("#### ", toupper(type_name), " Modelsnn")
+    
+    # Describe capabilities
+    if (type_name == "RL") {
+      cat("**Specialized for:** Choice patterns, learning dynamics, strategy analysisnn")
+      cat("**Strengths:**n")
+      cat("- Model learning and decision-making processesn")
+      cat("- Capture individual differences in learning parametersn")
+      cat("- Predict choice sequences and strategiesnn")
+      cat("**Limitations:**n")
+      cat("- Cannot model response time distributionsn")
+      cat("- May miss speed-accuracy tradeoffsnn")
+      
+    } else if (type_name == "SSM") {
+      cat("**Specialized for:** Response time patterns, decision dynamicsnn")
+      cat("**Strengths:**n")
+      cat("- Model complete response time distributionsn")
+      cat("- Capture speed-accuracy tradeoffsn")
+      cat("- Provide insights into decision processesnn")
+      cat("**Limitations:**n")
+      cat("- Limited learning mechanismsn")
+      cat("- May not capture complex choice strategiesnn")
+      
+    } else if (type_name == "hybrid") {
+      cat("**Specialized for:** Integrated choice and RT modelingnn")
+      cat("**Strengths:**n")
+      cat("- Model both choices and response timesn")
+      cat("- Capture learning and decision dynamicsn")
+      cat("- Most comprehensive behavioral accountnn")
+      cat("**Limitations:**n")
+      cat("- Higher complexity and parameter countn")
+      cat("- Potentially more difficult parameter recoverynn")
+    }
+    
+    # Performance summary
+    if (!is.na(type_summary$mean_delta_ic[i])) {
+      cat("**IC Performance:** Mean Δ", analysis_results$ic$metadata$ic_method %||% "IC", " = ", round(type_summary$mean_delta_ic[i], 2), "n")
+    }
+    
+    if (!is.na(type_summary$mean_recovery_correlation[i])) {
+      cat("**Recovery Performance:** Mean correlation = ", round(type_summary$mean_recovery_correlation[i], 3), "n")
+    }
+    
+    if (!is.na(type_summary$mean_ppc_extreme[i])) {
+      cat("**PPC Performance:** ", round(type_summary$mean_ppc_extreme[i] * 100, 1), "% extreme failuresn")
+    }
+    
+    cat("n---nn")
+  }
+}
+```
+
+### Cross-Type Model Comparison
+
+```{r cross-type-comparison, results='asis'}
+if (nrow(type_summary) > 1) {
+  cat("### Winner by Analysis Typenn")
+  
+  winners <- list()
+  
+  # IC winner
+  if ("mean_delta_ic" %in% names(type_summary)) {
+    ic_winner <- type_summary %>%
+      filter(!is.na(mean_delta_ic)) %>%
+      arrange(mean_delta_ic) %>%
+      slice(1) %>%
+      pull(model_type)
+    
+    if (length(ic_winner) > 0) {
+      winners$ic <- paste("**Information Criteria:**", ic_winner)
+    }
+  }
+  
+  # Recovery winner
+  if ("mean_recovery_correlation" %in% names(type_summary)) {
+    recovery_winner <- type_summary %>%
+      filter(!is.na(mean_recovery_correlation)) %>%
+      arrange(desc(mean_recovery_correlation)) %>%
+      slice(1) %>%
+      pull(model_type)
+    
+    if (length(recovery_winner) > 0) {
+      winners$recovery <- paste("**Parameter Recovery:**", recovery_winner)
+    }
+  }
+  
+  # PPC winner
+  if ("mean_ppc_extreme" %in% names(type_summary)) {
+    ppc_winner <- type_summary %>%
+      filter(!is.na(mean_ppc_extreme)) %>%
+      arrange(mean_ppc_extreme) %>%
+      slice(1) %>%
+      pull(model_type)
+    
+    if (length(ppc_winner) > 0) {
+      winners$ppc <- paste("**PPC Performance:**", ppc_winner)
+    }
+  }
+  
+  for (winner in winners) {
+    cat(winner, "nn")
+  }
+  
+  # Overall assessment
+  cat("### Model Type Recommendationsnn")
+  
+  cat("**For choice-only analysis:** Use RL models for computational efficiency and interpretabilitynn")
+  cat("**For RT analysis:** Hybrid models provide the most complete accountnn")
+  cat("**For parameter recovery studies:** Check type-specific recovery quality abovenn")
+  cat("**For model comparison studies:** Include multiple types to assess different aspects of behaviornn")
+}
+```
+
+# Task-Specific Analysis
+
+```{r task-specific-setup}
+# Task-specific analysis based on the task type
+task_config <- get_task_config(params$task)
+```
+
+## Task Overview: {{TASK}}
+
+```{r task-overview, results='asis'}
+if (params$task == "igt_mod") {
+  cat("### Modified Iowa Gambling Task (mIGT)nn")
+  cat("The mIGT is a variant of the classic IGT where participants make **play/pass decisions** ")
+  cat("when shown individual cards from different decks, rather than directly selecting decks.nn")
+  
+  cat("**Key Behavioral Measures:**n")
+  cat("- Play/pass rates overall and by deck typen")
+  cat("- Good deck (3,4) vs bad deck (1,2) play ratesn")
+  cat("- Learning trajectories across blocksn")
+  cat("- Response time patterns for different decisionsnn")
+  
+} else if (params$task == "igt") {
+  cat("### Iowa Gambling Task (IGT)nn")
+  cat("The IGT is a classic decision-making task where participants ")
+  cat("**select from four decks** with different reward/punishment contingencies.nn")
+  
+  cat("**Key Behavioral Measures:**n")
+  cat("- Deck selection frequenciesn")
+  cat("- Good deck (3,4) vs bad deck (1,2) preferencesn")
+  cat("- Win-stay/lose-shift strategiesn")
+  cat("- Learning curves and strategy developmentnn")
+}
+
+cat("**Deck Contingencies:**n")
+cat("- **Deck 1 & 2:** High immediate rewards, larger long-term losses (disadvantageous)n")
+cat("- **Deck 3 & 4:** Lower immediate rewards, smaller long-term losses (advantageous)nn")
+```
+
+## Task-Specific Model Performance
+
+### mIGT-Specific Analysis {.tabset .tabset-pills}
+
+```{r migt-analysis-check}
+show_migt <- params$task == "igt_mod" && 
+            "ppc" %in% names(analysis_results) && 
+            "task_specific_analysis" %in% names(analysis_results$ppc)
+```
+
+#### Play/Pass Decision Modeling
+
+```{r migt-play-pass, eval=show_migt}
+if (show_migt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("play_pass_analysis" %in% names(task_analysis) && nrow(task_analysis$play_pass_analysis) > 0) {
+    play_pass_summary <- task_analysis$play_pass_analysis %>%
+      group_by(model) %>%
+      summarise(
+        mean_ppp_play = mean(mean_ppp[statistic == "play_ratio"], na.rm = TRUE),
+        mean_ppp_good_play = mean(mean_ppp[statistic == "good_play_ratio"], na.rm = TRUE),
+        mean_ppp_bad_play = mean(mean_ppp[statistic == "bad_play_ratio"], na.rm = TRUE),
+        avg_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(avg_extreme_rate) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    DT::datatable(play_pass_summary, 
+                  caption = "Play/Pass Pattern Reproduction by Model",
+                  options = list(pageLength = 10))
+  } else {
+    cat("No play/pass analysis data available.")
+  }
+}
+```
+
+#### Deck Preference Patterns
+
+```{r migt-deck-preference, eval=show_migt}
+if (show_migt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("deck_preference_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_preference_analysis) > 0) {
+    # Deck preference summary
+    deck_summary <- task_analysis$deck_preference_analysis %>%
+      group_by(model, deck_type) %>%
+      summarise(
+        mean_ppp = mean(mean_ppp, na.rm = TRUE),
+        mean_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      pivot_wider(names_from = deck_type, values_from = c(mean_ppp, mean_extreme_rate), 
+                  names_sep = "_") %>%
+      arrange(mean_extreme_rate_good + mean_extreme_rate_bad) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(deck_summary, caption = "Deck Preference Modeling Performance") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    # Best models for each deck type
+    best_good_deck <- task_analysis$deck_preference_analysis %>%
+      filter(deck_type == "good") %>%
+      group_by(model) %>%
+      summarise(avg_extreme = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_extreme) %>%
+      slice(1) %>%
+      pull(model)
+    
+    best_bad_deck <- task_analysis$deck_preference_analysis %>%
+      filter(deck_type == "bad") %>%
+      group_by(model) %>%
+      summarise(avg_extreme = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_extreme) %>%
+      slice(1) %>%
+      pull(model)
+    
+    cat("nn**Best models for deck preferences:**n")
+    cat("- Good deck patterns:", best_good_deck, "n")
+    cat("- Bad deck patterns:", best_bad_deck, "n")
+    
+  } else {
+    cat("No deck preference analysis data available.")
+  }
+}
+```
+
+### IGT-Specific Analysis {.tabset .tabset-pills}
+
+```{r igt-analysis-check}
+show_igt <- params$task == "igt" && 
+           "ppc" %in% names(analysis_results) && 
+           "task_specific_analysis" %in% names(analysis_results$ppc)
+```
+
+#### Deck Selection Modeling
+
+```{r igt-deck-selection, eval=show_igt}
+if (show_igt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("deck_selection_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_selection_analysis) > 0) {
+    deck_selection_summary <- task_analysis$deck_selection_analysis %>%
+      group_by(model) %>%
+      summarise(
+        mean_ppp_individual = mean(mean_ppp[grepl("deck[1-4]_freq", statistic)], na.rm = TRUE),
+        mean_ppp_good_bad = mean(mean_ppp[statistic %in% c("good_deck_freq", "bad_deck_freq")], na.rm = TRUE),
+        avg_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(avg_extreme_rate) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    DT::datatable(deck_selection_summary, 
+                  caption = "Deck Selection Pattern Reproduction by Model",
+                  options = list(pageLength = 10))
+  } else {
+    cat("No deck selection analysis data available.")
+  }
+}
+```
+
+#### Strategy Pattern Modeling
+
+```{r igt-strategy, eval=show_igt}
+if (show_igt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("strategy_analysis" %in% names(task_analysis) && nrow(task_analysis$strategy_analysis) > 0) {
+    strategy_summary <- task_analysis$strategy_analysis %>%
+      group_by(model) %>%
+      summarise(
+        mean_ppp_wsls = mean(mean_ppp[statistic %in% c("win_stay", "lose_shift")], na.rm = TRUE),
+        mean_ppp_perseveration = mean(mean_ppp[statistic == "perseveration"], na.rm = TRUE),
+        avg_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(avg_extreme_rate) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(strategy_summary, caption = "Strategy Pattern Reproduction by Model") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    # Best strategy model
+    best_strategy_model <- strategy_summary$model[1]
+    cat("nn**Best model for strategy patterns:**", best_strategy_model)
+    
+  } else {
+    cat("No strategy analysis data available.")
+  }
+}
+```
+
+## Learning Dynamics Analysis
+
+```{r learning-dynamics}
+# Analyze block-level performance (learning curves)
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$by_domain_and_model) > 0) {
+  learning_domain_data <- analysis_results$ppc$by_domain_and_model %>%
+    filter(domain == "learning_dynamics")
+  
+  if (nrow(learning_domain_data) > 0) {
+    learning_summary <- learning_domain_data %>%
+      arrange(proportion_extreme) %>%
+      select(model, model_type, mean_ppp, proportion_extreme, domain_quality) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(learning_summary, caption = "Learning Dynamics Modeling Performance") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    best_learning_model <- learning_summary$model[1]
+    
+    # Learning performance by model type
+    if (length(unique(learning_summary$model_type)) > 1) {
+      learning_by_type <- learning_summary %>%
+        group_by(model_type) %>%
+        summarise(
+          n_models = n(),
+          mean_proportion_extreme = mean(proportion_extreme, na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        arrange(mean_proportion_extreme)
+      
+      cat("nn### Learning Performance by Model Typenn")
+      kable(learning_by_type, caption = "Learning Dynamics by Model Type") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    }
+    
+    cat("nn**Best model for learning dynamics:**", best_learning_model)
+  }
+} else {
+  cat("No learning dynamics analysis available.")
+}
+```
+
+## Response Time Analysis
+
+```{r rt-analysis, results='asis'}
+# RT analysis for SSM and hybrid models
+rt_capable_models <- names(comparison_data)[sapply(names(comparison_data), function(m) {
+  classify_model_type(m) %in% c("SSM", "hybrid")
+})]
+
+if (length(rt_capable_models) > 0) {
+  cat("### Response Time Modelingnn")
+  cat("Models capable of RT prediction:", paste(rt_capable_models, collapse = ", "), "nn")
+  
+  # RT domain performance
+  if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$by_domain_and_model) > 0) {
+    rt_domain_data <- analysis_results$ppc$by_domain_and_model %>%
+      filter(domain == "rt_patterns", model %in% rt_capable_models)
+    
+    if (nrow(rt_domain_data) > 0) {
+      rt_summary <- rt_domain_data %>%
+        arrange(proportion_extreme) %>%
+        select(model, model_type, mean_ppp, proportion_extreme, domain_quality) %>%
+        mutate(across(where(is.numeric), ~round(.x, 3)))
+      
+      kable(rt_summary, caption = "Response Time Pattern Reproduction") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+      
+      best_rt_model <- rt_summary$model[1]
+      cat("n**Best model for RT patterns:**", best_rt_model, "nn")
+      
+      # RT performance insights
+      if (params$task == "igt_mod") {
+        cat("#### mIGT RT Insightsnn")
+        cat("- RT patterns include overall distributions and play/pass differencesn")
+        cat("- Good models should capture different RT distributions for different decision typesn")
+        cat("- Hybrid models can link choice preferences to decision confidence (via RT)nn")
+      }
+    } else {
+      cat("No RT domain data available for RT-capable models.nn")
+    }
+  }
+} else {
+  cat("### Response Time AnalysisnnNo RT-capable models (SSM or hybrid) included in this comparison.nn")
+}
+```
+
+## Task-Specific Insights and Recommendations
+
+```{r task-insights, results='asis'}
+cat("### Key Task-Specific Findingsnn")
+
+# Generate insights based on task type and available results
+insights <- list()
+
+if (params$task == "igt_mod") {
+  insights$task_nature <- "**mIGT Modeling Challenges:** The play/pass decision structure requires models to capture binary choice processes with deck-specific value learning."
+  
+  if ("ppc" %in% names(analysis_results)) {
+    # Find models that do well on play/pass vs deck preferences
+    domain_performance <- analysis_results$ppc$by_domain_and_model %>%
+      filter(domain %in% c("choice_patterns", "performance")) %>%
+      group_by(model) %>%
+      summarise(avg_performance = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_performance)
+    
+    if (nrow(domain_performance) > 0) {
+      best_choice_model <- domain_performance$model[1]
+      insights$choice_modeling <- paste("**Best choice pattern model:**", best_choice_model, "- excels at capturing play/pass and deck preference patterns")
+    }
+  }
+  
+} else if (params$task == "igt") {
+  insights$task_nature <- "**IGT Modeling Challenges:** Direct deck selection requires models to capture sequential choice patterns and strategy development over time."
+  
+  if ("ppc" %in% names(analysis_results)) {
+    # Find models that balance deck selection and strategy patterns
+    strategy_performance <- analysis_results$ppc$by_domain_and_model %>%
+      filter(domain %in% c("choice_patterns", "strategies")) %>%
+      group_by(model) %>%
+      summarise(avg_performance = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_performance)
+    
+    if (nrow(strategy_performance) > 0) {
+      best_strategy_model <- strategy_performance$model[1]
+      insights$strategy_modeling <- paste("**Best strategy model:**", best_strategy_model, "- captures both deck preferences and strategic patterns")
+    }
+  }
+}
+
+# Model type recommendations for this task
+if (length(rt_capable_models) > 0 && length(rt_capable_models) < length(names(comparison_data))) {
+  insights$model_type_rec <- "**Model Type Recommendation:** Consider hybrid models if RT data is available and important for your research questions, otherwise RL models provide efficient choice modeling."
+} else if (length(rt_capable_models) == 0) {
+  insights$model_type_rec <- "**Model Type Recommendation:** RL models are most appropriate for choice-only analysis of this task."
+} else {
+  insights$model_type_rec <- "**Model Type Recommendation:** All models in this comparison can handle RT data - choose based on other performance criteria."
+}
+
+# Recovery recommendations
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$group_summary) > 0) {
+  best_recovery_groups <- head(analysis_results$recovery$group_summary$group, 2)
+  worst_recovery_groups <- tail(analysis_results$recovery$group_summary$group, 2)
+  
+  insights$recovery_rec <- paste("**Parameter Recovery:** Focus on", paste(best_recovery_groups, collapse = " and "), 
+                                "parameters as they show excellent recovery. Be cautious interpreting", 
+                                paste(worst_recovery_groups, collapse = " and "), "parameters due to poor recovery.")
+}
+
+# Print all insights
+for (i in seq_along(insights)) {
+  cat(insights[[i]], "nn")
+}
+```
+
+## Task-Specific Visualization
+
+```{r task-visualization, fig.height=8}
+# Create task-specific summary plot
+if ("ppc" %in% names(analysis_results)) {
+  
+  if (params$task == "igt_mod") {
+    # mIGT: Focus on play/pass and deck preferences
+    key_domains <- c("choice_patterns", "performance")
+    domain_title <- "mIGT: Choice Patterns and Performance"
+    
+  } else if (params$task == "igt") {
+    # IGT: Focus on deck selection and strategies  
+    key_domains <- c("choice_patterns", "strategies")
+    domain_title <- "IGT: Deck Selection and Strategies"
+  }
+  
+  task_viz_data <- analysis_results$ppc$by_domain_and_model %>%
+    filter(domain %in% key_domains)
+  
+  if (nrow(task_viz_data) > 0) {
+    task_plot <- task_viz_data %>%
+      ggplot(aes(x = model, y = proportion_extreme, fill = domain)) +
+      geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
+      scale_fill_viridis_d(name = "Behavioral Domain", option = "viridis") +
+      scale_y_continuous(labels = scales::percent_format()) +
+      labs(
+        title = paste("Task-Specific Performance:", domain_title),
+        x = "Model",
+        y = "Proportion Extreme PPP",
+        caption = "Lower values indicate better model fit"
+      ) +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom"
+      )
+    
+    print(task_plot)
+  }
+}
+```
+
+# Detailed Model Profiles
+
+```{r model-profiles}
+# Create detailed profile for each model
+model_names <- names(comparison_data)
+
+for (model_name in model_names) {
+  cat('
+## Model:', model_name, '
+
+')
+  
+  # Model metadata
+  model_type <- classify_model_type(model_name)
+  cat('**Type:** ', model_type, '
+
+')
+  
+  # IC performance
+  if ('ic' %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+    ic_info <- analysis_results$ic$overall_ranking %>% filter(model == model_name)
+    if (nrow(ic_info) > 0) {
+      cat('**Information Criteria:**
+')
+      cat('- Rank:', ic_info$rank, '
+')
+      cat('- Performance Tier:', ic_info$performance_tier, '
+')
+      cat('- Model Weight:', round(ic_info$model_weight, 3), '
+
+')
+    }
+  }
+  
+  # Recovery performance
+  if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
+    recovery_info <- analysis_results$recovery$model_summary %>% filter(model == model_name)
+    if (nrow(recovery_info) > 0) {
+      cat('**Parameter Recovery:**
+')
+      cat('- Mean Correlation:', round(recovery_info$mean_correlation, 3), '
+')
+      cat('- Recovery Quality:', recovery_info$recovery_quality, '
+
+')
+    }
+  }
+  
+  # PPC performance
+  if ('ppc' %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
+    ppc_info <- analysis_results$ppc$model_summary %>% filter(model == model_name)
+    if (nrow(ppc_info) > 0) {
+      cat('**PPC Performance:**
+')
+      cat('- Mean PPP:', round(ppc_info$overall_mean_ppp, 3), '
+')
+      cat('- Proportion Extreme:', round(ppc_info$overall_proportion_extreme, 3), '
+')
+      cat('- PPC Quality:', ppc_info$model_quality, '
+')
+      cat('- Best Domain:', ppc_info$best_domain, '
+')
+      cat('- Worst Domain:', ppc_info$worst_domain, '
+
+')
+    }
+  }
+  
+  cat('---
+')
+}
+```
+
+# Conclusions and Recommendations
+
+## Overall Model Ranking
+
+```{r overall-ranking}
+if ("integrated_ranking" %in% names(analysis_results)) {
+  # Use integrated ranking if available
+  integrated_ranking <- analysis_results$integrated_ranking$consensus_ranking %>%
+    select(consensus_rank, model, model_type, overall_quality, 
+           ic_score, recovery_score, ppc_score, rank_stability) %>%
+    mutate(across(c(ic_score, recovery_score, ppc_score, rank_stability), ~round(.x, 3)))
+  
+  DT::datatable(integrated_ranking, 
+                caption = "Integrated Model Ranking (Consensus across all metrics)",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("overall_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent_all_around", "strong_overall", "good_balanced", 
+                        "strong_but_uneven", "adequate_performance", "needs_improvement"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#fdcb6e", "#f8d7da")
+                    ))
+  
+  cat("\n\n### Methodology\n\n")
+  cat("This integrated ranking combines:
+")
+  cat("- **Information Criteria (IC):** Model fit with complexity penalty\n")
+  cat("- **Parameter Recovery:** Ability to recover true parameter values\n")
+  cat("- **Posterior Predictive Checks (PPC):** Reproduction of behavioral patterns\n\n")
+  
+  cat("**Weighting schemes used:**\n")
+  cat("- Equal: 33% each metric\n")
+  cat("- IC-weighted: 50% IC, 25% recovery, 25% PPC\n")
+  cat("- Balanced: 40% IC, 30% recovery, 30% PPC\n\n")
+  
+  cat("**Consensus rank:** Median rank across all weighting schemes\n")
+  cat("**Rank stability:** Lower values indicate more consistent ranking across schemes\n\n")
+  
+} else if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  # Fall back to IC ranking only if integrated ranking not available
+  ranking_display <- analysis_results$ic$overall_ranking %>%
+    select(rank, model, model_type, matches("estimate$"), matches("^delta_"), 
+           model_weight, performance_tier) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(ranking_display, 
+                caption = "Model Ranking (Information Criteria Only)",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("performance_tier",
+                    backgroundColor = DT::styleEqual(
+                      c("top_tier", "competitive", "considerable_difference", "strong_difference", "decisive_difference"),
+                      c("#d4edda", "#fff3cd", "#ffeaa7", "#fdcb6e", "#e17055")
+                    ))
+  
+  cat("\n\n**Note:** This ranking is based on Information Criteria only. ",
+      "For comprehensive evaluation, include parameter recovery and PPC analysis.\n\n")
+  
+} else {
+  cat("No ranking data available.")
+}
+```
+
+## Key Insights
+
+```{r insights}
+insights <- list()
+
+# Integrated ranking insights (preferred)
+if ("integrated_ranking" %in% names(analysis_results)) {
+  consensus_ranking <- analysis_results$integrated_ranking$consensus_ranking
+  best_model <- consensus_ranking$model[1]
+  best_quality <- consensus_ranking$overall_quality[1]
+  
+  insights$integrated <- paste("**Best overall model (integrated ranking):**", best_model, 
+                              "with", gsub("_", " ", best_quality), "performance")
+  
+  # Top tier models (consensus rank <= 3 or top 25%)
+  top_threshold <- max(3, round(nrow(consensus_ranking) * 0.25))
+  top_models <- consensus_ranking$model[consensus_ranking$consensus_rank <= top_threshold]
+  
+  if (length(top_models) > 1) {
+    insights$top_models <- paste("**Top-performing models:**", paste(top_models, collapse = ", "))
+  }
+  
+  # Stability insights
+  stable_models <- consensus_ranking %>%
+    filter(rank_stability <= quantile(rank_stability, 0.25, na.rm = TRUE)) %>%
+    pull(model)
+  
+  if (length(stable_models) > 0) {
+    insights$stability <- paste("**Most stable rankings:**", paste(head(stable_models, 3), collapse = ", "),
+                               "- consistent performance across weighting schemes")
+  }
+  
+  # Quality distribution
+  quality_summary <- table(consensus_ranking$overall_quality)
+  excellent_count <- sum(quality_summary[grepl("excellent|strong", names(quality_summary))], na.rm = TRUE)
+  
+  if (excellent_count > 0) {
+    insights$quality_dist <- paste("**High-quality models:**", excellent_count, "out of", 
+                                  nrow(consensus_ranking), "models show excellent or strong overall performance")
+  }
+}
+
+# IC insights (fallback or additional)
+if ("ic" %in% names(analysis_results)) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  top_tier_models <- ic_ranking %>%
+    filter(performance_tier == "top_tier") %>%
+    pull(model)
+  
+  if (length(top_tier_models) == 1) {
+    insights$ic <- paste("**Clear IC winner:**", top_tier_models[1])
+  } else if (length(top_tier_models) > 1) {
+    insights$ic <- paste("**Multiple competitive models (IC):**", paste(top_tier_models, collapse = ", "))
+  }
+}
+
+# Recovery insights
+if ("recovery" %in% names(analysis_results)) {
+  best_groups <- head(analysis_results$recovery$group_summary$group, 3)
+  worst_groups <- tail(analysis_results$recovery$group_summary$group, 3)
+  
+  insights$recovery <- paste("**Parameter Recovery:** Best recovered groups:", paste(best_groups, collapse = ", "),
+                           ". Most challenging:", paste(worst_groups, collapse = ", "))
+}
+
+# PPC insights
+if ("ppc" %in% names(analysis_results)) {
+  difficult_domains <- analysis_results$ppc$domain_summary %>%
+    arrange(desc(proportion_extreme)) %>%
+    head(2) %>%
+    pull(domain)
+  
+  insights$ppc <- paste("**PPC Performance:** Most challenging behavioral domains:", paste(difficult_domains, collapse = ", "))
+}
+
+for (i in seq_along(insights)) {
+  cat("**", names(insights)[i], "**: ", insights[[i]], "\n\n")
+}
+```
+
+## Recommendations
+
+Based on the comprehensive analysis:
+
+```{r recommendations}
+# Generate data-driven recommendations
+recommendations <- list()
+
+if ("ic" %in% names(analysis_results)) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  
+  # Top recommendation
+  best_model <- ic_ranking$model[1]
+  best_tier <- ic_ranking$performance_tier[1]
+  
+  if (best_tier == "top_tier") {
+    recommendations$primary <- paste("**Primary recommendation:** Use", best_model, "as it shows the best overall fit to the data.")
+  } else {
+    recommendations$primary <- paste("**Primary recommendation:** Consider", best_model, "but note that model selection is less decisive.")
+  }
+  
+  # Alternative recommendations
+  competitive_models <- ic_ranking %>%
+    filter(performance_tier %in% c("top_tier", "competitive")) %>%
+    filter(row_number() > 1) %>%
+    pull(model)
+  
+  if (length(competitive_models) > 0) {
+    recommendations$alternatives <- paste("**Alternative options:** Consider", paste(competitive_models, collapse = ", "), "as competitive alternatives.")
+  }
+}
+
+# Type-specific recommendations
+if (length(models_by_type) > 1) {
+  type_winners <- sapply(names(models_by_type), function(type) {
+    type_models <- models_by_type[[type]]
+    if ("ic" %in% names(analysis_results)) {
+      type_ranking <- analysis_results$ic$overall_ranking %>%
+        filter(model %in% type_models) %>%
+        arrange(rank)
+      if (nrow(type_ranking) > 0) {
+        return(type_ranking$model[1])
+      }
+    }
+    return(NA)
+  })
+  
+  type_winners <- type_winners[!is.na(type_winners)]
+  
+  if (length(type_winners) > 0) {
+    type_text <- paste(names(type_winners), ":", type_winners, collapse = "; ")
+    recommendations$by_type <- paste("**Best by model type:** ", type_text)
+  }
+}
+
+for (rec in recommendations) {
+  cat(rec, "\n\n")
+}
+```
+
+---
+
+*Report generated on `r Sys.time()` using the model comparison pipeline.*
+
+*Analysis included 10 models with data from parameter recovery, posterior predictive checks, and information criteria.*

@@ -1,0 +1,667 @@
+---
+title: "Parameter Recovery Plots"
+author: "Felix Pichardo"
+date: "2025-03-21"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.show = 'all', fig.keep = 'all', dev = 'png', dpi = 300)
+library(tidyverse)
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(viridis)
+library(scales)
+library(gridExtra)
+library(ggrepel)
+library(grid)
+```
+
+# Setup and Configuration
+
+```{r model-config}
+# Simplified Model Configuration
+model_config <- list(
+  # Define model families (the core algorithms)
+  families = list(
+    ev = list(
+      display_name = "Expected Value",
+      models = c("ev", "ev_ddm")
+    ),
+    pvl = list(
+      display_name = "Prospect Valence Learning",
+      # Group all PVL variants
+      variants = list(
+        delta = list(
+          display_name = "PVLdelta",
+          models = c("pvldelta", "pvldelta_ddm")
+        ),
+        decay = list(
+          display_name = "PVLdecay",
+          models = c("pvldecay", "pvldecay_ddm") 
+        ),
+        both = list(
+          display_name = "PVLboth",
+          models = c("pvlboth", "pvlboth_ddm")
+        ),
+        bothsd = list(
+          display_name = "PVLbothsd",
+          models = c("pvlbothsd", "pvlbothsd_ddm")
+        ),
+        puldelta = list(
+          display_name = "PULdelta",
+          models = c("puldelta", "puldelta_ddm")
+        ),
+        puldecay = list(
+          display_name = "PULdecay",
+          models = c("puldecay", "puldecay_ddm")
+        ),
+        pulboth = list(
+          display_name = "PULboth",
+          models = c("pulboth", "pulboth_ddm")
+        ),
+        pvsdelta = list(
+          display_name = "PVSdelta",
+          models = c("pvsdelta", "pvsdelta_ddm")
+        ),
+        pvsdecay = list(
+          display_name = "PVSdecay",
+          models = c("pvsdecay", "pvsdecay_ddm")
+        ),
+        pvsboth = list(
+          display_name = "PVSboth",
+          models = c("pvsboth", "pvsboth_ddm")
+        )
+      )
+    ),
+    vpp = list(
+      display_name = "Value-Plus-Perseverance",
+      # Group all VPP variants
+      variants = list(
+        delta = list(
+          display_name = "VPPdeltag",
+          models = c("vppdeltag", "vppdeltag_ddm")
+        ),
+        decay = list(
+          display_name = "VPPdecayg",
+          models = c("vppdecayg", "vppdecayg_ddm") 
+        ),
+        both = list(
+          display_name = "VPPbothg",
+          models = c("vppbothg", "vppbothg_ddm")
+        ),
+        delta = list(
+          display_name = "VPPdeltagd",
+          models = c("vppdeltagd", "vppdeltagd_ddm")
+        ),
+        decay = list(
+          display_name = "VPPdecaygd",
+          models = c("vppdecaygd", "vppdecaygd_ddm") 
+        ),
+        both = list(
+          display_name = "VPPbothgd",
+          models = c("vppbothgd", "vppbothgd_ddm")
+        ),
+        puldelta = list(
+          display_name = "PULVPPdeltag",
+          models = c("pulvppdeltag", "pulvppdeltag_ddm")
+        ),
+        puldecay = list(
+          display_name = "PULVPPdecayg",
+          models = c("pulvppdecayg", "pulvppdecayg_ddm")
+        ),
+        pulboth = list(
+          display_name = "PULVPPbothg",
+          models = c("pulvppbothg", "pulvppbothg_ddm")
+        ),
+        pvsdelta = list(
+          display_name = "PVSVPPdeltag",
+          models = c("pvsvppdeltag", "pvsvppdeltag_ddm")
+        ),
+        pvsdecay = list(
+          display_name = "PVSVPPdecayg",
+          models = c("pvsvppdecayg", "pvsvppdecayg_ddm")
+        ),
+        pvsboth = list(
+          display_name = "PVSVPPbothg",
+          models = c("pvsvppbothg", "pvsvppbothg_ddm")
+        )
+      )
+    ),
+    ddm = list(
+      display_name = "DDM Only",
+      models = c("ddm")
+    )
+  ),
+  
+  # Define model types (for categorization)
+  types = list(
+    rl_only = "Reinforcement Learning", 
+    ddm_only = "Sequential Sampling",
+    hybrid = "Hybrid (RL+DDM)"
+  ),
+  
+  # Define parameter groups
+  parameter_groups = list(
+    "DDM Process" = c("boundary", "tau", "beta"),
+    "Consistency/Drift" = c("drift", "drift_con", "con"),
+    "Valuation" = c("wgt_pun", "wgt_rew", "gain", "loss", "gain_shape", "loss_shape"),
+    "Learning Rate" = c("update", "retend", "decay"),
+    "Perseveration" = c("k", "w", "ep"),
+    "Other" = c("mag")
+  )
+)
+
+# Build derived model lists
+build_model_lists <- function(config) {
+  # Initialize lists
+  all_models <- character()
+  display_names <- list()
+  rl_only_models <- character()
+  ddm_only_models <- character()
+  hybrid_models <- character()
+  all_model_families <- list()
+  
+  # Process all model families
+  for (family_name in names(config$families)) {
+    family <- config$families[[family_name]]
+    
+    # Handle families with variants
+    if ("variants" %in% names(family)) {
+      for (variant_name in names(family$variants)) {
+        variant <- family$variants[[variant_name]]
+        
+        # Process each model in the variant
+        for (model in variant$models) {
+          # Create display name
+          display_name <- paste(variant$display_name, ifelse(grepl("_ddm$", model), "+DDM", "Only"))
+          display_names[[model]] <- display_name
+          
+          # Determine model type and store in appropriate list
+          if (grepl("_ddm$", model)) {
+            hybrid_models <- c(hybrid_models, model)
+          } else if (model == "ddm") {
+            ddm_only_models <- c(ddm_only_models, model)
+          } else {
+            rl_only_models <- c(rl_only_models, model)
+          }
+          
+          # Add to all models list
+          all_models <- c(all_models, model)
+          
+          # Add to model families
+          base_family <- ifelse(family_name == "ddm", "ddm", 
+                                paste0(family_name, variant_name))
+          
+          if (is.null(all_model_families[[base_family]])) {
+            all_model_families[[base_family]] <- character()
+          }
+          all_model_families[[base_family]] <- c(all_model_families[[base_family]], model)
+        }
+      }
+    } else {
+      # Simple family without variants (like EV or DDM)
+      for (model in family$models) {
+        # Create display name
+        display_name <- paste(family$display_name, ifelse(grepl("_ddm$", model), "+DDM", ""))
+        display_names[[model]] <- display_name
+        
+        # Determine model type and store in appropriate list
+        if (grepl("_ddm$", model)) {
+          hybrid_models <- c(hybrid_models, model)
+        } else if (model == "ddm") {
+          ddm_only_models <- c(ddm_only_models, model)
+        } else {
+          rl_only_models <- c(rl_only_models, model)
+        }
+        
+        # Add to all models list
+        all_models <- c(all_models, model)
+        
+        # Add to model families
+        base_family <- ifelse(family_name == "ddm", "ddm", family_name)
+        if (is.null(all_model_families[[base_family]])) {
+          all_model_families[[base_family]] <- character()
+        }
+        all_model_families[[base_family]] <- c(all_model_families[[base_family]], model)
+      }
+    }
+  }
+  
+  # Return all derived lists
+  return(list(
+    all_models = unique(all_models),
+    rl_only_models = unique(rl_only_models),
+    ddm_only_models = unique(ddm_only_models),
+    hybrid_models = unique(hybrid_models),
+    model_display_names = display_names,
+    model_families = all_model_families
+  ))
+}
+
+# Generate all the model lists from configuration
+derived_lists <- build_model_lists(model_config)
+all_models <- derived_lists$all_models
+rl_only_models <- derived_lists$rl_only_models
+ddm_only_models <- derived_lists$ddm_only_models
+hybrid_models <- derived_lists$hybrid_models
+model_display_names <- derived_lists$model_display_names
+model_families <- derived_lists$model_families
+
+# Define model type colors
+model_type_colors <- c(
+  "RL Only" = "#1B9E77", 
+  "DDM Only" = "#D95F02", 
+  "Hybrid (RL+DDM)" = "#7570B3"
+)
+
+# Print model lists for verification
+cat("All models:", length(all_models), "\n")
+cat("RL-only models:", length(rl_only_models), "\n")
+cat("DDM-only models:", length(ddm_only_models), "\n")
+cat("Hybrid models:", length(hybrid_models), "\n")
+cat("Model families:", length(model_families), "\n")
+```
+
+```{r data-loading}
+# Function to load recovery data with error handling
+load_recovery_data <- function(model_name, base_dir = NULL) {
+  if (is.null(base_dir)) {
+    PROJ_DIR <- here::here()
+    base_dir <- file.path(PROJ_DIR, "Data", "sim", "recovery")
+  }
+  
+  file_path <- file.path(base_dir, paste0("recovery_igt_mod_batch_001_", model_name, "_desc-sim_params.rds"))
+  
+  if (file.exists(file_path)) {
+    return(readRDS(file_path))
+  } else {
+    warning(paste("Recovery file not found for model:", model_name))
+    return(NULL)
+  }
+}
+
+# Paths to data files
+PROJ_DIR <- here::here()
+REC_SIM_DIR <- file.path(PROJ_DIR, "Data", "sim", "recovery")
+
+# Automatically discover available recovery models
+available_recovery_files <- list.files(REC_SIM_DIR, pattern = "recovery_igt_mod_batch_001_(.*)_desc-sim_params.rds", full.names = FALSE)
+available_recovery_models <- available_recovery_files %>% 
+  str_remove("recovery_igt_mod_batch_001_") %>%
+  str_remove("_desc-sim_params.rds")
+
+# Display discovered models
+cat("Discovered recovery models:", length(available_recovery_models), "\n")
+print(available_recovery_models)
+
+# Load recovery data for all available models
+recovery_data <- list()
+for (model_name in available_recovery_models) {
+  recovery_data[[model_name]] <- load_recovery_data(model_name, REC_SIM_DIR)
+}
+```
+
+# Overall Parameter Recovery Plots
+
+These plots show the overall performance of each model in recovering parameter values. The plots include correlation, RMSE, and bias metrics for all parameters.
+
+```{r overall-recovery-plots, fig.height=10, fig.width=12}
+# Function to display and annotate overall recovery plot for a model
+display_overall_plot <- function(model_name) {
+  # Check if model exists and has plot
+  if (!model_name %in% names(recovery_data) || 
+      is.null(recovery_data[[model_name]]) || 
+      is.null(recovery_data[[model_name]]$plots) || 
+      is.null(recovery_data[[model_name]]$plots$overall)) {
+    cat("No overall plot available for model:", model_name, "\n")
+    return(NULL)
+  }
+  
+  # Get the plot
+  plot <- recovery_data[[model_name]]$plots$overall
+  
+  # Add model name to the title
+  model_display_name <- model_display_names[[model_name]]
+  
+  # Check if it's a ggplot object
+  if (inherits(plot, "ggplot")) {
+    # Update the plot with model information
+    plot <- plot + 
+      ggtitle(paste("Overall Parameter Recovery for", model_display_name)) +
+      theme(plot.title = element_text(size = 14, face = "bold"))
+  } else {
+    cat("Plot for model", model_name, "is not a ggplot object\n")
+    return(NULL)
+  }
+  
+  return(plot)
+}
+
+# Display overall plots for all models
+for (model_name in names(recovery_data)) {
+  cat("\n## Overall Recovery Plot for", model_display_names[[model_name]], "\n")
+  plot <- display_overall_plot(model_name)
+  if (!is.null(plot)) {
+    print(plot)
+  }
+}
+```
+
+# Parameter-Specific Recovery Plots
+
+These plots show the relationship between true and recovered parameter values for each parameter and model. Each plot includes the correlation and RMSE metrics to quantify recovery performance.
+
+```{r parameter-plots, fig.height=10, fig.width=14}
+# Function to display individual parameter recovery plots by parameter
+display_parameter_plots <- function(param_name) {
+  # Initialize list to store plots
+  plots_list <- list()
+  
+  # For each model
+  for (model_name in names(recovery_data)) {
+    # Check if model has individual plots and this parameter
+    if (!is.null(recovery_data[[model_name]]) && 
+        !is.null(recovery_data[[model_name]]$plots) && 
+        !is.null(recovery_data[[model_name]]$plots$individual) && 
+        param_name %in% names(recovery_data[[model_name]]$plots$individual)) {
+      
+      # Get the plot
+      plot <- recovery_data[[model_name]]$plots$individual[[param_name]]
+      
+      # Check if it's a valid ggplot object
+      if (!is.null(plot) && inherits(plot, "ggplot")) {
+        # Add model name to the title
+        model_display_name <- model_display_names[[model_name]]
+        
+        # Update plot title
+        plot <- plot + 
+          ggtitle(model_display_name) +
+          theme(plot.title = element_text(size = 12, face = "bold"))
+        
+        # Add to list
+        plots_list[[model_name]] <- plot
+      }
+    }
+  }
+  
+  # Display plots if we have any
+  if (length(plots_list) > 0) {
+    # Print each plot individually instead of using grid.arrange
+    cat("Found", length(plots_list), "plots for parameter:", param_name, "\n")
+    
+    # Print each plot with a caption
+    for (model_name in names(plots_list)) {
+      cat("\n### Model:", model_display_names[[model_name]], "\n")
+      print(plots_list[[model_name]])
+    }
+    
+    return(TRUE)
+  } else {
+    cat("No plots available for parameter:", param_name, "\n")
+    return(FALSE)
+  }
+}
+
+# Get list of all parameters from all models
+all_parameters <- unique(
+  unlist(
+    lapply(recovery_data, function(x) {
+      if (!is.null(x) && !is.null(x$plots) && !is.null(x$plots$individual)) {
+        return(names(x$plots$individual))
+      } else {
+        return(NULL)
+      }
+    })
+  )
+)
+
+# Display plots for each parameter
+cat("Found", length(all_parameters), "unique parameters across all models\n")
+for (param in all_parameters) {
+  cat("\n## Recovery Plots for Parameter:", param, "\n")
+  success <- display_parameter_plots(param)
+}
+```
+
+# Parameter Recovery by Model Type
+
+Compare parameter recovery performance across different model types.
+
+```{r recovery-by-model-type, fig.height=8, fig.width=12}
+# Extract recovery metrics from all models
+extract_recovery_metrics <- function() {
+  # Initialize dataframe
+  metrics_df <- data.frame()
+  
+  # Process each model
+  for (model_name in names(recovery_data)) {
+    model_data <- recovery_data[[model_name]]
+    
+    # Skip if model data is missing or doesn't have by_parameter
+    if (is.null(model_data) || is.null(model_data$by_parameter)) {
+      next
+    }
+    
+    # Extract metrics
+    model_metrics <- model_data$by_parameter
+    
+    # Add model information
+    model_metrics$model <- model_name
+    model_metrics$model_display <- as.character(model_display_names[[model_name]])
+    model_metrics$model_type <- case_when(
+      model_name %in% rl_only_models ~ "RL Only",
+      model_name %in% ddm_only_models ~ "DDM Only",
+      model_name %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Unknown"
+    )
+    
+    # Add parameter type
+    model_metrics$param_type <- NA_character_
+    for (type_name in names(model_config$parameter_groups)) {
+      type_params <- model_config$parameter_groups[[type_name]]
+      model_metrics$param_type[model_metrics$parameter %in% type_params] <- type_name
+    }
+    model_metrics$param_type[is.na(model_metrics$param_type)] <- "Other"
+    
+    # Combine with main dataframe
+    metrics_df <- bind_rows(metrics_df, model_metrics)
+  }
+  
+  return(metrics_df)
+}
+
+# Get all recovery metrics
+all_metrics <- extract_recovery_metrics()
+
+# Create summary by model type and parameter type
+recovery_summary <- all_metrics %>%
+  group_by(model_type, param_type) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    sd_correlation = sd(correlation, na.rm = TRUE),
+    n_parameters = n(),
+    se_correlation = sd_correlation / sqrt(n_parameters),
+    ci_lower = mean_correlation - qt(0.975, n_parameters - 1) * se_correlation,
+    ci_upper = mean_correlation + qt(0.975, n_parameters - 1) * se_correlation,
+    mean_rmse = mean(rmse, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(param_type, desc(mean_correlation))
+
+# Display summary table
+kable(recovery_summary, digits = 3,
+      col.names = c("Model Type", "Parameter Type", "Mean Correlation", 
+                   "SD Correlation", "N Parameters", "SE Correlation", 
+                   "95% CI Lower", "95% CI Upper", "Mean RMSE"),
+      caption = "Parameter Recovery by Model Type and Parameter Type") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+               full_width = FALSE)
+
+# Create visualization
+type_comparison_plot <- ggplot(recovery_summary, 
+       aes(x = param_type, y = mean_correlation, fill = model_type)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
+               position = position_dodge(width = 0.9),
+               width = 0.25) +
+  scale_fill_manual(values = model_type_colors) +
+  coord_flip() +
+  labs(title = "Parameter Recovery by Type",
+       subtitle = "Mean correlation with 95% confidence intervals",
+       x = "Parameter Type",
+       y = "Mean Correlation",
+       fill = "Model Type") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 11),
+    legend.title = element_text(size = 10)
+  )
+print(type_comparison_plot)
+
+# Create a model ranking by mean correlation
+model_ranking <- all_metrics %>%
+  group_by(model, model_display, model_type) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    sd_correlation = sd(correlation, na.rm = TRUE),
+    n_parameters = n(),
+    se_correlation = sd_correlation / sqrt(n_parameters),
+    ci_lower = mean_correlation - qt(0.975, n_parameters - 1) * se_correlation,
+    ci_upper = mean_correlation + qt(0.975, n_parameters - 1) * se_correlation,
+    mean_rmse = mean(rmse, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(model_type, desc(mean_correlation))
+
+# Display model ranking
+kable(model_ranking, digits = 3,
+      col.names = c("Model", "Display Name", "Model Type", "Mean Correlation", 
+                   "SD Correlation", "N Parameters", "SE Correlation", 
+                   "95% CI Lower", "95% CI Upper", "Mean RMSE"),
+      caption = "Model Ranking by Parameter Recovery Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+               full_width = FALSE)
+
+# Create a visualization of model rankings
+ranking_plot <- ggplot(model_ranking, 
+       aes(x = reorder(model_display, mean_correlation), y = mean_correlation, fill = model_type)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.25) +
+  geom_text(aes(label = sprintf("%.3f", mean_correlation)),
+            position = position_stack(vjust = 0.5),
+            color = "white", fontface = "bold") +
+  scale_fill_manual(values = model_type_colors) +
+  facet_wrap(~ model_type, scales = "free_y") +
+  coord_flip() +
+  labs(title = "Model Ranking by Parameter Recovery",
+       subtitle = "Mean correlation across parameters with 95% confidence intervals",
+       x = "Model",
+       y = "Mean Correlation",
+       fill = "Model Type") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.title = element_text(size = 11),
+    legend.title = element_text(size = 10)
+  )
+print(ranking_plot)
+```
+
+# Parameter-Specific Comparison Across Models
+
+These visualizations compare how well each model recovers specific parameters. This helps identify which models are most reliable for estimating particular cognitive parameters.
+
+```{r parameter-comparison, fig.height=8, fig.width=12}
+# Create a comparison of correlation by parameter across models
+parameter_comparison <- all_metrics %>%
+  group_by(parameter, model_type) %>%
+  summarize(
+    mean_correlation = mean(correlation, na.rm = TRUE),
+    sd_correlation = sd(correlation, na.rm = TRUE),
+    n_models = n(),
+    se_correlation = sd_correlation / sqrt(n_models),
+    ci_lower = mean_correlation - qt(0.975, max(n_models - 1, 1)) * se_correlation,
+    ci_upper = mean_correlation + qt(0.975, max(n_models - 1, 1)) * se_correlation,
+    .groups = "drop"
+  ) %>%
+  arrange(parameter, desc(mean_correlation))
+
+# Display the parameter comparison table
+kable(parameter_comparison, digits = 3,
+      col.names = c("Parameter", "Model Type", "Mean Correlation", 
+                   "SD Correlation", "N Models", "SE Correlation", 
+                   "95% CI Lower", "95% CI Upper"),
+      caption = "Parameter Recoverability by Model Type") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+               full_width = FALSE)
+
+# Create a visualization of parameter recoverability
+param_plot <- ggplot(parameter_comparison, 
+       aes(x = reorder(parameter, mean_correlation), y = mean_correlation, fill = model_type)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
+               position = position_dodge(width = 0.9),
+               width = 0.25) +
+  scale_fill_manual(values = model_type_colors) +
+  coord_flip() +
+  labs(title = "Parameter Recoverability by Model Type",
+       subtitle = "Mean correlation with 95% confidence intervals",
+       x = "Parameter",
+       y = "Mean Correlation",
+       fill = "Model Type") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 11),
+    legend.title = element_text(size = 10)
+  )
+print(param_plot)
+
+# Create a heatmap of parameter recovery by model
+# Get top models for visualization
+top_models <- model_ranking %>%
+  group_by(model_type) %>%
+  slice_max(order_by = mean_correlation, n = 5) %>%
+  pull(model)
+
+# Filter metrics to top models
+top_model_metrics <- all_metrics %>%
+  filter(model %in% top_models)
+
+# Create the heatmap
+heatmap_plot <- ggplot(top_model_metrics, 
+       aes(x = parameter, y = model_display, fill = correlation)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", correlation)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  facet_wrap(~ model_type, scales = "free_y") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.title = element_text(size = 11),
+    legend.title = element_text(size = 10)
+  ) +
+  labs(title = "Parameter Recovery Heatmap for Top Models",
+       subtitle = "Correlation by model and parameter",
+       x = "Parameter",
+       y = "Model",
+       fill = "Correlation")
+print(heatmap_plot)
+```

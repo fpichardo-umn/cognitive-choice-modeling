@@ -1,0 +1,1396 @@
+---
+title: "Posterior Predictive Check Analysis"
+author: "Felix Pichardo"
+date: "2025-03-07"
+output: 
+  word_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(viridis)
+library(scales)
+library(gridExtra)
+library(ggrepel) # For label repulsion in plots
+```
+
+# Introduction
+
+This document analyzes the posterior predictive checks (PPCs) performed on several computational models of decision-making in the modified Iowa Gambling Task (mIGT). PPCs evaluate a model's ability to reproduce patterns observed in the empirical data by comparing statistics derived from observed data to statistics calculated from simulated data generated using posterior parameter estimates.
+
+## Models Evaluated
+
+We evaluate several types of models:
+
+1. **Reinforcement Learning (RL) Models**
+   - Expected Value (EV)
+   - Prospect Valence Learning with Delta rule (PVLdelta)
+   - Prospect Valence Learning with Decay rule (PVLdecay)
+   - Prospect Valence Learning with Both rules (PVLboth)
+
+2. **Sequential Sampling Model (SSM)**
+   - Drift Diffusion Model (DDM)
+
+3. **Hybrid Models (RL+SSM)**
+   - EV+DDM
+   - PVLdelta+DDM
+   - PVLdecay+DDM
+   - PVLboth+DDM
+
+## Posterior Predictive Checks (PPC)
+
+For each model, we assess how well it captures key behavioral patterns by calculating posterior predictive p-values (PPP values). These values represent the probability that the simulated data are more extreme than the observed data. Values close to 0.5 indicate good fit, while values close to 0 or 1 indicate poor fit. We consider PPP values below 0.05 or above 0.95 as "extreme" and potentially problematic.
+
+```{r load-data, include=FALSE}
+# Model Configuration
+model_config <- list(
+  # Define model groups for easier reference
+  groups = list(
+    rl_only = c("ev", "pvldecay", "pvldelta", "pvlboth"),
+    ddm_only = c("ddm"),
+    hybrid = c("ev_ddm", "pvldecay_ddm", "pvldelta_ddm", "pvlboth_ddm")
+  ),
+  
+  # Display names for each model
+  display_names = c(
+    "ddm" = "DDM Only",
+    "ev" = "EV Only",
+    "pvldecay" = "PVLdecay Only",
+    "pvldelta" = "PVLdelta Only",
+    "pvlboth" = "PVLboth Only",
+    "ev_ddm" = "EV+DDM",
+    "pvldecay_ddm" = "PVLdecay+DDM",
+    "pvldelta_ddm" = "PVLdelta+DDM",
+    "pvlboth_ddm" = "PVLboth+DDM"
+  ),
+  
+  # Define components for each model type
+  components = list(
+    rl_only = "RL",
+    ddm_only = "SSM",
+    hybrid = c("RL", "SSM")
+  ),
+  
+  # Define key statistics groups
+  key_statistics = list(
+    deck_selection = c("good_deck_ratio", "new_good_deck_ratio", "new_bad_deck_ratio"),
+    rl_performance = c("skip_ratio", "total_money", "avg_outcome"),
+    play_rt = c("rt_play_mean", "rt_play_median", "rt_play_quantiles_10%", "rt_play_quantiles_90%"),
+    skip_rt = c("rt_skip_mean", "rt_skip_median", "rt_skip_quantiles_10%", "rt_skip_quantiles_90%"),
+    choice = c("choice_prob")
+  )
+)
+
+# Derived lists for convenience
+all_models <- c(model_config$groups$rl_only, model_config$groups$ddm_only, model_config$groups$hybrid)
+rl_only_models <- model_config$groups$rl_only
+ddm_only_models <- model_config$groups$ddm_only
+hybrid_models <- model_config$groups$hybrid
+model_display_names <- model_config$display_names
+
+# Function to load PPC result files flexibly
+load_ppc_results <- function(model_name, base_dir = NULL) {
+  if (is.null(base_dir)) {
+    PROJ_DIR <- here::here()
+    base_dir <- file.path(PROJ_DIR, "Data", "sim", "ppc")
+  }
+  
+  file_path <- file.path(base_dir, paste0("ppc_results_igt_mod_", model_name, "_batch_001.rds"))
+  
+  if (file.exists(file_path)) {
+    return(readRDS(file_path))
+  } else {
+    warning(paste("File not found for model:", model_name))
+    return(NULL)
+  }
+}
+
+# Load all models
+PROJ_DIR <- here::here()
+PPC_DIR <- file.path(PROJ_DIR, "Data", "sim", "ppc")
+
+# Automatically discover available models in the directory
+available_files <- list.files(PPC_DIR, pattern = "ppc_results_igt_mod_.*_batch_001.rds", full.names = FALSE)
+available_models <- available_files %>% 
+  str_remove("ppc_results_igt_mod_") %>%
+  str_remove("_batch_001.rds")
+
+# Load only the models that are available
+ppc_data <- list()
+for (model_name in all_models) {
+  if (model_name %in% available_models) {
+    ppc_data[[model_name]] <- load_ppc_results(model_name, PPC_DIR)
+  }
+}
+
+# Update the model lists based on what's actually available
+available_rl_models <- intersect(rl_only_models, names(ppc_data))
+available_ddm_models <- intersect(ddm_only_models, names(ppc_data))
+available_hybrid_models <- intersect(hybrid_models, names(ppc_data))
+available_all_models <- names(ppc_data)
+```
+
+```{r extract-summary-stats, include=FALSE}
+# Function to extract summary statistics with component detection
+extract_summary_stats <- function(ppc_obj, model_name) {
+  # Check if model exists
+  if (is.null(ppc_obj)) {
+    return(NULL)
+  }
+  
+  # Determine model type
+  model_type <- case_when(
+    model_name %in% rl_only_models ~ "RL Only",
+    model_name %in% ddm_only_models ~ "DDM Only",
+    model_name %in% hybrid_models ~ "Hybrid (RL+DDM)",
+    TRUE ~ "Unknown"
+  )
+  
+  # Check if the model has RL and SSM components or just one component
+  if (is.list(ppc_obj$model$summary) && "rl" %in% names(ppc_obj$model$summary)) {
+    # Hybrid model with both components
+    rl_summary <- ppc_obj$model$summary$rl %>%
+      mutate(component = "RL", model = model_name, model_type = model_type)
+    
+    ssm_summary <- ppc_obj$model$summary$ssm %>%
+      mutate(component = "SSM", model = model_name, model_type = model_type)
+    
+    return(bind_rows(rl_summary, ssm_summary))
+  } else {
+    # Single component model
+    summary_df <- ppc_obj$model$summary
+    
+    # For individual models, determine component type based on model name
+    component_type <- case_when(
+      model_name %in% rl_only_models ~ "RL",
+      model_name %in% ddm_only_models ~ "SSM",
+      TRUE ~ "Unknown"
+    )
+    
+    # Clean up statistic names by removing misleading prefixes if present
+    summary_df <- summary_df %>%
+      mutate(statistic = str_remove(statistic, "^(rl_|ssm_)"))
+    
+    return(summary_df %>% mutate(component = component_type, model = model_name, model_type = model_type))
+  }
+}
+
+# Combine all summary statistics
+all_summaries <- bind_rows(
+  lapply(names(ppc_data), function(name) {
+    extract_summary_stats(ppc_data[[name]], name)
+  })
+)
+
+# Replace model names with display names and add categorical factor for display order
+all_summaries <- all_summaries %>%
+  mutate(
+    model_display = model_display_names[model],
+    model_display = factor(model_display, levels = model_display_names[all_models])
+  )
+
+# Create separate datasets for RL and SSM components
+rl_summaries <- all_summaries %>% filter(component == "RL")
+ssm_summaries <- all_summaries %>% filter(component == "SSM")
+```
+
+# Overall PPC Performance
+
+```{r overall-performance}
+# Calculate overall fit metrics for each model and component
+overall_metrics <- all_summaries %>%
+  group_by(model, model_display, component, model_type) %>%
+  summarize(
+    mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    median_ppp = median(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    extreme_stats_count = sum(extreme_ratio > 0.3, na.rm = TRUE),
+    total_stats = n(),
+    pct_problematic = extreme_stats_count / total_stats * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(component, mean_extreme_ratio)
+
+# Display the overall metrics table
+kable(overall_metrics, digits = 3,
+      col.names = c("Model", "Display Name", "Component", "Model Type", "Mean PPP", "Median PPP", 
+                    "Mean Extreme Ratio", "# Problematic Stats", "Total Stats", "% Problematic"),
+      caption = "Overall PPC Performance by Model and Component")
+```
+
+This table summarizes the posterior predictive check (PPC) performance for each model and component. The mean PPP value represents how well the model fits the data, with values closer to 0.5 indicating better fit. The "Mean Extreme Ratio" shows the proportion of subjects with extreme PPP values (below 0.05 or above 0.95), with lower values indicating better fit. The "% Problematic" column shows the percentage of statistics that have a high proportion of extreme values. Models are organized by component type (RL or SSM) and model type (RL Only, DDM Only, or Hybrid).
+
+```{r overall-performance-bar}
+# Visualize overall model performance by component
+ggplot(overall_metrics, 
+       aes(x = reorder(model_display, mean_extreme_ratio), 
+           y = mean_extreme_ratio, 
+           fill = mean_ppp)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = sprintf("%.1f%%", pct_problematic)), 
+            position = position_stack(vjust = 0.5), 
+            color = "white", fontface = "bold") +
+  facet_wrap(~ component, scales = "free_y") +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.4, limits = c(0, 0.5),
+                     name = "Mean PPP\n(closer to 0.5 is better)") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Model Performance by Component",
+       subtitle = "Percentage of problematic statistics shown in bars (lower is better)",
+       x = NULL, 
+       y = "Mean Proportion of Extreme PPP Values")
+```
+
+This figure shows the performance of each model by component (RL and SSM). The bars represent the mean proportion of extreme PPP values, with shorter bars indicating better fit. The color of each bar represents the mean PPP value, with greener colors closer to the ideal 0.5. The percentage displayed in each bar shows what proportion of the model's statistics are problematic. Models are ordered from best (top) to worst (bottom) performance within each component.
+
+```{r mean-ppp-by-component}
+# Create a more detailed model comparison by component
+ggplot(overall_metrics, 
+       aes(x = reorder(model_display, -mean_ppp), 
+           y = mean_ppp, 
+           fill = component)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_y_continuous(limits = c(0, 0.7)) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Mean PPP by Model and Component",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Model", 
+       y = "Mean PPP",
+       fill = "Component")
+```
+
+This figure compares the mean PPP values across models and components. The bars show the mean PPP value for each model, separated by component (RL in blue, SSM in red). The dashed black line represents the ideal PPP value of 0.5. Values are displayed above each bar. Models are ordered by their overall mean PPP values. This visualization helps us see which models have PPP values closer to the ideal 0.5 for each component.
+
+```{r ppp-deviation-scatter}
+# Create a scatter plot of mean PPP vs. extreme ratio
+ggplot(overall_metrics, 
+       aes(x = abs(mean_ppp - 0.5), y = mean_extreme_ratio, 
+           color = component, shape = model_type, label = model_display)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_text_repel(size = 3, nudge_x = 0.02, nudge_y = 0.02) +
+  scale_x_continuous(limits = c(0, 0.3), 
+                    labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.7), 
+                    labels = scales::percent) +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(title = "Model Performance: Mean PPP Deviation vs. Extreme Ratio",
+       subtitle = "Better models appear in the bottom-left corner",
+       x = "Mean PPP Deviation from 0.5", 
+       y = "Mean Proportion of Extreme PPP Values",
+       color = "Component",
+       shape = "Model Type")
+```
+
+This scatter plot shows two key measures of model fit: the deviation of mean PPP from the ideal 0.5 (x-axis) and the proportion of extreme PPP values (y-axis). Better performing models appear in the bottom-left corner, indicating both PPP values close to 0.5 and low proportions of extreme values. Points are color-coded by component (RL or SSM) and shaped by model type. Models are labeled for easy identification. This visualization helps identify which models perform best across both metrics.
+
+# Reinforcement Learning (RL) Component Analysis
+
+## RL Metrics Across Models with RL Components
+
+```{r rl-metrics}
+# Get key RL statistics based on the configuration
+rl_key_stats <- unlist(model_config$key_statistics[c("deck_selection", "rl_performance")])
+
+# Filter for key RL statistics across all models with RL components
+rl_metrics <- rl_summaries %>%
+  filter(statistic %in% rl_key_stats)
+
+# Create a comparison table with dynamic columns
+rl_comparison <- rl_metrics %>%
+  select(model_display, statistic, mean_ppp, extreme_ratio) %>%
+  pivot_wider(names_from = statistic, 
+              values_from = c(mean_ppp, extreme_ratio)) %>%
+  arrange(model_display)
+
+# Function to create a properly formatted table with headers
+create_metrics_table <- function(data, stat_groups, title) {
+  # Calculate the number of statistics in each group for header spans
+  group_counts <- sapply(stat_groups, length)
+  
+  # Create header row labels
+  header_labels <- c(" " = 1)
+  for (group_name in names(stat_groups)) {
+    header_labels <- c(header_labels, "Mean PPP Values" = group_counts[group_name])
+  }
+  for (group_name in names(stat_groups)) {
+    header_labels <- c(header_labels, "Extreme Ratios" = group_counts[group_name])
+  }
+  
+  # Display the table with better formatting
+  kable(data, digits = 3, caption = title)
+}
+
+# Display the RL metrics table
+create_metrics_table(
+  rl_comparison, 
+  list(
+    deck_selection = model_config$key_statistics$deck_selection,
+    rl_performance = model_config$key_statistics$rl_performance
+  ),
+  "RL Metrics: Mean PPP Values and Extreme Ratios by Model"
+)
+```
+
+This table shows how well each model captures key reinforcement learning metrics. The left columns display Mean PPP values for different deck selection metrics and RL performance indicators, while the right columns show the proportion of subjects with extreme PPP values for the same metrics. For PPP values, numbers closer to 0.5 indicate better fit. For extreme ratios, lower values indicate better fit (fewer subjects with extreme PPP values).
+
+```{r rl-metrics-bar}
+# Create a visualization of RL metrics
+ggplot(rl_metrics, aes(x = statistic, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for RL Statistics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+This bar chart shows the mean PPP values for key reinforcement learning statistics across all models. Each color represents a different model, and bars are grouped by statistic. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). Bars closer to the dashed black line indicate better model fit for that statistic.
+
+```{r rl-extreme-ratios}
+# Visualize extreme ratios for RL statistics
+ggplot(rl_metrics, aes(x = statistic, y = extreme_ratio, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Proportion of Subjects with Extreme PPP Values for RL Statistics",
+       subtitle = "Lower values indicate better fit (fewer extreme PPP values)",
+       x = "Statistic", y = "Proportion of Subjects")
+```
+
+This bar chart shows the proportion of subjects with extreme PPP values (below 0.05 or above 0.95) for each RL statistic. Lower bars indicate better model fit, as fewer subjects have extreme values. Each color represents a different model, and bars are grouped by statistic. This visualization helps identify which models better capture individual differences in reinforcement learning behavior.
+
+```{r rl-heatmap}
+# Create a heatmap for RL metrics
+rl_metrics %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "RL Metrics Heatmap: Mean PPP Values",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Mean PPP")
+```
+
+This heatmap displays mean PPP values for RL metrics across all models. Each cell represents a specific model-statistic combination, with colors ranging from red (poor fit) through yellow to green (good fit). The actual PPP value is displayed in each cell. Colors closer to yellow (representing values near 0.5) indicate better model fit. This visualization makes it easy to identify patterns in model performance across different statistics.
+
+## Deck Selection Metrics Analysis
+
+```{r deck-selection-metrics}
+# Get deck selection statistics from configuration
+deck_selection_stats <- model_config$key_statistics$deck_selection
+
+# Filter for deck selection statistics across all models with RL components
+deck_selection_metrics <- rl_summaries %>%
+  filter(statistic %in% deck_selection_stats)
+
+# Create a comparison table
+deck_metrics_comparison <- deck_selection_metrics %>%
+  select(model_display, statistic, mean_ppp, extreme_ratio) %>%
+  pivot_wider(names_from = statistic, 
+              values_from = c(mean_ppp, extreme_ratio)) %>%
+  arrange(model_display)
+
+# Display the table with better formatting
+create_metrics_table(
+  deck_metrics_comparison,
+  list(deck_selection = deck_selection_stats),
+  "Deck Selection Metrics: Mean PPP Values and Extreme Ratios by Model"
+)
+```
+
+This table focuses specifically on deck selection metrics, showing how well each model captures patterns in participants' deck choices. The left columns display Mean PPP values for the original good deck ratio and the new deck selection metrics, while the right columns show the proportion of subjects with extreme PPP values. For PPP values, numbers closer to 0.5 indicate better fit. For extreme ratios, lower values indicate better fit.
+
+```{r deck-selection-bar}
+# Create labels for metrics in the visualization
+deck_metric_labels <- c(
+  "good_deck_ratio" = "Original Good Decks (3+4) / All Selections",
+  "new_good_deck_ratio" = "New Good Decks (3+4) / Decks 1,3,4",
+  "new_bad_deck_ratio" = "Bad Deck (1) / Decks 1,3,4"
+)
+
+# Visualize deck selection metrics
+deck_selection_metrics %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = metric_label, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for Deck Selection Metrics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Metric", y = "Mean PPP Value")
+```
+
+This bar chart compares mean PPP values for three deck selection metrics across models. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). Each color represents a different model. The metrics include the original good deck ratio (decks 3+4 as a proportion of all selections) and two new metrics focusing on specific deck subsets.
+
+```{r deck-selection-extreme}
+# Visualize extreme ratios for deck selection metrics
+deck_selection_metrics %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = metric_label, y = extreme_ratio, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Proportion of Subjects with Extreme PPP Values for Deck Selection Metrics",
+       subtitle = "Lower values indicate better fit (fewer extreme PPP values)",
+       x = "Metric", y = "Proportion of Subjects")
+```
+
+This bar chart shows the proportion of subjects with extreme PPP values for each deck selection metric. Lower bars indicate better model fit, with fewer subjects showing extreme values. Each color represents a different model. This visualization helps identify which models better capture individual variation in deck selection patterns for each specific metric.
+
+```{r deck-selection-within-model}
+# Compare deck selection metrics within each model
+deck_selection_metrics %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = model_display, y = mean_ppp, fill = metric_label)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Deck Selection Metrics Within Each Model",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Model", y = "Mean PPP Value")
+```
+
+This bar chart shows how different deck selection metrics perform within each model. The bars are grouped by model, with different colors representing different deck selection metrics. The dashed black line represents the ideal PPP value of 0.5. This visualization helps identify whether models consistently fit all deck selection metrics or perform better for some metrics than others.
+
+```{r deck-selection-heatmap}
+# Create a heatmap specifically for deck selection metrics
+deck_selection_metrics %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  theme_minimal() +
+  labs(title = "Deck Selection Metrics: Mean PPP Values Heatmap",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Deck Selection Metric", y = "Model",
+       fill = "Mean PPP")
+```
+
+This heatmap focuses specifically on deck selection metrics across all models. Each cell shows the mean PPP value for a specific model-metric combination, with colors ranging from red (poor fit) through yellow to green (good fit). Values closer to 0.5 (yellow) indicate better model fit. This visualization makes it easy to compare performance across models and identify which metrics are consistently well-fitted or problematic.
+
+## Comparison: RL-Only vs. Hybrid Models (RL Component)
+
+```{r rl-hybrid-comparison}
+# Function to extract base model name
+extract_base_model <- function(model_name) {
+  if (grepl("_ddm$", model_name)) {
+    return(gsub("_ddm$", "", model_name))
+  } else {
+    return(model_name)
+  }
+}
+
+# Create a dataset for RL model comparison (RL-only vs. hybrid)
+rl_model_comparison <- rl_metrics %>%
+  mutate(
+    model_type = case_when(
+      model %in% rl_only_models ~ "RL-Only",
+      model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Other"
+    ),
+    # Extract base model name for pairing
+    base_model = sapply(model, extract_base_model)
+  )
+
+# Calculate average metrics by base model and model type
+rl_comparison_summary <- rl_model_comparison %>%
+  group_by(base_model, model_type) %>%
+  summarize(
+    mean_ppp_overall = mean(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(base_model, model_type)
+
+# Display the comparison table
+kable(rl_comparison_summary, digits = 3,
+      col.names = c("Base Model", "Model Type", "Mean PPP", "Mean Extreme Ratio"),
+      caption = "RL Component: RL-Only vs. Hybrid Models")
+```
+
+This table compares the performance of RL components between RL-only models and their hybrid counterparts. For each base model type (ev, pvlboth, pvldecay, pvldelta), we show the mean PPP value and mean extreme ratio for both the standalone RL model and its hybrid version with DDM. This helps us understand how adding a DDM component affects the fit of the RL component itself. PPP values closer to 0.5 and lower extreme ratios indicate better fit.
+
+```{r rl-stat-comparison}
+# Visualize the comparison for each RL statistic by base model
+rl_stat_comparison <- rl_model_comparison %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  facet_wrap(~ base_model, ncol = 2) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("RL-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "RL Component Performance: RL-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+
+rl_stat_comparison
+```
+
+This figure compares the mean PPP values for reinforcement learning statistics between RL-only models and their hybrid counterparts. Each panel represents a different base model (ev, pvlboth, pvldecay, pvldelta), showing how the PPP values change when DDM is added. The dashed black line represents the ideal PPP value of 0.5. This visualization helps us determine whether adding a sequential sampling component affects how well the RL component fits different statistics.
+
+```{r deck-selection-comparison}
+# Visualize the comparison specifically for deck selection metrics
+deck_selection_comparison <- rl_model_comparison %>%
+  filter(statistic %in% deck_selection_stats) %>%
+  mutate(metric_label = deck_metric_labels[statistic]) %>%
+  ggplot(aes(x = metric_label, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  facet_wrap(~ base_model, ncol = 2) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("RL-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Deck Selection Metrics: RL-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Metric", y = "Mean PPP Value")
+
+deck_selection_comparison
+```
+
+This figure focuses specifically on deck selection metrics, comparing RL-only models with their hybrid counterparts. Each panel represents a different base model, and bars are grouped by specific deck selection metric. The dashed black line represents the ideal PPP value of 0.5. This visualization helps identify whether adding a DDM component specifically affects how well models capture deck selection patterns.
+
+```{r rl-paired-comparison}
+# Create a direct comparison of RL-only vs. Hybrid model pairs
+rl_paired_comparison <- rl_comparison_summary %>%
+  # Rename the model_type values to avoid problematic characters in column names
+  mutate(model_type = case_when(
+    model_type == "RL-Only" ~ "RL_Only",
+    model_type == "Hybrid (RL+DDM)" ~ "Hybrid_RLDDM",
+    TRUE ~ model_type
+  )) %>%
+  pivot_wider(names_from = model_type, values_from = c(mean_ppp_overall, mean_extreme_ratio)) %>%
+  mutate(
+    ppp_difference = mean_ppp_overall_Hybrid_RLDDM - mean_ppp_overall_RL_Only,
+    extreme_difference = mean_extreme_ratio_Hybrid_RLDDM - mean_extreme_ratio_RL_Only
+  )
+
+# Visualize the paired comparison
+ggplot(rl_paired_comparison, 
+       aes(x = base_model, 
+           y = ppp_difference, 
+           fill = extreme_difference)) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.3f", ppp_difference)), 
+            vjust = ifelse(rl_paired_comparison$ppp_difference >= 0, -0.5, 1.5)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_gradient2(
+    low = "green", 
+    mid = "gray", 
+    high = "red", 
+    midpoint = 0,
+    limits = c(-0.2, 0.2)
+  ) +
+  theme_minimal() +
+  labs(title = "Impact of Adding DDM to RL Models",
+       subtitle = "Positive values indicate hybrid models have higher (worse) Mean PPP deviation from 0.5",
+       x = "Base RL Model", 
+       y = "Difference in Mean PPP (Hybrid - RL-Only)",
+       fill = "Difference in\nExtreme Ratio\n(Hybrid - RL-Only)")
+```
+
+This figure quantifies the effect of adding a DDM component to each base RL model. The bars show the difference in mean PPP values between hybrid and RL-only versions of each model, with positive values indicating that the hybrid model has PPP values further from the ideal 0.5 (worse fit). The color indicates the difference in extreme ratios, with red showing increased extreme values (worse) and green showing decreased extreme values (better). The actual PPP difference values are displayed on each bar. The dashed line at zero represents no change in fit quality.
+
+# Sequential Sampling Model (SSM) Component Analysis
+
+## SSM Metrics Across Models with DDM Components
+
+```{r ssm-metrics}
+# Get SSM statistics from the configuration
+play_rt_stats <- model_config$key_statistics$play_rt
+skip_rt_stats <- model_config$key_statistics$skip_rt
+choice_stats <- model_config$key_statistics$choice
+ssm_key_stats <- c(choice_stats, play_rt_stats, skip_rt_stats)
+
+# Filter for key SSM statistics across all models with DDM components
+ssm_metrics <- ssm_summaries %>%
+  filter(statistic %in% ssm_key_stats)
+
+# Create a comparison table
+ssm_comparison <- ssm_metrics %>%
+  select(model_display, statistic, mean_ppp, extreme_ratio) %>%
+  pivot_wider(names_from = statistic, 
+              values_from = c(mean_ppp, extreme_ratio)) %>%
+  arrange(model_display)
+
+# Display the table with better formatting
+create_metrics_table(
+  ssm_comparison,
+  list(
+    choice = choice_stats,
+    play_rt = play_rt_stats,
+    skip_rt = skip_rt_stats
+  ),
+  "SSM Metrics: Mean PPP Values and Extreme Ratios by Model"
+)
+```
+
+This table shows how well each model with a DDM component captures key sequential sampling metrics. It includes choice probabilities and reaction time statistics for both play and skip decisions. The left columns display Mean PPP values, while the right columns show the proportion of subjects with extreme PPP values. For PPP values, numbers closer to 0.5 indicate better fit. For extreme ratios, lower values indicate better fit.
+
+```{r play-rt-metrics}
+# Visualize Play RT metrics
+ssm_metrics %>%
+  filter(statistic %in% play_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for PLAY Reaction Time Statistics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+This bar chart shows the mean PPP values for play reaction time statistics across models with DDM components. Each color represents a different model, and bars are grouped by statistic. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). This visualization helps identify which models better capture reaction time patterns for play decisions.
+
+```{r skip-rt-metrics}
+# Visualize Skip/Pass RT metrics
+ssm_metrics %>%
+  filter(statistic %in% skip_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "Mean PPP Values for SKIP/PASS Reaction Time Statistics",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+This bar chart shows the mean PPP values for skip/pass reaction time statistics across models with DDM components. Each color represents a different model, and bars are grouped by statistic. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). This visualization helps identify which models better capture reaction time patterns for skip decisions.
+
+```{r choice-prob-metrics}
+# Visualize Choice Probability metrics
+ssm_metrics %>%
+  filter(statistic %in% choice_stats) %>%
+  ggplot(aes(x = model_display, y = mean_ppp, fill = model_display)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(title = "Mean PPP Values for Choice Probability",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Model", y = "Mean PPP Value")
+```
+
+This bar chart shows the mean PPP values for choice probability across models with DDM components. Each bar represents a different model. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). This visualization helps identify which models better predict choice probabilities in decision-making.
+
+```{r ssm-heatmap}
+# Create a heatmap for SSM metrics
+ssm_metrics %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                      midpoint = 0.5, limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "SSM Metrics Heatmap: Mean PPP Values",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Mean PPP")
+```
+
+This heatmap displays mean PPP values for SSM metrics across all models with DDM components. Each cell represents a specific model-statistic combination, with colors ranging from red (poor fit) through yellow to green (good fit). The actual PPP value is displayed in each cell. Colors closer to yellow (representing values near 0.5) indicate better model fit. This visualization makes it easy to identify patterns in model performance across different reaction time and choice statistics.
+
+## Comparison: DDM-Only vs. Hybrid Models (SSM Component)
+
+```{r ddm-hybrid-comparison}
+# Create a dataset for SSM model comparison (DDM-only vs. hybrid)
+ssm_model_comparison <- ssm_metrics %>%
+  mutate(
+    model_type = case_when(
+      model %in% ddm_only_models ~ "DDM-Only",
+      model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Other"
+    ),
+    # For hybrid models, extract the RL component
+    rl_component = case_when(
+      grepl("^ev_", model) ~ "EV",
+      grepl("^pvldecay_", model) ~ "PVLdecay",
+      grepl("^pvldelta_", model) ~ "PVLdelta",
+      grepl("^pvlboth_", model) ~ "PVLboth",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Calculate average metrics by model type and statistic
+ssm_stat_summary <- ssm_model_comparison %>%
+  group_by(model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create separate summaries for different RT types
+play_rt_summary <- ssm_stat_summary %>%
+  filter(statistic %in% play_rt_stats) %>%
+  group_by(model_type) %>%
+  summarize(
+    play_mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    play_mean_extreme = mean(mean_extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+skip_rt_summary <- ssm_stat_summary %>%
+  filter(statistic %in% skip_rt_stats) %>%
+  group_by(model_type) %>%
+  summarize(
+    skip_mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    skip_mean_extreme = mean(mean_extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Combine the summaries
+rt_type_summary <- full_join(play_rt_summary, skip_rt_summary, by = "model_type")
+
+# Display the summary table
+kable(rt_type_summary, digits = 3,
+      col.names = c("Model Type", "Play Mean PPP", "Play Mean Extreme Ratio", 
+                    "Skip Mean PPP", "Skip Mean Extreme Ratio"),
+      caption = "SSM Component: Play vs. Skip RT Performance")
+```
+
+This table compares the performance of reaction time modeling between DDM-only and hybrid models, separating play and skip reaction times. For each model type, it shows the mean PPP values and mean extreme ratios for both play and skip reaction times. PPP values closer to 0.5 and lower extreme ratios indicate better fit. This helps us understand whether the DDM component performs differently in standalone versus hybrid models, and whether it captures play and skip reaction times equally well.
+
+```{r play-rt-comparison}
+# Visualize the comparison for play RTs
+ssm_model_comparison %>%
+  filter(statistic %in% play_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("DDM-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "PLAY RT Performance: DDM-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+This bar chart compares the mean PPP values for play reaction time statistics between the standalone DDM model and hybrid models. Each group of bars represents a different statistic, with different colors for model types. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). This visualization helps determine whether adding RL components affects how well the DDM component fits play reaction time data.
+
+```{r skip-rt-comparison}
+# Visualize the comparison for skip RTs
+ssm_model_comparison %>%
+  filter(statistic %in% skip_rt_stats) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dotted", color = "red") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_fill_manual(values = c("DDM-Only" = "#1B9E77", "Hybrid (RL+DDM)" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "SKIP RT Performance: DDM-Only vs. Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+This bar chart compares the mean PPP values for skip reaction time statistics between the standalone DDM model and hybrid models. Each group of bars represents a different statistic, with different colors for model types. The dashed black line represents the ideal PPP value of 0.5, while the dotted red lines indicate the boundaries for extreme values (0.05 and 0.95). This visualization helps determine whether adding RL components affects how well the DDM component fits skip reaction time data.
+
+```{r hybrid-ssm-comparison}
+# Detailed hybrid model comparison for SSM
+ssm_metrics %>%
+  filter(model %in% hybrid_models) %>%
+  mutate(
+    model_short = case_when(
+      model == "ev_ddm" ~ "EV+DDM",
+      model == "pvldecay_ddm" ~ "PVLdecay+DDM",
+      model == "pvldelta_ddm" ~ "PVLdelta+DDM",
+      model == "pvlboth_ddm" ~ "PVLboth+DDM",
+      TRUE ~ model
+    )
+  ) %>%
+  ggplot(aes(x = statistic, y = mean_ppp, fill = model_short)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  facet_wrap(~ factor(grepl("play", statistic), labels = c("Skip/Pass RT", "Play RT")), scales = "free_x") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(title = "SSM Component Performance Across Hybrid Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Mean PPP Value")
+```
+
+This figure compares SSM component performance across different hybrid models, separating statistics for skip/pass reaction times (left panel) and play reaction times (right panel). Each color represents a different hybrid model, allowing us to see how different RL components affect the performance of the DDM component. The dashed black line represents the ideal PPP value of 0.5. This visualization helps identify which hybrid configurations better capture reaction time patterns for different decision types.
+
+# Cross-Model Comparison
+
+```{r cross-model-comparison}
+# Function to create component-specific performance summaries
+create_component_performance <- function(data, component_type) {
+  data %>%
+    filter(component == component_type) %>%
+    group_by(model, model_display) %>%
+    summarize(
+      mean_ppp = mean(mean_ppp, na.rm = TRUE),
+      extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+      problematic_stats = sum(extreme_ratio > 0.3, na.rm = TRUE),
+      total_stats = n(),
+      pct_problematic = problematic_stats / total_stats * 100,
+      .groups = "drop"
+    ) %>%
+    rename_with(~ paste0(component_type, "_", .), .cols = c(mean_ppp, extreme_ratio, problematic_stats, total_stats, pct_problematic))
+}
+
+# Create data frames for component-specific model performance
+rl_component_performance <- create_component_performance(all_summaries, "RL")
+ssm_component_performance <- create_component_performance(all_summaries, "SSM")
+
+# Create a base dataframe with all model information
+all_models_df <- tibble(
+  model = available_all_models,
+  model_display = model_display_names[available_all_models]
+)
+
+# Join the component performances
+model_performance <- all_models_df %>%
+  left_join(rl_component_performance, by = c("model", "model_display")) %>%
+  left_join(ssm_component_performance, by = c("model", "model_display")) %>%
+  mutate(
+    # Add model type
+    model_type = case_when(
+      model %in% rl_only_models ~ "RL Only",
+      model %in% ddm_only_models ~ "DDM Only",
+      model %in% hybrid_models ~ "Hybrid (RL+DDM)",
+      TRUE ~ "Unknown"
+    ),
+    
+    # Calculate overall metrics for all models
+    overall_mean_ppp = case_when(
+      model %in% rl_only_models ~ RL_mean_ppp,
+      model %in% ddm_only_models ~ SSM_mean_ppp,
+      model %in% hybrid_models ~ (RL_mean_ppp + SSM_mean_ppp) / 2,
+      TRUE ~ NA_real_
+    ),
+    overall_extreme_ratio = case_when(
+      model %in% rl_only_models ~ RL_extreme_ratio,
+      model %in% ddm_only_models ~ SSM_extreme_ratio,
+      model %in% hybrid_models ~ (RL_extreme_ratio + SSM_extreme_ratio) / 2,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  arrange(desc(overall_mean_ppp))
+
+# Display the combined performance table
+kable(model_performance %>% 
+        select(model_display, model_type, RL_mean_ppp, RL_extreme_ratio, 
+               SSM_mean_ppp, SSM_extreme_ratio, 
+               overall_mean_ppp, overall_extreme_ratio),
+      digits = 3,
+      col.names = c("Model", "Type", "RL Mean PPP", "RL Extreme Ratio", 
+                   "SSM Mean PPP", "SSM Extreme Ratio", 
+                   "Overall Mean PPP", "Overall Extreme Ratio"),
+      caption = "Component-Specific and Overall Model Performance")
+```
+
+This table provides a comprehensive overview of model performance, showing component-specific and overall metrics for each model. For RL-only and DDM-only models, the table shows metrics for their respective components, while hybrid models include metrics for both components and overall averages. "Mean PPP" values closer to 0.5 indicate better fit, and lower "Extreme Ratio" values indicate fewer subjects with extreme PPP values. This table allows for direct comparison across all models and components.
+
+```{r component-performance-plot}
+# Create a visualization of model performance by component
+all_summaries %>%
+  group_by(model_display, component) %>%
+  summarize(
+    mean_ppp = mean(mean_ppp, na.rm = TRUE),
+    mean_extreme_ratio = mean(extreme_ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(x = model_display, y = mean_extreme_ratio, fill = component)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5,
+            size = 3) +
+  scale_y_continuous(limits = c(0, max(overall_metrics$mean_extreme_ratio) * 1.2),
+                    labels = scales::percent) +
+  scale_fill_manual(values = c("RL" = "#1B9E77", "SSM" = "#D95F02")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Model Performance by Component",
+       subtitle = "Lower extreme ratio values indicate better fit; PPP values shown above bars",
+       x = "Model", y = "Mean Proportion of Extreme PPP Values",
+       fill = "Component")
+```
+
+This bar chart compares the performance of RL and SSM components across all models. The bars represent the mean proportion of extreme PPP values (lower is better), with actual mean PPP values displayed above each bar. Green bars represent RL components, while orange bars represent SSM components. This visualization makes it easy to compare component performance within and across models, highlighting which components tend to fit better within each model configuration.
+
+```{r key-stats-heatmap}
+# Get all key statistics across components
+key_stats_groups <- model_config$key_statistics
+key_stats_all <- unlist(key_stats_groups)
+
+# Function to create a statistic group label
+assign_metric_group <- function(stat) {
+  for (group_name in names(key_stats_groups)) {
+    if (stat %in% key_stats_groups[[group_name]]) {
+      return(group_name)
+    }
+  }
+  return("Other")
+}
+
+# Create more descriptive group names
+metric_group_labels <- c(
+  "deck_selection" = "Deck Selection",
+  "rl_performance" = "Other RL Metrics",
+  "play_rt" = "Play RT",
+  "skip_rt" = "Skip RT",
+  "choice" = "Choice"
+)
+
+# Filter for key statistics and assign groups
+key_stats_data <- all_summaries %>%
+  filter(statistic %in% key_stats_all) %>%
+  mutate(
+    # Assign each statistic to its metric group
+    metric_group_raw = sapply(statistic, assign_metric_group),
+    # Convert to user-friendly labels
+    metric_group = metric_group_labels[metric_group_raw]
+  )
+
+# Create heatmap for PPP values
+key_stats_data %>%
+  ggplot(aes(x = statistic, y = model_display, fill = mean_ppp)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", mean_ppp)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "green", 
+                     midpoint = 0.5, limits = c(0, 1)) +
+  facet_grid(. ~ metric_group, scales = "free", space = "free_x") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "PPP Values for Key Statistics Across All Models",
+       subtitle = "Values closer to 0.5 indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Mean PPP Value")
+```
+
+This heatmap provides a comprehensive view of model performance across all key statistics, grouped into categories (Deck Selection, Other RL Metrics, Play RT, Skip RT, Choice). Each cell represents a specific model-statistic combination, with colors ranging from red (poor fit) through yellow to green (good fit). The actual PPP value is displayed in each cell. Colors closer to yellow (representing values near 0.5) indicate better model fit. This visualization allows for detailed comparison across multiple dimensions and helps identify specific strengths and weaknesses of each model.
+
+```{r extreme-ratio-heatmap}
+# Create heatmap for extreme ratios
+key_stats_data %>%
+  ggplot(aes(x = statistic, y = model_display, fill = extreme_ratio)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.0f%%", extreme_ratio*100)), color = "black", size = 3) +
+  scale_fill_gradient(low = "green", high = "red", limits = c(0, 1)) +
+  facet_grid(. ~ metric_group, scales = "free", space = "free_x") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Proportion of Subjects with Extreme PPP Values",
+       subtitle = "Lower values indicate better fit",
+       x = "Statistic", y = "Model",
+       fill = "Extreme Ratio")
+```
+
+This heatmap shows the proportion of subjects with extreme PPP values (below 0.05 or above 0.95) for each model-statistic combination. Statistics are grouped into categories (Deck Selection, Other RL Metrics, Play RT, Skip RT, Choice). Colors range from green (few subjects with extreme values, better fit) to red (many subjects with extreme values, poor fit). Percentages are displayed in each cell. This visualization helps identify which models better account for individual differences across different types of statistics.
+
+```{r model-radar-plot}
+# Create a radar chart or similar visualization for overall model performance
+# First, prepare the data
+model_radar_data <- model_performance %>%
+  mutate(
+    RL_goodness = 1 - abs(RL_mean_ppp - 0.5) * 2,  # Scaled so 0.5 -> 1.0 and 0 or 1 -> 0
+    SSM_goodness = 1 - abs(SSM_mean_ppp - 0.5) * 2,
+    Overall_goodness = 1 - abs(overall_mean_ppp - 0.5) * 2,
+    RL_low_extreme = 1 - RL_extreme_ratio,
+    SSM_low_extreme = 1 - SSM_extreme_ratio,
+    Overall_low_extreme = 1 - overall_extreme_ratio
+  ) %>%
+  select(model_display, model_type, 
+         RL_goodness, SSM_goodness, Overall_goodness, 
+         RL_low_extreme, SSM_low_extreme, Overall_low_extreme)
+
+# Create a parallel coordinates plot
+model_radar_long <- model_radar_data %>%
+  pivot_longer(cols = c(RL_goodness, SSM_goodness, Overall_goodness, 
+                         RL_low_extreme, SSM_low_extreme, Overall_low_extreme),
+               names_to = "metric", values_to = "value") %>%
+  mutate(
+    metric_type = case_when(
+      grepl("goodness", metric) ~ "PPP Centrality",
+      grepl("extreme", metric) ~ "Low Extreme Ratio",
+      TRUE ~ "Other"
+    ),
+    component = case_when(
+      grepl("^RL_", metric) ~ "RL Component",
+      grepl("^SSM_", metric) ~ "SSM Component",
+      grepl("^Overall_", metric) ~ "Overall Performance",
+      TRUE ~ "Other"
+    ),
+    # Create a more intuitive order for the metrics
+    metric = factor(metric, levels = c("RL_goodness", "RL_low_extreme", 
+                                        "SSM_goodness", "SSM_low_extreme",
+                                        "Overall_goodness", "Overall_low_extreme")),
+    # Create a shortened display name for models
+    model_short = case_when(
+      grepl("PVLdecay\\+DDM", model_display) ~ "PVLd+DDM",
+      grepl("PVLdelta\\+DDM", model_display) ~ "PVLδ+DDM",
+      grepl("PVLboth\\+DDM", model_display) ~ "PVLb+DDM",
+      grepl("PVLdecay Only", model_display) ~ "PVLd",
+      grepl("PVLdelta Only", model_display) ~ "PVLδ",
+      grepl("PVLboth Only", model_display) ~ "PVLb",
+      grepl("EV\\+DDM", model_display) ~ "EV+DDM",
+      grepl("DDM Only", model_display) ~ "DDM",
+      grepl("EV Only", model_display) ~ "EV",
+      TRUE ~ model_display
+    )
+  )
+
+# Create a faceted line plot (poor man's radar chart)
+ggplot(model_radar_long, 
+       aes(x = metric, y = value, 
+           color = model_short, 
+           group = model_short,
+           linetype = model_type)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  scale_y_continuous(limits = c(0, 1)) +
+  facet_grid(. ~ component, scales = "free_x") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  ) +
+  labs(
+    title = "Model Performance Across Multiple Metrics",
+    subtitle = "Higher values indicate better performance",
+    y = "Performance (higher is better)",
+    x = NULL,
+    color = "Model",
+    linetype = "Model Type"
+  )
+```
+
+This multi-metric visualization shows model performance across different components and metrics. Each panel represents a different component (RL, SSM, Overall), and within each panel, lines track performance across two metrics: PPP centrality (how close mean PPP is to 0.5) and low extreme ratio (proportion of non-extreme values). Higher values on the y-axis indicate better performance for all metrics. Different colors represent different models, and line styles indicate model types. This visualization provides a comprehensive view of model performance across multiple dimensions, making it easier to identify which models perform consistently well.
+
+# Integration with Parameter Recovery Results
+
+```{r param-recovery-integration, include=FALSE}
+# Function to load recovery results
+load_recovery_results <- function(model_names) {
+  # Paths to recovery data files
+  REC_SIM_DIR <- file.path(PROJ_DIR, "Data", "sim", "recovery")
+  
+  # Initialize empty list for recovery data
+  recovery_data <- list()
+  
+  # Try to load recovery data for each model
+  for (model_name in model_names) {
+    file_path <- file.path(REC_SIM_DIR, 
+                          paste0("recovery_igt_mod_batch_001_", model_name, "_desc-sim_params.rds"))
+    
+    if (file.exists(file_path)) {
+      recovery_data[[model_name]] <- readRDS(file_path)
+    } else {
+      warning(paste("Recovery file not found for model:", model_name))
+    }
+  }
+  
+  return(recovery_data)
+}
+
+# Function to extract overall metrics from recovery objects
+extract_overall_from_recovery <- function(recovery_obj, model_name) {
+  if (is.null(recovery_obj)) {
+    return(NULL)
+  }
+  
+  overall <- recovery_obj$overall
+  overall$model <- model_name
+  return(overall)
+}
+
+# Load recovery data for models in our analysis
+recovery_data <- load_recovery_results(available_all_models)
+
+# Combine all overall metrics
+overall_df <- bind_rows(
+  lapply(names(recovery_data), function(name) {
+    extract_overall_from_recovery(recovery_data[[name]], name)
+  })
+)
+
+# Create recovery performance data frame
+recovery_performance <- overall_df %>%
+  pivot_wider(names_from = metric, values_from = value) %>%
+  select(model, correlation, rmse, bias, relative_bias)
+```
+
+```{r combined-performance}
+# Combine with PPC performance
+combined_performance <- recovery_performance %>%
+  left_join(model_performance, by = "model") %>%
+  select(model_display, model_type, correlation, rmse, relative_bias, 
+         RL_mean_ppp, RL_extreme_ratio, 
+         SSM_mean_ppp, SSM_extreme_ratio,
+         overall_mean_ppp, overall_extreme_ratio)
+
+# Create a formatted table
+kable(combined_performance, digits = 3,
+      col.names = c("Model", "Type", "Param Correlation", "Param RMSE", "Param Rel Bias", 
+                   "RL Mean PPP", "RL Extreme Ratio", 
+                   "SSM Mean PPP", "SSM Extreme Ratio",
+                   "Overall Mean PPP", "Overall Extreme Ratio"),
+      caption = "Combined Parameter Recovery and PPC Performance")
+```
+
+This table integrates parameter recovery metrics with PPC performance measures for each model. Parameter recovery is assessed using correlation (higher is better), RMSE (lower is better), and relative bias (closer to zero is better). These metrics indicate how reliably a model's parameters can be estimated from data. The right side of the table shows PPC performance metrics for RL and SSM components. This comprehensive view helps identify models that both recover parameters reliably and fit empirical data patterns well.
+
+```{r recovery-vs-ppc-scatter}
+# Create a scatter plot of parameter recovery vs PPC performance
+combined_performance %>%
+  ggplot(aes(x = correlation, y = 1 - overall_extreme_ratio, 
+             color = model_display, size = 1/rmse)) +
+  geom_point(alpha = 0.8) +
+  geom_text(aes(label = model_display), hjust = -0.2, vjust = 0, size = 3) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_size_continuous(name = "Inverse RMSE\n(Larger is better)") +
+  theme_minimal() +
+  labs(title = "Parameter Recovery vs PPC Performance",
+       subtitle = "Better models appear in the upper-right (high recovery correlation, low extreme PPP ratios)",
+       x = "Parameter Recovery Correlation", 
+       y = "PPC Goodness (1 - Mean Extreme Ratio)",
+       color = "Model")
+```
+
+This scatter plot shows the relationship between parameter recovery (x-axis, correlation) and PPC performance (y-axis, percentage of non-extreme PPP values). The size of each point indicates the inverse of RMSE, so larger points represent better parameter recovery precision. Models in the upper-right corner exhibit both good parameter recovery (high correlation) and good empirical fit (high percentage of non-extreme PPP values), representing the most reliable models overall. This visualization helps identify models that balance these two important qualities.
+
+```{r component-recovery-scatter}
+# Create component-specific scatter plots
+combined_performance %>%
+  filter(!is.na(RL_extreme_ratio)) %>%
+  ggplot(aes(x = correlation, y = 1 - RL_extreme_ratio, 
+             color = model_display, size = 1/rmse)) +
+  geom_point(alpha = 0.8) +
+  geom_text(aes(label = model_display), hjust = -0.2, vjust = 0, size = 3) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_size_continuous(name = "Inverse RMSE\n(Larger is better)") +
+  theme_minimal() +
+  labs(title = "Parameter Recovery vs RL Component PPC Performance",
+       subtitle = "Better models appear in the upper-right",
+       x = "Parameter Recovery Correlation", 
+       y = "RL Component PPC Goodness (1 - Extreme Ratio)",
+       color = "Model")
+```
+
+This scatter plot focuses specifically on the relationship between parameter recovery (x-axis, correlation) and RL component PPC performance (y-axis, percentage of non-extreme PPP values). As with the previous plot, point size indicates parameter recovery precision. This component-specific view helps identify which models best balance parameter recoverability with RL component fit, which is particularly relevant for studies focusing on learning and valuation processes.
+
+```{r ssm-recovery-scatter}
+combined_performance %>%
+  filter(!is.na(SSM_extreme_ratio)) %>%
+  ggplot(aes(x = correlation, y = 1 - SSM_extreme_ratio, 
+             color = model_display, size = 1/rmse)) +
+  geom_point(alpha = 0.8) +
+  geom_text(aes(label = model_display), hjust = -0.2, vjust = 0, size = 3) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_size_continuous(name = "Inverse RMSE\n(Larger is better)") +
+  theme_minimal() +
+  labs(title = "Parameter Recovery vs SSM Component PPC Performance",
+       subtitle = "Better models appear in the upper-right",
+       x = "Parameter Recovery Correlation", 
+       y = "SSM Component PPC Goodness (1 - Extreme Ratio)",
+       color = "Model")
+```
+
+This scatter plot focuses specifically on the relationship between parameter recovery (x-axis, correlation) and SSM component PPC performance (y-axis, percentage of non-extreme PPP values). Point size indicates parameter recovery precision. This component-specific view helps identify which models best balance parameter recoverability with SSM component fit, which is particularly relevant for studies focusing on decision processes and reaction times.
+
+```{r comprehensive-recovery-scatter}
+# Create a comprehensive plot that combines recovery and PPC metrics
+combined_performance %>%
+  mutate(
+    ppp_deviation = abs(overall_mean_ppp - 0.5),
+    extreme_goodness = 1 - overall_extreme_ratio,
+    recovery_score = (correlation + (1 - rmse))/2  # Simple combined score
+  ) %>%
+  ggplot(aes(x = recovery_score, y = extreme_goodness, 
+             color = model_type, size = 1/ppp_deviation)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = model_display), size = 3, box.padding = 0.5) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_size_continuous(name = "PPP Accuracy\n(Larger is better)") +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(title = "Combined Model Performance: Recovery & PPC",
+       subtitle = "Better models appear in the upper-right corner",
+       x = "Parameter Recovery Score", 
+       y = "PPC Goodness (1 - Extreme Ratio)",
+       color = "Model Type")
+```
+
+This comprehensive visualization combines multiple aspects of model performance into a single plot. The x-axis shows a combined parameter recovery score (averaging correlation and inverse RMSE), while the y-axis shows PPC goodness (percentage of non-extreme PPP values). Point size indicates PPP accuracy (how close mean PPP is to 0.5), and color indicates model type. Models in the upper-right corner with larger points represent the best overall performers, balancing parameter recovery with empirical fit. This plot provides a holistic view of model quality across multiple dimensions.
+
+# Model Performance Summary
+
+```{r model-summary}
+# Create a helper function to scale values between 0 and 1
+scale_01 <- function(x) {
+  if (all(is.na(x))) return(x)
+  rng <- range(x, na.rm = TRUE)
+  if (rng[1] == rng[2]) return(rep(0.5, length(x)))
+  return((x - rng[1]) / (rng[2] - rng[1]))
+}
+
+# Create a comprehensive summary of model performance
+model_summary <- combined_performance %>%
+  mutate(
+    # Calculate deviation from ideal PPP (0.5)
+    RL_ppp_deviation = abs(RL_mean_ppp - 0.5),
+    SSM_ppp_deviation = abs(SSM_mean_ppp - 0.5),
+    Overall_ppp_deviation = abs(overall_mean_ppp - 0.5),
+    
+    # Calculate normalized scores (higher is better)
+    recovery_score = scale_01(correlation) * 0.7 + scale_01(1/rmse) * 0.3,
+    rl_score = scale_01(1 - RL_ppp_deviation) * 0.5 + scale_01(1 - RL_extreme_ratio) * 0.5,
+    ssm_score = scale_01(1 - SSM_ppp_deviation) * 0.5 + scale_01(1 - SSM_extreme_ratio) * 0.5,
+    ppc_score = case_when(
+      !is.na(rl_score) & !is.na(ssm_score) ~ (rl_score + ssm_score) / 2,
+      !is.na(rl_score) ~ rl_score,
+      !is.na(ssm_score) ~ ssm_score,
+      TRUE ~ NA_real_
+    ),
+    
+    # Calculate overall model score
+    overall_score = (recovery_score + ppc_score) / 2
+  ) %>%
+  select(model_display, model_type, 
+         recovery_score, rl_score, ssm_score, ppc_score, overall_score) %>%
+  arrange(desc(overall_score))
+
+# Display the summary table
+kable(model_summary, digits = 3,
+      col.names = c("Model", "Type", "Recovery Score", "RL Score", "SSM Score", "PPC Score", "Overall Score"),
+      caption = "Model Performance Summary Scores (Higher is Better)")
+```
+
+This table provides normalized performance scores for each model across different dimensions. All scores are scaled from 0 to 1, with higher values indicating better performance. The "Recovery Score" combines parameter correlation and precision measures. The "RL Score" and "SSM Score" evaluate component-specific PPC performance. The "PPC Score" averages the component scores, and the "Overall Score" combines recovery and PPC performance. Models are ranked by overall score, providing a quantitative basis for model comparison and selection.
+
+```{r model-summary-long}
+# Visualize the summary scores
+model_summary_long <- model_summary %>%
+  pivot_longer(cols = c(recovery_score, rl_score, ssm_score, ppc_score, overall_score),
+               names_to = "metric", values_to = "score") %>%
+  mutate(
+    metric = factor(metric, 
+                    levels = c("recovery_score", "rl_score", "ssm_score", "ppc_score", "overall_score"),
+                    labels = c("Parameter Recovery", "RL Component", "SSM Component", "PPC Overall", "Final Score"))
+  )
+
+# Create a comprehensive visualization of model performance
+ggplot(model_summary_long, 
+       aes(x = metric, y = score, fill = model_type, group = model_display)) +
+  geom_col(position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.2f", score)), 
+            position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 3) +
+  facet_wrap(~ model_display, ncol = 3) +
+  scale_y_continuous(limits = c(0, 1.1)) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Comprehensive Model Performance Evaluation",
+       subtitle = "Higher scores indicate better performance",
+       x = NULL, y = "Score (0-1)",
+       fill = "Model Type")
+```
+
+This visualization provides a detailed profile of each model's performance across different metrics. Each panel represents a different model, with bars showing scores for parameter recovery, RL component fit, SSM component fit, overall PPC performance, and final composite score. Bar colors indicate model type, and actual score values are displayed above each bar. This multi-faceted view helps identify models with balanced performance across different dimensions versus those with strengths in specific areas, aiding in model selection based on research priorities.
+
+```{r top-models-comparison}
+# Create a radar chart for the top models
+top_models <- head(model_summary$model_display, 5)
+model_summary_radar <- model_summary_long %>%
+  filter(model_display %in% top_models)
+
+# Simplified visualization for top models
+ggplot(model_summary_radar, 
+       aes(x = metric, y = score, color = model_display, group = model_display)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(face = "bold"),
+    panel.grid.major.x = element_blank()
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Performance Comparison of Top Five Models",
+       subtitle = "Higher scores indicate better performance",
+       x = NULL, y = "Score",
+       color = "Model")
+```
+
+This figure focuses on the top five performing models, directly comparing their scores across different metrics. Each line represents a different model, with points showing scores for parameter recovery, component-specific fit (RL and SSM), overall PPC performance, and final composite score. This direct comparison makes it easier to see the relative strengths and weaknesses of the best-performing models, helping to identify which models excel in specific areas versus those with more balanced performance profiles.

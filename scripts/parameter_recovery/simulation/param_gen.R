@@ -1,0 +1,340 @@
+#' Parameter Generation Framework
+#' Functions for generating parameters using various methods (FPSE and EPSE)
+suppressPackageStartupMessages({
+  library(R6)
+  library(data.table)
+  library(yaml)
+})
+
+#' Parameter Handler Class
+#' Handles parameter transformations and validations
+ParameterHandler <- R6Class("ParameterHandler",
+                            public = list(
+                              transform_parameter = function(value, transform = NULL) {
+                                if (is.null(transform)) return(value)
+                                
+                                switch(transform,
+                                       "logit" = {
+                                         # Logit transformation
+                                         log(value / (1 - value))
+                                       },
+                                       "log" = {
+                                         # Log transformation
+                                         log(value)
+                                       },
+                                       "exp" = {
+                                         # Exponential transformation
+                                         exp(value)
+                                       },
+                                       "identity" = {
+                                         # Identity transformation (no change)
+                                         value
+                                       },
+                                       # Default case - return untransformed value
+                                       value
+                                )
+                              },
+                              
+                              inverse_transform = function(value, transform = NULL) {
+                                if (is.null(transform)) return(value)
+                                
+                                switch(transform,
+                                       "logit" = {
+                                         # Inverse logit transformation
+                                         1 / (1 + exp(-value))
+                                       },
+                                       "log" = {
+                                         # Inverse log transformation
+                                         exp(value)
+                                       },
+                                       "exp" = {
+                                         # Inverse exponential transformation
+                                         log(value)
+                                       },
+                                       "identity" = {
+                                         # Identity transformation (no change)
+                                         value
+                                       },
+                                       # Default case - return untransformed value
+                                       value
+                                )
+                              }
+                            )
+)
+
+#' Base class for parameter generation methods
+ParameterGenerator <- R6Class("ParameterGenerator",
+                              public = list(
+                                handler = NULL,
+                                config = NULL,
+                                
+                                initialize = function(config_file) {
+                                  self$config <- yaml::read_yaml(config_file)
+                                }
+                              )
+)
+
+#' FPSE Implementation
+FPSEGenerator <- R6Class("FPSEGenerator",
+                         inherit = ParameterGenerator,
+                         public = list(
+                           initialize = function(config_file) {
+                             self$config <- yaml::read_yaml(config_file)
+                           },
+                           
+                           stratified_sampling = function(n_subjects) {
+                             params <- self$config$parameters
+                             result <- data.table(idx = 1:n_subjects)
+                             
+                             # Ensure minimum subjects for stratification
+                             if (n_subjects < 9) stop("Need at least 9 subjects for stratified sampling")
+                             
+                             for (param_name in names(params)) {
+                               param <- params[[param_name]]
+                               
+                               if (!is.null(param$categories)) {
+                                 cats <- param$categories
+                                 # Generate stratified samples
+                                 n_per_cat <- floor(n_subjects/3)
+                                 values <- c(
+                                   runif(n_per_cat, cats$low[1], cats$low[2]),
+                                   runif(n_per_cat, cats$medium[1], cats$medium[2]),
+                                   runif(n_subjects - 2*n_per_cat, cats$high[1], cats$high[2])
+                                 )
+                               } else {
+                                 # For parameters without categories, use range
+                                 range <- param$range
+                                 values <- runif(n_subjects, range[1], range[2])
+                               }
+                               
+                               result[[param_name]] <- sample(values) # Shuffle values
+                             }
+                             
+                             return(result)
+                           }
+                         )
+)
+
+compute_medians <- function(vector_list) {
+  # Check if vector_list is already a matrix-like object
+  if (is.matrix(vector_list) || is.data.frame(vector_list)) {
+    # If it's a matrix or data frame, apply median directly
+    return(apply(vector_list, 2, function(x) median(x)))
+  } else if (is.vector(vector_list)) {
+    # If it's a flat vector, reshape it into a matrix (assuming 2 columns)
+    # Adjust ncol based on your actual number of variables (2 here is just an example)
+    vector_matrix <- matrix(vector_list, ncol = 2)
+    return(apply(vector_matrix, 2, function(x) median(x)))
+  } else {
+    stop("Unsupported structure of vector_list")
+  }
+}
+
+#' EPSE Implementation
+EPSEGenerator <- R6Class("EPSEGenerator",
+                         inherit = ParameterGenerator,
+                         public = list(
+                           extract_posterior = function(model_fit, param_name, subject_index = NULL) {
+                             # Handle batch groups differently
+                             if ('subjects' %in% names(model_fit)) {  # This indicates it's a batch group
+                               if (is.null(subject_index)) {
+                                 stop("Subject index required for batch group fits")
+                               }
+                               param_draws <- model_fit[[subject_index]]$draws
+                               # Get the parameter samples
+                               samples <- as.vector(param_draws[,, param_name])
+                               return(samples)
+                             } else {
+                               # Original code for non-batch groups
+                               if (is.null(subject_index)) {
+                                 samples <- model_fit$draws[,, param_name]
+                                 return(as.vector(samples))
+                               } else {
+                                 filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
+                                 filtered_params = filtered_params[grepl(paste0("\\[", subject_index,"\\]"), filtered_params)]
+                                 filtered_params = filtered_params[grepl(param_name, filtered_params)]
+                                 samples <- model_fit$draws[,, filtered_params]
+                                 
+                                 return(apply(samples, 3, function(x) as.vector(x)))
+                               }
+                             }
+                           },
+                           
+                           median_based_sps = function(model_fit, n_subjects) {
+                             params <- self$config$parameters
+                             
+                             # Sample subjects
+                             if ("subjects" %in% names(model_fit)){
+                               available_subjects <- model_fit$subjects
+                               
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
+                               
+                               result <- data.table(idx = selected_subjects)
+                               
+                               for (param_name in names(params)) {
+                                 values <- sapply(selected_subjects, function(subject) {
+                                   samples <- self$extract_posterior(model_fit, param_name, subject)
+                                   compute_medians(samples)
+                                 })
+                                 result[[param_name]] <- values
+                               }
+                             } else {
+                               # 1. Exclude "mu" , model_fit$all_params "sigma"
+                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
+                               filtered_params = filtered_params[grepl("\\[", filtered_params)]
+                               
+                               # 2. Extract numbers from within square brackets
+                               matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
+                               
+                               max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
+                               
+                               available_subjects = seq(max_value)
+                               
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
+                               
+                               result <- data.table(idx = selected_subjects)
+                               
+                               for (param_name in names(params)) {
+                                 values <- sapply(selected_subjects, function(subject) {
+                                   samples <- self$extract_posterior(model_fit, param_name, subject)
+                                   compute_medians(samples)
+                                 })
+                                 result[[param_name]] <- values
+                               }
+                             }
+                             
+                             return(result)
+                           },
+                           
+                           simulation_based_sps = function(model_fit, n_subjects) {
+                             params <- self$config$parameters
+                             
+                             if ("subjects" %in% names(model_fit)){
+                               available_subjects <- model_fit$subjects
+                             } else {
+                               # 1. Exclude "mu" , model_fit$all_params "sigma"
+                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
+                               filtered_params = filtered_params[grepl("\\[", filtered_params)]
+                               
+                               # 2. Extract numbers from within square brackets
+                               matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
+                               
+                               max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
+                               
+                               available_subjects = seq(max_value)
+                             }
+                             
+                             selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
+                             
+                             result <- data.table(idx = selected_subjects)
+                             
+                             for (param_name in names(params)) {
+                               values <- sapply(selected_subjects, function(subject) {
+                                 samples <- self$extract_posterior(model_fit, param_name, subject)
+                                 sample(samples, 1)
+                               })
+                               result[[param_name]] <- values
+                             }
+                             
+                             return(result)
+                           },
+                           
+                           tuple_based_sps = function(model_fit, n_subjects, min_percentile = 50) {
+                             params <- self$config$parameters
+                             result <- data.table(idx = 1:n_subjects)
+                             
+                             # Get high-probability parameter combinations
+                             iterations <- self$find_high_prob_iterations(model_fit, names(params), min_percentile)
+                             selected_iterations <- sample(iterations, n_subjects, replace = FALSE)
+                             
+                             result <- data.table(idx = selected_subjects)
+                             for (param_name in names(params)) {
+                               samples <- self$extract_posterior(model_fit, param_name)
+                               result[[param_name]] <- samples[selected_iterations]
+                             }
+                             
+                             return(result)
+                           },
+                           
+                           hierarchical_posterior_sim = function(model_fit, n_subjects) {
+                             params <- self$config$parameters
+                             result <- data.table(idx = 1:n_subjects)
+                             
+                             for (param_name in names(params)) {
+                               # Extract hierarchical parameters
+                               mu_samples <- self$extract_posterior(model_fit, sprintf("mu_%s", param_name))
+                               sigma_samples <- self$extract_posterior(model_fit, sprintf("sigma_%s", param_name))
+                               
+                               # Use median estimates
+                               mu <- median(mu_samples)
+                               sigma <- median(sigma_samples)
+                               
+                               # Generate new subjects
+                               values <- rnorm(n_subjects, mu, sigma)
+                               
+                               # Apply bounds from config
+                               bounds <- params[[param_name]]$range
+                               values <- pmin(pmax(values, bounds[1]), bounds[2])
+                               
+                               result[[param_name]] <- values
+                             }
+                             
+                             return(result)
+                           },
+                           
+                           find_high_prob_iterations = function(model_fit, params, min_percentile) {
+                             # Find iterations where all parameters are above min_percentile
+                             param_samples <- lapply(params, function(param) self$extract_posterior(model_fit, param))
+                             
+                             thresholds <- lapply(param_samples, function(samples) {
+                               quantile(samples, min_percentile/100)
+                             })
+                             
+                             # Find iterations meeting all criteria
+                             n_iterations <- length(param_samples[[1]])
+                             high_prob <- rep(TRUE, n_iterations)
+                             
+                             for (i in seq_along(params)) {
+                               high_prob <- high_prob & (param_samples[[i]] >= thresholds[[i]])
+                             }
+                             
+                             return(which(high_prob))
+                           }
+                         )
+)
+
+#' Main parameter generation function
+#' @param config_file Path to parameter configuration file
+#' @param method Parameter generation method
+#' @param model_fit Optional model fit object for EPSE methods
+#' @param n_subjects Number of subjects to generate
+#' @return Data table of generated parameters
+generate_parameters <- function(
+    config_file,
+    method = c("ssFPSE", "mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE"),
+    model_fit = NULL,
+    n_subjects = 100
+) {
+  
+  # Check if method requires model_fit
+  epse_methods <- c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")
+  if (method %in% epse_methods && is.null(model_fit)) {
+    stop(sprintf("Method %s requires model_fit object", method))
+  }
+  
+  # Generate parameters based on method
+  if (method == "ssFPSE") {
+    generator <- FPSEGenerator$new(config_file)
+    params <- generator$stratified_sampling(n_subjects)
+  } else {
+    generator <- EPSEGenerator$new(config_file)
+    params <- switch(method,
+                     "mbSPSepse" = generator$median_based_sps(model_fit, n_subjects),
+                     "sbSPSepse" = generator$simulation_based_sps(model_fit, n_subjects),
+                     "tSPSepse" = generator$tuple_based_sps(model_fit, n_subjects),
+                     "hpsEPSE" = generator$hierarchical_posterior_sim(model_fit, n_subjects)
+    )
+  }
+  
+  return(params)
+}

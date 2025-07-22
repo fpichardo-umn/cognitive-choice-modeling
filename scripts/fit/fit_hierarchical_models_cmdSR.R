@@ -17,13 +17,16 @@ option_list = list(
   make_option(c("-t", "--type"), type="character", default="fit", help="Model type (fit, postpc, prepc)"),
   make_option(c("-k", "--task"), type="character", default=NULL, help="Task name"),
   make_option(c("-g", "--group"), type="character", default=NULL, help="Group type (sing, group, group_hier)"),
+  make_option(c("-s", "--source"), type="character", default=NULL, help="Data source"),
+  make_option(c("--ses"), type="character", default=NULL, help="Session identifier (optional)"),
   make_option(c("-d", "--data"), type="character", default=NULL, 
               help="Comma-separated list of data to extract"),
   make_option(c("-p", "--params"), type="character", default=NULL, 
               help="Comma-separated list of model parameters"),
-  make_option(c("--n_subs"), type="integer", default=1000, help="Number of subjects"),
+  make_option(c("--n_subs"), type="integer", default=1000, help="Number of subjects for hierarchical model"),
   make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
-  make_option(c("--RTbound_ms"), type="integer", default=50, help="RT bound in milliseconds"),
+  make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
+  make_option(c("--RTbound_max_ms"), type="integer", default=2500, help="RT max bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="remove", help="RT method"),
   make_option(c("--n_warmup"), type="integer", default=3000, help="Number of warmup iterations"),
   make_option(c("--n_iter"), type="integer", default=15000, help="Number of iterations"),
@@ -32,65 +35,46 @@ option_list = list(
   make_option(c("--max_treedepth"), type="integer", default=12, help="Max tree depth"),
   make_option(c("--seed"), type="integer", default=29518, help="Set seed. Default: 29518"),
   make_option(c("--dry_run"), action="store_true", default=FALSE, help="Perform a dry run"),
-  make_option(c("--check_iter"), type="integer", default=1000, help="Iteration interval for checkpoint runs. Default: 1000")
+  make_option(c("--check_iter"), type="integer", default=1000, help="Iteration interval for checkpoint runs. Default: 1000"),
+  make_option(c("--init"), action="store_true", default=FALSE, help="Initialize values to 0")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
-# Set up directories
-PROJ_DIR <- here::here()
-DATA_DIR <- file.path(PROJ_DIR, "Data")
-SAFE_DATA_DIR <- file.path(DATA_DIR, "AHRB")
-MODELS_DIR <- file.path(PROJ_DIR, "models")
-SCRIPT_DIR <- file.path(PROJ_DIR, "scripts")
-MODELS_BIN_DIR <- file.path(MODELS_DIR, "bin")
+set_cmdstan_path("~/stan/cmdstan-2.36.0/")
 
-# Load helper functions
-helper_functions_path <- file.path(SCRIPT_DIR, "helper_functions_cmdSR.R")
-if (!file.exists(helper_functions_path)) {
-  stop("helper_functions.R not found. Expected path: ", helper_functions_path)
+# Load helper functions for directory structure
+source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
+
+# Set up directories using helper functions
+PROJ_DIR <- get_proj_dir()
+SCRIPT_DIR <- file.path(PROJ_DIR, "scripts")
+SAFE_DATA_DIR <- get_safe_data_dir()
+
+# Get task-specific directories
+if (!is.null(opt$task)) {
+  DATA_DIR <- get_data_dir(opt$task)
+  MODELS_DIR <- get_models_dir(opt$task)
+  MODELS_BIN_DIR <- get_bin_dir(opt$task)
+} else {
+  stop("Task name is required using the -k option.")
 }
-source(helper_functions_path)
 
 # Set random seed for reproducibility
 set.seed(opt$seed)
 
-# Default data and parameters for each model
-model_defaults <- list(
-  "igt_mod_group_hier_ddm" = list(
-    data = c("N", "Nplay", "Npass", "Nplay_max", "Npass_max", "T", "Tsubj", "RTbound", "minRT", "RTpass", "RTplay"),
-    params = c("boundary", "tau", "beta", "drift")
-  ),
-  "igt_mod_group_hier_ev_ddm" = list(
-    data = c("N", "T", "Tsubj", "RTbound", "minRT", "RT", "choice", "shown", "outcome"),
-    params = c("boundary", "tau", "beta", "drift_con", "wgt_pun", "wgt_rew", "update")
-  ),
-  "igt_mod_group_hier_ev_ddm_tic" = list(
-    data = c("N", "T", "Tsubj", "RTbound", "minRT", "RT", "choice", "shown", "outcome"),
-    params = c("boundary", "tau", "beta", "drift_con", "wgt_pun", "wgt_rew", "update")
-  ),
-  "igt_mod_group_hier_ev_ddm_tdc" = list(
-    data = c("N", "T", "Tsubj", "RTbound", "minRT", "RT", "choice", "shown", "outcome"),
-    params = c("boundary", "tau", "beta", "drift_con", "wgt_pun", "wgt_rew", "update")
-  ),
-  "igt_mod_group_hier_ev" = list(
-    data = c("N", "T", "Tsubj", "choice", "shown", "outcome"),
-    params = c("con", "wgt_pun", "wgt_rew", "update")
-  ),
-  "igt_mod_group_hier_new_pvl_ddm" = list(
-    data = c("N", "T", "Tsubj", "RTbound", "minRT", "RT", "choice", "shown", "outcome"),
-    params = c("boundary", "tau", "beta", "drift_con", "exp_upd", "lambda", "alpha", "A", "update_pe", "exp_max")
-  ),
-  "igt_mod_group_hier_new_pvl" = list(
-    data = c("N", "T", "Tsubj", "choice", "shown", "outcome"),
-    params = c("con", "exp_upd", "lambda", "alpha", "A", "update_pe", "exp_max")
-  )
-)
+# Get model defaults using helper function
+model_defaults <- get_model_defaults(opt$task)
 
-# Main execution
-if (is.null(opt$model) || is.null(opt$task) || is.null(opt$group)) {
-  stop("Please specify a model, task, and group type using the -m, -k, and -g options.")
+# Main execution - validate hierarchical-specific arguments
+if (is.null(opt$model) || is.null(opt$task) || is.null(opt$group) || is.null(opt$source)) {
+  stop("Please specify a model, task, group type, and source using the -m, -k, -g, and -s options.")
+}
+
+# Validate that this is actually a hierarchical model request
+if (!opt$group %in% c("group", "hier")) {
+  stop("This script is for hierarchical models. Group type must be 'group' or 'group_hier'. For single subjects, use fit_single_model.R")
 }
 
 model_name <- opt$model
@@ -99,46 +83,120 @@ group_type <- opt$group
 full_model_name = paste(task, group_type, model_name, sep="_")
 
 if (!full_model_name %in% names(model_defaults)) {
-  cat(full_model_name,"\n")
-  cat(names(model_defaults))
-  stop("Unrecognized model. Please check the model name.")
+  cat("Requested model:", full_model_name,"\n")
+  cat("Available models:", names(model_defaults), "\n")
+  stop("Unrecognized hierarchical model. Please check the model name and group type.")
 }
 
+# Extract data and parameter specifications
 data_to_extract <- if (!is.null(opt$data)) strsplit(opt$data, ",")[[1]] else model_defaults[[full_model_name]]$data
 model_params <- if (!is.null(opt$params)) strsplit(opt$params, ",")[[1]] else model_defaults[[full_model_name]]$params
+non_pr_params <- if (opt$init) model_defaults[[full_model_name]]$non_pr_params else NULL
+exclude_params <- if (opt$init) model_defaults[[full_model_name]]$exclude_params else NULL
 
-cat("Preparing data for", full_model_name, "\n")
+cat("Preparing hierarchical data for", full_model_name, "\n")
+cat("Target sample size:", opt$n_subs, "subjects\n")
 
-# Load data
-# Check for data file existence
-wave1.sav.file <- file.path(SAFE_DATA_DIR, "modigt_data_Wave1.sav")
-if (!file.exists(wave1.sav.file)) {
-  stop("Data file not found. Expected path: ", wave1.sav.file)
-}
-
+# Load and prepare hierarchical data
 if (!opt$dry_run) {
-  cat("Preparing data for", full_model_name, "\n")
-  # Load data
-  wave1.raw <- read.spss(wave1.sav.file, to.data.frame = TRUE)
+  cat("Loading data for hierarchical model fitting...\n")
   
-  data_list <- extract_sample_data(wave1.raw, data_to_extract, 
-                                   n_subs = opt$n_subs, n_trials = opt$n_trials, 
-                                   RTbound_ms = opt$RTbound_ms, RTbound_reject_ms = 100, 
-                                   rt_method = opt$rt_method, minrt_ep_ms = 0)
+  # Load full dataset using helper function
+  all_data <- load_data(opt$task, opt$source, opt$ses)
+  
+  # For hierarchical models, we work with multiple subjects
+  # Check if we have enough subjects
+  unique_subjects <- unique(all_data$subjID)
+  n_available_subs <- length(unique_subjects)
+  
+  cat("Available subjects in dataset:", n_available_subs, "\n")
+  
+  if (n_available_subs < opt$n_subs) {
+    cat("Warning: Requested", opt$n_subs, "subjects but only", n_available_subs, "available. Using all available subjects.\n")
+    selected_n_subs <- n_available_subs
+  } else {
+    selected_n_subs <- opt$n_subs
+  }
+  
+  # For hierarchical models, we typically sample subjects or use all available
+  # Here we'll use the first n_subs subjects (could be randomized if needed)
+  selected_subjects <- unique_subjects[1:selected_n_subs]
+  hierarchical_data <- all_data[all_data$subjID %in% selected_subjects, ]
+  
+  cat("Selected", selected_n_subs, "subjects for hierarchical modeling\n")
+  
+  # Extract data for hierarchical model structure
+  data_list <- extract_sample_data(hierarchical_data, data_to_extract, 
+                                   task = opt$task,
+                                   n_subs = selected_n_subs, 
+                                   n_trials = opt$n_trials, 
+                                   RTbound_min_ms = opt$RTbound_min_ms, 
+                                   RTbound_max_ms = opt$RTbound_max_ms,
+                                   RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
+                                   RTbound_reject_max_ms = opt$RTbound_max_ms, 
+                                   rt_method = opt$rt_method, 
+                                   minrt_ep_ms = 0,
+                                   SID = FALSE)  # SID = FALSE for hierarchical models
+  
+  # Handle entropy data if present (convert matrices to vectors)
+  if (sum(grepl("entropy", names(data_list))) > 0){
+    cat("Processing entropy measures for hierarchical model...\n")
+    if ("shannon_entropy" %in% names(data_list)) {
+      data_list$shannon_entropy <- as.vector(data_list$shannon_entropy)
+    }
+    if ("transition_entropy" %in% names(data_list)) {
+      data_list$transition_entropy <- as.vector(data_list$transition_entropy)
+    }
+    if ("ngram_entropy" %in% names(data_list)) {
+      data_list$ngram_entropy <- as.vector(data_list$ngram_entropy)
+    }
+    if ("conditional_entropy" %in% names(data_list)) {
+      data_list$conditional_entropy <- as.vector(data_list$conditional_entropy)
+    }
+  }
+  
 } else {
-  cat("Dry run: Data would be loaded from", wave1.sav.file, "\n")
+  cat("Dry run: Data would be loaded using load_data(", opt$task, ", ", opt$source, ", ", opt$ses, ")\n")
+  cat("Dry run: Would select", opt$n_subs, "subjects for hierarchical modeling\n")
   cat("Dry run: Data to extract:", paste(data_to_extract, collapse=", "), "\n")
-  data_list <- NULL  # or you could create a dummy data structure here if needed for dry run
+  data_list <- NULL
+  selected_n_subs <- opt$n_subs
 }
 
-fit <- fit_and_save_model(task, group_type, model_name, opt$type, data_list, 
-                          n_subs = opt$n_subs, n_trials = opt$n_trials,
-                          n_warmup = opt$n_warmup, n_iter = opt$n_iter, n_chains = opt$n_chains,
-                          adapt_delta = opt$adapt_delta, max_treedepth = opt$max_treedepth,
-                          model_params = model_params, dry_run = opt$dry_run, checkpoint_interval = opt$check_iter)
+# Generate initialization values for hierarchical model
+if (opt$init) {
+  cat("Creating parameter initialization for hierarchical model...\n")
+  model_init_vals = create_param_init_list(model_params, 
+                                           no_suffix = non_pr_params, 
+                                           exclude = exclude_params)
+} else {
+  model_init_vals = NULL
+}
+
+# Set up output directory for hierarchical models
+output_dir <- file.path(get_rds_dir(task, opt$type), opt$source)
+
+# Fit hierarchical model
+cat("Fitting hierarchical model:", full_model_name, "\n")
+fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt$type, data_list, 
+                          n_subs = selected_n_subs, 
+                          n_trials = opt$n_trials, 
+                          n_warmup = opt$n_warmup, 
+                          n_iter = opt$n_iter, 
+                          n_chains = opt$n_chains,
+                          adapt_delta = opt$adapt_delta, 
+                          max_treedepth = opt$max_treedepth, 
+                          model_params = model_params, 
+                          dry_run = opt$dry_run, 
+                          checkpoint_interval = opt$check_iter, 
+                          output_dir = output_dir,
+                          init_params = model_init_vals,
+                          cohort_sub_dir = FALSE)  # Prevent double cohort directory
 
 if (!opt$dry_run) {
-  cat("Model fitted and saved successfully.\n")
+  cat("Hierarchical model fitted and saved successfully.\n")
+  cat("Model type:", group_type, "\n")
+  cat("Subjects modeled:", selected_n_subs, "\n")
 } else {
   cat("Dry run completed successfully.\n")
 }

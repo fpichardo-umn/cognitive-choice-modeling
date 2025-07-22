@@ -1,0 +1,228 @@
+---
+title: "Parameter Recovery Analysis: {{TASK}} - {{MODEL}} - {{GROUP}}"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(reshape2)  # For melting matrices
+library(here)
+
+# File path to recovery data
+recovery_file <- "{{INPUT_FILE}}"
+
+# Load recovery data
+recovery_data <- read.csv(recovery_file)
+
+# Calculate recovery statistics
+calculate_recovery_statistics <- function(recovery_data) {
+  # Group by parameter
+  params <- unique(recovery_data$parameter)
+  param_types <- unique(recovery_data$parameter_type)
+  
+  # Create standardized version just for metrics
+  standardized_data <- recovery_data %>%
+    group_by(parameter) %>%
+    mutate(
+      true_value_std = (true_value - mean(true_value, na.rm=TRUE)) / 
+                        (sd(true_value, na.rm=TRUE) + 1e-10),
+      recovered_value_std = (recovered_value - mean(true_value, na.rm=TRUE)) / 
+                            (sd(true_value, na.rm=TRUE) + 1e-10)
+    ) %>%
+    ungroup()
+  
+  # Initialize results
+  stats <- list()
+  
+  # Overall statistics (standardized)
+  all_true_std <- standardized_data$true_value_std
+  all_recovered_std <- standardized_data$recovered_value_std
+  
+  stats$overall <- data.frame(
+    # Standardized metrics for cross-model comparison
+    correlation = cor(all_true_std, all_recovered_std, use="pairwise.complete.obs"),
+    std_rmse = sqrt(mean((all_true_std - all_recovered_std)^2, na.rm=TRUE)),
+    std_bias = mean(all_recovered_std - all_true_std, na.rm=TRUE)
+  )
+  
+  # Parameter-specific statistics
+  param_stats <- data.frame(
+    parameter = character(),
+    parameter_type = character(),
+    correlation = numeric(),
+    rmse = numeric(),
+    bias = numeric(),
+    relative_bias = numeric(),
+    # Standardized metrics
+    std_correlation = numeric(),
+    std_rmse = numeric(),
+    std_bias = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Calculate statistics for each parameter and type
+  for (param in params) {
+    for (p_type in param_types) {
+      # Get data for this parameter and type
+      param_data <- recovery_data[recovery_data$parameter == param & 
+                                  recovery_data$parameter_type == p_type, ]
+      param_data_std <- standardized_data[standardized_data$parameter == param & 
+                                          standardized_data$parameter_type == p_type, ]
+      
+      # Skip if not enough data
+      if (nrow(param_data) < 2) next
+      
+      true_values <- param_data$true_value
+      recovered_values <- param_data$recovered_value
+      true_values_std <- param_data_std$true_value_std
+      recovered_values_std <- param_data_std$recovered_value_std
+      
+      # Calculate metrics (raw and standardized)
+      correlation <- cor(true_values, recovered_values, use="pairwise.complete.obs")
+      rmse <- sqrt(mean((true_values - recovered_values)^2, na.rm=TRUE))
+      bias <- mean(recovered_values - true_values, na.rm=TRUE)
+      relative_bias <- mean((recovered_values - true_values) / 
+                           pmax(0.0001, abs(true_values)), na.rm=TRUE)
+      
+      # Standardized metrics
+      std_rmse <- sqrt(mean((true_values_std - recovered_values_std)^2, na.rm=TRUE))
+      std_bias <- mean(recovered_values_std - true_values_std, na.rm=TRUE)
+      
+      # Add to results
+      param_stats <- rbind(param_stats, data.frame(
+        parameter = param,
+        parameter_type = p_type,
+        correlation = correlation,
+        rmse = rmse,
+        bias = bias,
+        relative_bias = relative_bias,
+        std_rmse = std_rmse,
+        std_bias = std_bias,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  
+  stats$by_parameter <- param_stats
+  
+  return(stats)
+}
+
+# Change retend to decay
+if (sum(grepl("retend", recovery_data, ignore.case = TRUE)) > 0){
+  recovery_data[recovery_data$parameter == "retend",]$true_value = 1 - recovery_data[recovery_data$parameter == "retend",]$true_value
+recovery_data[recovery_data$parameter == "retend",]$recovered_value = 1 - recovery_data[recovery_data$parameter == "retend", ]$recovered_value
+recovery_data[recovery_data$parameter == "retend",]$parameter = "decay"
+}
+
+
+# Calculate statistics
+stats <- calculate_recovery_statistics(recovery_data)
+```
+
+## Overview
+
+This document presents parameter recovery analysis for the **{{MODEL}}** model ({{MODEL_TYPE}} type) applied to the **{{TASK}}** task with group type **{{GROUP}}**.
+
+## Recovery Metrics
+### Standardized Metrics (for cross-model comparison)
+
+```{r std_metrics, echo=FALSE}
+kable(stats$overall, caption = "Standardized Recovery Metrics") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Parameter-Specific Metrics
+
+```{r parameter_metrics, echo=FALSE}
+# Display raw metrics
+kable(stats$by_parameter[, c("parameter", "parameter_type", "correlation", "rmse", "bias", "relative_bias")], 
+      caption = "Raw Parameter Metrics") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Display standardized metrics
+kable(stats$by_parameter[, c("parameter", "parameter_type", "std_rmse", "std_bias")],
+      caption = "Standardized Parameter Metrics") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Recovery Plots
+
+### Parameter Recovery Plot (Raw Values)
+
+```{r overall_plot, echo=FALSE, fig.width=10, fig.height=8, message=FALSE, warning=FALSE}
+# Plot using raw parameter values
+ggplot(recovery_data, aes(x = true_value, y = recovered_value, color = parameter)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  facet_wrap(~parameter, scales = "free") +
+  labs(title = "Parameter Recovery", 
+       x = "True Parameter Value",
+       y = "Recovered Parameter Value") +
+  theme_minimal()
+```
+
+### Error Distribution
+
+```{r error_dist, echo=FALSE, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Calculate errors using raw values
+recovery_data$error <- recovery_data$recovered_value - recovery_data$true_value
+
+# Plot raw errors
+ggplot(recovery_data, aes(x = error, fill = parameter)) +
+  geom_density(alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Error Distribution", 
+       x = "Error (Recovered - True)",
+       y = "Density") +
+  theme_minimal()
+```
+
+{{MODEL_SPECIFIC_SECTION}}
+
+## Parameter Correlations
+
+```{r param_cors, echo=FALSE, fig.width=10, fig.height=8, message=FALSE, warning=FALSE}
+# Create a correlation matrix of true vs recovered for each parameter
+params <- unique(recovery_data$parameter)
+cor_matrix <- matrix(NA, nrow = length(params), ncol = length(params))
+rownames(cor_matrix) <- params
+colnames(cor_matrix) <- params
+
+# Calculate correlations
+for (i in 1:length(params)) {
+  for (j in 1:length(params)) {
+    param_i <- params[i]
+    param_j <- params[j]
+    
+    # Get recovered values
+    rec_i <- recovery_data[recovery_data$parameter == param_i, "recovered_value"]
+    rec_j <- recovery_data[recovery_data$parameter == param_j, "recovered_value"]
+    
+    # Ensure same length by matching subject_ids
+    if (length(rec_i) == length(rec_j)) {
+      # Calculate correlation
+      cor_val <- cor(rec_i, rec_j, use = "pairwise.complete.obs")
+      cor_matrix[i, j] <- cor_val
+    }
+  }
+}
+
+# Plot heatmap
+corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black", diag = FALSE)
+```
+
+## Conclusion
+
+This analysis examines parameter recovery performance for the {{MODEL}} model. Key metrics include correlation between true and recovered parameters, RMSE (root mean square error), bias, and relative bias.
+
+Good parameter recovery is indicated by high correlations, low RMSE, and bias values close to zero.

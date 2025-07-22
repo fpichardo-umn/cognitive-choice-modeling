@@ -1,0 +1,50 @@
+name: "dualp_bbu"
+description: "Dual Process Model with Bayesian Belief Updating"
+task: "igt_mod"
+response_type: "choice"
+
+parameters:
+  consistency:
+    range: [0, 5]
+    transform: "logistic_scale"
+    prior: "normal(0, 1)"
+  
+  update_rate_mf:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+  
+  decay_factor:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+  
+  pos_val:
+    range: [0, 10]
+    transform: "logistic_scale"
+    prior: "normal(0, 1)"
+  
+  neg_val:
+    range: [0, 10]
+    transform: "logistic_scale"
+    prior: "normal(0, 1)"
+  
+  var_pe_update:
+    range: [0, 1]
+    transform: "logistic"
+    prior: "normal(0, 1)"
+
+data:
+  choice:
+    description: "Binary choice (play/pass) made at each trial"
+    type: "integer"
+    range: [0, 1]
+  
+  shown:
+    description: "Deck shown at each trial"
+    type: "integer"
+    range: [1, 4]
+  
+  outcome:
+    description: "Outcome (reward/punishment) at each trial"
+    type: "numeric"

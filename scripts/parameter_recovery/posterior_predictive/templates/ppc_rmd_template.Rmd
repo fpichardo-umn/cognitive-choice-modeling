@@ -1,0 +1,364 @@
+---
+title: "Posterior Predictive Check Analysis: {{TASK}} - {{MODEL}} - {{GROUP}}"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tidyr)
+  library(knitr)
+  library(kableExtra)
+  library(reshape2)  # For melting matrices
+  library(corrplot)
+  library(viridis)
+  library(igraph)
+})
+
+# Define input files
+subject_file <- "{{SUBJECT_CSV}}"
+model_file <- "{{MODEL_CSV}}"
+block_file <- "{{BLOCK_CSV}}"
+
+# Load data
+subject_data <- read.csv(subject_file)
+model_summary <- read.csv(model_file)
+
+#' Parse BIDS-inspired filename to extract components
+#' @param filename The filename to parse
+#' @return List of extracted components (task, model, group, plus any additional tags)
+parse_bids_filename <- function(filename) {
+  # Extract the relevant part of the filename
+  base_name <- basename(filename)
+  
+  # Use regex to extract each key-value pair
+  task_match <- regexec("task-([^_]+(?:_[^_]+)*?)(?:_model-|$)", base_name)
+  model_match <- regexec("model-([^_]+(?:_[^_]+)*?)(?:_group-|$)", base_name)
+  group_match <- regexec("group-([^_]+(?:_[^_]+)*?)(?:\\.|$)", base_name)
+  
+  # Extract the matched values
+  result <- list()
+  
+  # Extract task
+  if (task_match[[1]][1] > 0) {
+    result$task <- substr(base_name, 
+                         task_match[[1]][2], 
+                         task_match[[1]][2] + attr(task_match[[1]], "match.length")[2] - 1)
+  }
+  
+  # Extract model
+  if (model_match[[1]][1] > 0) {
+    result$model <- substr(base_name, 
+                          model_match[[1]][2], 
+                          model_match[[1]][2] + attr(model_match[[1]], "match.length")[2] - 1)
+  }
+  
+  # Extract group
+  if (group_match[[1]][1] > 0) {
+    result$group <- substr(base_name, 
+                          group_match[[1]][2], 
+                          group_match[[1]][2] + attr(group_match[[1]], "match.length")[2] - 1)
+  }
+  
+  return(result)
+}
+
+components <- parse_bids_filename(basename(subject_file))
+task <- components$task
+model <- components$model
+group <- components$group
+
+# Construct recovery file path
+recovery_dir <- gsub("sim/ppc", "sim/recovery", dirname(subject_file))
+recovery_csv <- file.path(recovery_dir, 
+           paste0("recovery_", task, "_", model, "_", group, ".csv"))
+
+cat("Extracted components from filename:\n")
+cat(paste("Task:", task, "\n"))
+cat(paste("Model:", model, "\n"))
+cat(paste("Group:", group, "\n"))
+
+# Create helper function for correlation plots
+create_corr_plot <- function(corr_matrix, title, mar = c(1,1,2,1)) {
+  if(ncol(corr_matrix) > 1 && nrow(corr_matrix) > 0) {
+    if (nrow(corr_matrix) == ncol(corr_matrix)){
+    corrplot(corr_matrix, 
+             method = "circle", 
+             type = "upper", 
+             tl.col = "black",
+             tl.srt = 45,
+             addCoef.col = "black",
+             number.cex = 0.7,
+             mar = mar,
+             title = title,
+             diag = FALSE)
+    } else{
+      corrplot(corr_matrix, 
+             method = "circle", 
+             type = "full", 
+             tl.col = "black",
+             tl.srt = 45,
+             addCoef.col = "black",
+             number.cex = 0.7,
+             mar = mar,
+             title = title)
+    }
+    return(TRUE)
+  } else {
+    cat("Insufficient data for correlation matrix:", title, "\n")
+    return(FALSE)
+  }
+}
+
+# Format parameter and statistic names for display
+format_names <- function(names) {
+  names %>% 
+    gsub("_", " ", .) %>%
+    gsub("ssm ", "", .) %>%
+    gsub("rl ", "", .) %>%
+    tools::toTitleCase(.)
+}
+
+# Create function to find top correlations
+get_top_correlations <- function(cor_matrix, n = 10) {
+  cors_long <- as.data.frame(as.table(cor_matrix)) %>%
+    rename(Parameter = Var1, Statistic = Var2, Correlation = Freq) %>%
+    mutate(
+      Parameter = as.character(Parameter),
+      Statistic = as.character(Statistic),
+      Abs_Correlation = abs(Correlation)
+    ) %>%
+    arrange(desc(Abs_Correlation))
+  
+  # Return top N correlations
+  return(head(cors_long, n))
+}
+
+# Load recovery data if file exists
+if (file.exists(recovery_csv)) {
+  recovery_data <- read.csv(recovery_csv)
+  cat("Recovery data loaded successfully from:", recovery_csv, "\n")
+} else {
+  cat("Recovery data file not found at:", recovery_csv, "\n")
+  cat("Attempting to search for recovery data...\n")
+  
+  # Try to find recovery file by searching in expected directory
+  recovery_files <- list.files(path = recovery_dir, 
+                              pattern = paste0("recovery_", task, "_", model, ".*\\.csv$"), 
+                              full.names = TRUE)
+  
+  if (length(recovery_files) > 0) {
+    recovery_csv <- recovery_files[1]
+    recovery_data <- read.csv(recovery_csv)
+    cat("Found and loaded alternative recovery file:", recovery_csv, "\n")
+    
+    # Change retend to decay
+    if (sum(grepl("retend|decay", recovery_data, ignore.case = TRUE)) > 0){
+      recovery_data[recovery_data$parameter == "retend",]$true_value = 1 - recovery_data[recovery_data$parameter == "retend",]$true_value
+      recovery_data[recovery_data$parameter == "retend",]$recovered_value = 1 - recovery_data[recovery_data$parameter == "retend", ]$recovered_value
+      recovery_data[recovery_data$parameter == "retend",]$parameter = "decay"
+    }
+    
+  } else {
+    cat("No suitable recovery data found. Correlation analysis will be skipped.\n")
+    recovery_data <- NULL
+  }
+}
+
+if (sum(grepl("*has_rt_data*", model_summary$statistic)) > 0){
+  subject_data <- subject_data %>% 
+    select(-contains("has_rt_data"))
+  subject_data <- subject_data %>% 
+    filter(!grepl("has_rt_data", statistic))
+  
+  model_summary <- model_summary %>% 
+    select(-contains("has_rt_data"))
+  model_summary <- model_summary %>% 
+    filter(!grepl("has_rt_data", statistic))
+}
+
+# Check if block stats exist
+has_block_stats <- file.exists(block_file)
+if (has_block_stats) {
+  block_stats <- read.csv(block_file)
+}
+
+# Calculate additional statistics
+extreme_ppp_count <- sum(subject_data$ppp_extreme, na.rm = TRUE)
+total_ppp_count <- nrow(subject_data)
+extreme_ppp_ratio <- extreme_ppp_count / total_ppp_count
+```
+
+## Overview
+
+This document presents posterior predictive check (PPC) analysis for the **{{MODEL}}** model ({{MODEL_TYPE}} type) applied to the **{{TASK}}** task with group type **{{GROUP}}**.
+
+Posterior predictive checks compare statistics from observed data with statistics from data simulated using posterior parameter samples. These checks help validate whether the model can reproduce key behavioral patterns in the data.
+
+## Summary Statistics
+
+### PPC Quality Overview
+
+```{r summary, echo=FALSE}
+summary_df <- data.frame(
+  Statistic = c("Total Statistics Checked", "Extreme PPP Values (p < 0.05 or p > 0.95)", 
+                "Proportion Extreme"),
+  Value = c(total_ppp_count, extreme_ppp_count, sprintf("%.2f%%", extreme_ppp_ratio * 100))
+)
+
+kable(summary_df, caption = "Summary of PPC Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Model-Level Statistics
+
+```{r model_stats, echo=FALSE}
+# Display model-level statistics
+kable(model_summary, caption = "Model-Level PPC Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## PPP Value Distribution
+
+PPP values should ideally be distributed uniformly between 0 and 1 if the model fits well. Extreme values (< 0.05 or > 0.95) indicate statistics that the model struggles to reproduce.
+
+```{r ppp_dist, echo=FALSE, fig.width=10, fig.height=6}
+ggplot(subject_data, aes(x = statistic, y = ppp_value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = "dashed", color = "red") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribution of PPP Values Across Subjects",
+       subtitle = "Red lines indicate thresholds for extreme values (p < 0.05 or p > 0.95)",
+       x = "Statistic", y = "Posterior Predictive p-value")
+
+# Show extreme statistics
+extreme_stats <- subject_data %>%
+  filter(ppp_extreme) %>%
+  group_by(statistic) %>%
+  summarize(
+    count = n(),
+    proportion = n() / length(unique(subject_data$subject_id)),
+    avg_ppp = mean(ppp_value),
+    .groups = "drop"
+  ) %>%
+  arrange(abs(0.5 - avg_ppp))
+
+if(nrow(extreme_stats) > 0) {
+  kable(extreme_stats, caption = "Statistics with Extreme PPP Values") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+}
+
+# Reshape the data from wide to long format
+extreme_stats_long <- extreme_stats %>% 
+  arrange(proportion) %>%
+  pivot_longer(cols = c(proportion),
+               names_to = "metric",
+               values_to = "value")
+
+# Create the heatmap
+ggplot(extreme_stats_long, aes(x = metric, y = statistic, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 3)), color = "black", size = 3) +
+  scale_fill_viridis(option = "plasma") +
+  labs(title = "Statistics Heatmap",
+       x = "Metric",
+       y = "Statistic",
+       fill = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+## Subject-Level Statistics
+
+The plots below compare observed statistics (red) with model predictions (blue with 95% CI). Good model fit is indicated by observed values falling within the prediction intervals.
+
+```{r subject_level, echo=FALSE, fig.width=10, fig.height=8}
+# Select a sample of subjects and key statistics for visualization
+subjects_to_plot <- sample(unique(subject_data$subject_id), min(6, length(unique(subject_data$subject_id))))
+key_stats <- c("good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", "skip_ratio", "rt_play_mean", "rt_skip_mean", "choice_prob")
+key_stats <- key_stats[key_stats %in% unique(subject_data$statistic)]
+
+subject_sample <- subject_data %>%
+  filter(subject_id %in% subjects_to_plot & statistic %in% key_stats)
+
+if(nrow(subject_sample) > 0) {
+  p1 = ggplot(subject_sample, aes(x = statistic, y = predicted_mean)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = predicted_q025, ymax = predicted_q975), width = 0.2) +
+    geom_point(aes(y = observed), color = "red", size = 3, shape = 4) +
+    facet_wrap(~subject_id) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Key Statistics: Observed vs. Predicted", 
+         subtitle = "Red X = Observed, Blue points with error bars = Predicted with 95% CI",
+         x = "", y = "Value")
+  knitr::knit_print(p1)
+}
+```
+
+## Directionality of Model Misfit
+
+This section examines not only whether the model fits the data, but also the direction of misfit (whether the model systematically over- or under-predicts observed statistics).
+
+```{r misfit_analysis, echo=FALSE, fig.width=10, fig.height=8}
+# Calculate misfit measures
+misfit_data <- subject_data %>%
+  mutate(
+    misfit = observed - predicted_mean,
+    misfit_standardized = misfit / (predicted_q975 - predicted_q025) * 2,
+    misfit_direction = case_when(
+      misfit > 0 & ppp_extreme ~ "Model Underpredicts",
+      misfit < 0 & ppp_extreme ~ "Model Overpredicts",
+      TRUE ~ "Good Fit"
+    )
+  )
+
+# Plot standardized misfit by statistic
+ggplot(misfit_data, aes(x = statistic, y = misfit_standardized, fill = misfit_direction)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = c(-1, 1), linetype = "dotted", color = "red") +
+  scale_fill_manual(values = c("Good Fit" = "gray", 
+                             "Model Underpredicts" = "blue", 
+                             "Model Overpredicts" = "red")) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Standardized Misfit by Statistic",
+       subtitle = "Misfit = (Observed - Predicted) / Width of 95% CI",
+       x = "", y = "Standardized Misfit",
+       fill = "Direction")
+
+# Create misfit summary table
+misfit_summary <- misfit_data %>%
+  group_by(statistic) %>%
+  summarize(
+    mean_misfit = mean(misfit, na.rm = TRUE),
+    mean_std_misfit = mean(misfit_standardized, na.rm = TRUE),
+    prop_underpredict = mean(misfit_direction == "Model Underpredicts", na.rm = TRUE),
+    prop_overpredict = mean(misfit_direction == "Model Overpredicts", na.rm = TRUE),
+    mean_abs_misfit = mean(abs(misfit_standardized), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mean_abs_misfit))
+
+kable(misfit_summary, caption = "Summary of Model Misfit Direction and Magnitude") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+{{MODEL_SPECIFIC_SECTION}}
+
+## Conclusion
+
+This analysis examines how well the {{MODEL}} model can reproduce key behavioral patterns observed in the {{TASK}} task. The model's fit quality is evaluated through posterior predictive checks, comparing observed statistics to those generated from model simulations.
+
+PPP values near 0 or 1 suggest systematic discrepancies between the model and observed data. These may indicate aspects of behavior that the model struggles to capture. Good model fit is indicated by PPP values distributed uniformly between 0 and 1, with observed statistics falling within the model's predicted range.

@@ -8,15 +8,24 @@ suppressPackageStartupMessages({
   library(digest)
 })
 
+#Sys.setenv("STAN_OPENCL" = "FALSE")
+options(mc.cores = parallel::detectCores())
+
 # Set up command line options
 option_list <- list(
   make_option(c("-t", "--type"), type="character", default="all",
               help="Model type(s) to compile: fit, postpc, prepc, or all [default= %default]"),
+  make_option(c("-k", "--task"), type="character", default=NULL,
+              help="Task for model [default= %default]"),
   make_option(c("-m", "--models"), type="character", default="all",
-              help="String to match model names, or 'all' [default= %default]"),
+              help="Primary string to match model names, or 'all' [default= %default]"),
+  make_option(c("-s", "--secondary"), type="character", default=NULL,
+              help="Comma-separated list of secondary strings to match model names (AND condition) [default= %default]"),
+  make_option(c("-e", "--exclude"), type="character", default=NULL,
+              help="Comma-separated list of strings to exclude from model names [default= %default]"),
   make_option(c("-v", "--verbose"), action="store_true", default=FALSE,
               help="Print verbose output [default= %default]"),
-  make_option(c("--dry-run"), action="store_true", default=FALSE,
+  make_option(c("-n", "--dry-run"), action="store_true", default=FALSE,
               help="Show what would be compiled without actually compiling [default= %default]"),
   make_option(c("-y", "--yes"), action="store_true", default=FALSE,
               help="Automatically compile all matching models without prompting [default= %default]")
@@ -26,17 +35,29 @@ option_list <- list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+# Load helper functions
+source(file.path(here::here(), "scripts", "helpers", "helper_dirs.R"))
+source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
+
 # Set up directory paths
 PROJ_DIR <- here::here()
-MODELS_DIR <- file.path(PROJ_DIR, "models")
-MODELS_TXT_DIR <- file.path(MODELS_DIR, "txt")
-MODELS_BIN_DIR <- file.path(MODELS_DIR, "bin")
+
+if (is.null(opt$task)) {
+  stop("Task parameter (-k) is required for compile_models_cmdSR.R")
+} else {
+  # Task-specific directories
+  MODELS_DIR <- file.path(PROJ_DIR, "models", opt$task)
+  MODELS_TXT_DIR <- file.path(MODELS_DIR, "txt")
+  MODELS_BIN_DIR <- file.path(MODELS_DIR, "bin")
+}
 
 # Function to compile Stan model
-compile_stan_model <- function(stan_file, bin_dir, verbose = FALSE) {
+compile_stan_model <- function(stan_file, bin_dir, output_filename, verbose = FALSE) {
   tryCatch({
     stan_filename <- basename(stan_file)
-    exe_file <- file.path(bin_dir, paste0(tools::file_path_sans_ext(stan_filename), ".stan"))
+    
+    # Set the exe_file to the output path
+    exe_file <- file.path(bin_dir, output_filename)
     hash_file <- paste0(tools::file_path_sans_ext(exe_file), ".hash")
     
     # Calculate hash of the Stan file
@@ -54,12 +75,12 @@ compile_stan_model <- function(stan_file, bin_dir, verbose = FALSE) {
     
     if (need_compile) {
       if (verbose) cat(paste0("Compiling: ", stan_filename, "\n"))
-      model <- cmdstan_model(stan_file, compile = TRUE, cpp_options = list(stan_threads = TRUE),
+      model <- cmdstan_model(stan_file, compile = TRUE, cpp_options = list(stan_opencl = FALSE),
                              force_recompile = TRUE, exe_file = exe_file,
                              quiet = !verbose)
       # Save the new hash
       writeLines(current_hash, hash_file)
-      if (verbose) cat(paste0("Completed: ", stan_filename, "\n\n"))
+      if (verbose) cat(paste0("Completed: ", output_filename, "\n\n"))
     }
   }, error = function(e) {
     cat(paste0("Error compiling ", stan_filename, ": ", e$message, "\n"))
@@ -67,9 +88,22 @@ compile_stan_model <- function(stan_file, bin_dir, verbose = FALSE) {
   })
 }
 
-# Function to find matching models
-find_matching_models <- function(model_types, model_pattern) {
+# Function to find matching models with support for comma-separated patterns
+find_matching_models <- function(model_types, primary_pattern, secondary_pattern = NULL, exclude_pattern = NULL) {
   matching_models <- list()
+  
+  # Split patterns into lists if they contain commas
+  secondary_patterns <- if (!is.null(secondary_pattern)) {
+    strsplit(secondary_pattern, ",")[[1]]
+  } else {
+    NULL
+  }
+  
+  exclude_patterns <- if (!is.null(exclude_pattern)) {
+    strsplit(exclude_pattern, ",")[[1]]
+  } else {
+    NULL
+  }
   
   for (type in model_types) {
     txt_dir <- file.path(MODELS_TXT_DIR, type)
@@ -79,8 +113,24 @@ find_matching_models <- function(model_types, model_pattern) {
     }
     
     stan_files <- list.files(txt_dir, pattern = "\\.stan$", full.names = TRUE)
-    if (model_pattern != "all") {
-      stan_files <- stan_files[grepl(model_pattern, basename(stan_files), ignore.case = TRUE)]
+    
+    if (primary_pattern != "all") {
+      stan_files <- stan_files[grepl(primary_pattern, basename(stan_files), ignore.case = TRUE)]
+    }
+    
+    # Apply all secondary patterns (AND condition)
+    if (!is.null(secondary_patterns)) {
+      for (pattern in secondary_patterns) {
+        stan_files <- stan_files[grepl(pattern, basename(stan_files), ignore.case = TRUE)]
+      }
+    }
+    
+    # Apply all exclude patterns (OR condition)
+    if (!is.null(exclude_patterns)) {
+      exclude_mask <- sapply(basename(stan_files), function(x) {
+        !any(sapply(exclude_patterns, function(pattern) grepl(pattern, x, ignore.case = TRUE)))
+      })
+      stan_files <- stan_files[exclude_mask]
     }
     
     matching_models[[type]] <- stan_files
@@ -95,7 +145,7 @@ main <- function() {
   model_types <- if (opt$type == "all") c("fit", "postpc", "prepc") else strsplit(opt$type, ",")[[1]]
   
   # Find matching models
-  matching_models <- find_matching_models(model_types, opt$models)
+  matching_models <- find_matching_models(model_types, opt$models, opt$secondary, opt$exclude)
   
   # Check if any models were found
   total_models <- sum(sapply(matching_models, length))
@@ -125,10 +175,62 @@ main <- function() {
     for (stan_file in matching_models[[type]]) {
       type_bin_dir <- file.path(MODELS_BIN_DIR, type)
       
-      if (isTRUE(opt[["dry-run"]])) {
-        cat(paste("Would compile:", basename(stan_file), "to", type_bin_dir, "\n"))
+      # Extract base name without extension
+      base_name <- tools::file_path_sans_ext(basename(stan_file))
+      
+      # Determine output filename
+      output_filename <- base_name
+      
+      if (grepl("task-", base_name)) {
+        # Already in BIDS format, check if it has a type tag
+        if (!grepl("type-", base_name)) {
+          # Add the type tag if not present
+          components <- parse_bids_filename(base_name)
+          output_filename <- generate_bids_filename(
+            prefix = NULL,
+            task = components$task,
+            group = components$group,
+            model = components$model,
+            additional_tags = c(components[!names(components) %in% c("task", "group", "model")], 
+                                list(type = type)),
+            ext = NULL  # No extension yet
+          )
+        }
       } else {
-        compile_stan_model(stan_file, type_bin_dir, verbose = opt$verbose)
+        # Not in BIDS format, convert to BIDS
+        parts <- strsplit(base_name, "_")[[1]]
+        
+        if (length(parts) >= 3) {
+          task_name <- opt$task
+          group_type <- parts[2]
+          model_name <- parts[3]
+        } else {
+          # Default values if we can't parse
+          task_name <- opt$task
+          group_type <- "sing"
+          model_name <- base_name
+        }
+        
+        output_filename <- generate_bids_filename(
+          prefix = NULL,
+          task = task_name,
+          group = group_type,
+          model = model_name,
+          additional_tags = list(type = type),
+          ext = NULL  # No extension yet
+        )
+      }
+      
+      # Add the correct extension
+      output_file <- paste0(output_filename, ".stan")
+      
+      # Ensure directory exists
+      dir.create(type_bin_dir, showWarnings = FALSE, recursive = TRUE)
+      
+      if (isTRUE(opt[["dry-run"]])) {
+        cat(paste("Would compile:", basename(stan_file), "to", file.path(type_bin_dir, output_file), "\n"))
+      } else {
+        compile_stan_model(stan_file, type_bin_dir, output_file, verbose = opt$verbose)
       }
     }
   }

@@ -31,6 +31,16 @@ cd ${SLURM_SUBMIT_DIR}
 source ./scripts/configs/fit_params_${FIT_CONFIG}.conf
 source ./scripts/configs/data_params_${DATA_CONFIG}.conf
 
+# Determine RT handling
+if [ -z "${rt_method}" ]; then
+  if [[ "${MODEL_NAME}" == *"ddm"* ]]; then
+    rt_method="remove"
+  else
+    rt_method="force"
+  fi
+
+fi
+
 # Run the R script with the configuration
 Rscript ./scripts/fit/fit_hierarchical_models_cmdSR.R \
   -m ${MODEL_NAME} \
@@ -39,7 +49,8 @@ Rscript ./scripts/fit/fit_hierarchical_models_cmdSR.R \
   -g ${GROUP_TYPE} \
   --n_subs ${n_subs} \
   --n_trials ${n_trials} \
-  --RTbound_ms ${RTbound_ms} \
+  --RTbound_min_ms ${RTbound_min_ms} \
+  --RTbound_max_ms ${RTbound_max_ms} \
   --rt_method ${rt_method} \
   --n_warmup ${n_warmup} \
   --n_iter ${n_iter} \

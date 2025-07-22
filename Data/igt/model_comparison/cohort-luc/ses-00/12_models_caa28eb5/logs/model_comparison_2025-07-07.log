@@ -1,0 +1,7 @@
+Model comparison started at: 2025-07-07 21:06:59.616813
+Task: igt
+Cohort: luc
+Models: ev, nnlboth, nnldecay, nnldelta, orl, pvlboth, pvldecay, pvldelta, vppboth, vppdecay, vppdelta, vse
+Complete models: 9
+Analysis completed at: 2025-07-07 21:07:22.225146
+Duration: 22.6083331108093

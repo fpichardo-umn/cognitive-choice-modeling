@@ -1,0 +1,1404 @@
+---
+title: "Computational Model Comparison for Modified IGT"
+author: "Felix Pichardo"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(viridis)
+library(corrplot)
+library(gridExtra)
+library(patchwork)
+library(ggrepel)    # For non-overlapping text labels
+
+# Set the paths to your data directories
+data_dir <- file.path(here::here(), "Data")
+recovery_dir <- file.path(data_dir, "sim/recovery")
+ppc_dir <- file.path(data_dir, "sim/ppc")
+
+task = "igt_mod"
+group = "batch_001"
+```
+
+# Introduction
+
+This document presents a comparative analysis of computational models for the modified Iowa Gambling Task (mIGT). Our analysis focuses on:
+
+1. Parameter recovery quality across model families
+2. Posterior predictive check performance
+3. Comparative strengths and weaknesses of different model formulations
+
+The models we analyze include four families (EV, PVL, PUL, NNL) with various learning rules (Delta, Decay, Both) and model types (RL-only, DDM-only, and Hybrid RL-DDM models).
+
+# Model Evolution and Rationale
+
+## Model Family Progression
+
+### EV → PVL
+The Expected Value (EV) model uses a linear utility function with separate weights for rewards and punishments. The Prospect Valence Learning (PVL) model extended this by incorporating a non-linear utility function based on prospect theory, with gain and loss sensitivity parameters.
+
+### PVL → PUL
+While PVL introduced non-linearity, its loss aversion parameter functions differently than our EV model's separate gain/loss weights. The shape parameter in PVL is difficult to interpret purely as "gain sensitiviy" and loss if difficult to interpret purely as "loss sensitivity" because it primarily shows that loss and gain processing differ. 
+
+The PUL model (whose name is a placeholder) separates the shape parameter from motivational parameters, providing:
+- A dedicated shape parameter for non-linear processing
+- Two separate motivational parameters applied after the non-linear transformation
+
+### PUL → NNL
+In PUL models, the shape parameter proved difficult to recover reliably. This led to the Neural Network Learning (NNL) approach which:
+- Uses the same non-linear transform (hyperbolic tangent) for everyone - inspired by neural networks
+- Incorporates valence naturally in the transform function
+- Demonstrates improved recoverability of the update parameter
+
+## Learning Rules Implemented
+
+### Delta Rule
+The standard reinforcement learning update based on prediction errors:
+$EV_k(t) = EV_k(t-1) + \alpha I_k(t) [u_k(t) - EV_k(t-1)]$
+
+### Decay Rule
+RL decay approach where values diminish over time:
+$EV_k(t) = (1-d) EV_k(t-1) + I_k(t)u_k(t)$
+
+### Combined Rule (Both)
+Integrates learning with decay because each has shown different strengths:
+$EV_k(t) = (1-d)EV_k(t-1) + \alpha I_k(t)u_k(t)$
+
+The combined rule has several advantages:
+- Decay maintains sensitivity to recent outcomes
+- PE-like learning allows stable long-term value accumulation
+- Contains decay rule as a special case (when $d > 0, \alpha = 1$)
+- Decay affects all decks every trial (pure decay when not selected)
+- New information only affects selected decks
+
+# Data Loading and Processing
+
+```{r load-data}
+# Load recovery data
+recovery_files <- list.files(path = recovery_dir, 
+                            pattern = "recovery_igt_mod_.+\\.csv", 
+                            full.names = TRUE)
+
+recovery_data <- map_df(recovery_files, read.csv, .id = "model_file")
+
+# Process model names
+map_filename = str_extract(recovery_files, "igt_mod_.+\\.csv") %>%
+     str_remove(".csv") %>%
+     str_remove("recovery_")
+mapping <- setNames(map_filename, as.character(1:length(map_filename)))
+
+recovery_data$model_file = unname(mapping[recovery_data$model_file])
+
+recovery_data$model_name = gsub(paste0("_", group), "", gsub(paste0(task, "_"), "", recovery_data$model_file))
+
+# Rename any "retend" parameters to "decay" and convert values
+recovery_data <- recovery_data %>%
+    mutate(
+        true_value = if_else(parameter == "retend", 1 - true_value, true_value),
+        recovered_value = if_else(parameter == "retend", 1 - recovered_value, recovered_value)
+    ) %>%
+  mutate(
+    parameter = ifelse(parameter == "retend", "decay", parameter)
+  )
+
+# Rename "mag" to "shape"
+recovery_data <- recovery_data %>%
+  mutate(parameter = ifelse(parameter == "mag", "shape", parameter))
+
+# Extract model characteristics
+recovery_data <- recovery_data %>%
+  mutate(
+    # Extract model family
+    model_family = case_when(
+      str_detect(model_name, "ev_ddm|^ev$") ~ "EV",
+      str_detect(model_name, "pvl") ~ "PVL",
+      str_detect(model_name, "pul") ~ "PUL",
+      str_detect(model_name, "nnl") ~ "NNL",
+      str_detect(model_name, "^ddm$") ~ "DDM",
+      TRUE ~ "Other"
+    ),
+    
+    # Extract learning rule
+    learning_rule = case_when(
+      str_detect(model_name, "delta") ~ "Delta",
+      str_detect(model_name, "decay") ~ "Decay",
+      str_detect(model_name, "both") ~ "Both",
+      str_detect(model_name, "^ev$|^ev_ddm$") ~ "Basic",
+      str_detect(model_name, "^ddm$") ~ "None",
+      TRUE ~ "Unknown"
+    ),
+    
+    # Determine model type (hardcoded)
+    model_type = case_when(
+      model_name == "ddm" ~ "DDM-only",
+      str_detect(model_name, "_ddm") ~ "Hybrid",
+      TRUE ~ "RL-only"
+    ),
+    
+    # Determine parameter family
+    parameter_family = case_when(
+      parameter %in% c("gain", "loss", "wgt_pun", "wgt_rew", "mag", "shape") ~ "Motivational",
+      parameter %in% c("update", "decay") ~ "Cognitive",
+      parameter %in% c("boundary", "tau", "beta") ~ "DDM Process",
+      parameter %in% c("con", "drift_con", "drift") ~ "Consistency",
+      TRUE ~ "Other"
+    )
+  )
+
+# Load PPC data
+ppc_files <- list.files(path = ppc_dir, 
+                       pattern = "ppc_subject_summary.+\\.csv", 
+                       full.names = TRUE)
+ppc_data <- map_df(ppc_files, read.csv, .id = "model_file") %>%
+  mutate(model_name = str_extract(model_file, "igt_mod_.+\\.csv") %>%
+                    str_remove(".csv") %>%
+                    str_remove("ppc_subject_summary_"))
+
+# Process model names
+map_filename = str_extract(ppc_files, "model-(.*?)_group") %>%
+  str_remove("model-") %>%
+  str_remove("_group")
+
+mapping <- setNames(map_filename, as.character(1:length(map_filename)))
+
+ppc_data$model_name = unname(mapping[ppc_data$model_file])
+
+# Strip substrings
+ppc_data <- ppc_data %>%
+  mutate(statistic = gsub("ssm_", "", statistic)) %>%
+  mutate(statistic = gsub("rl_", "", statistic))
+
+# Apply same model classification to PPC data
+ppc_data <- ppc_data %>%
+  mutate(
+    model_family = case_when(
+      str_detect(model_name, "ev_ddm|^ev$") ~ "EV",
+      str_detect(model_name, "pvl") ~ "PVL",
+      str_detect(model_name, "pul") ~ "PUL",
+      str_detect(model_name, "nnl") ~ "NNL",
+      str_detect(model_name, "^ddm$") ~ "DDM",
+      TRUE ~ "Other"
+    ),
+    learning_rule = case_when(
+      str_detect(model_name, "delta") ~ "Delta",
+      str_detect(model_name, "decay") ~ "Decay",
+      str_detect(model_name, "both") ~ "Both",
+      str_detect(model_name, "^ev$|^ev_ddm$") ~ "Basic",
+      str_detect(model_name, "^ddm$") ~ "None",
+      TRUE ~ "Unknown"
+    ),
+    model_type = case_when(
+      model_name == "ddm" ~ "DDM-only",
+      str_detect(model_name, "_ddm") ~ "Hybrid",
+      TRUE ~ "RL-only"
+    )
+  )
+
+# Load model summary PPC data
+model_summary_files <- list.files(path = ppc_dir, 
+                                 pattern = "ppc_model_summary.+\\.csv", 
+                                 full.names = TRUE)
+
+model_ppc_data <- map_df(model_summary_files, read.csv, .id = "model_file") %>%
+  mutate(model_name = str_extract(model_file, "igt_mod_.+\\.csv") %>%
+                     str_remove(".csv") %>%
+                     str_remove("ppc_model_summary_"))
+
+# Process model names
+map_filename = str_extract(model_summary_files, "model-(.*?)_group") %>%
+  str_remove("model-") %>%
+  str_remove("_group")
+
+mapping <- setNames(map_filename, as.character(1:length(map_filename)))
+
+model_ppc_data$model_name = unname(mapping[model_ppc_data$model_file])
+
+# Apply same model classification to model PPC data
+model_ppc_data <- model_ppc_data %>%
+  mutate(
+    model_family = case_when(
+      str_detect(model_name, "ev_ddm|^ev$") ~ "EV",
+      str_detect(model_name, "pvl") ~ "PVL",
+      str_detect(model_name, "pul") ~ "PUL",
+      str_detect(model_name, "nnl") ~ "NNL",
+      str_detect(model_name, "^ddm$") ~ "DDM",
+      TRUE ~ "Other"
+    ),
+    learning_rule = case_when(
+      str_detect(model_name, "delta") ~ "Delta",
+      str_detect(model_name, "decay") ~ "Decay",
+      str_detect(model_name, "both") ~ "Both",
+      str_detect(model_name, "^ev$|^ev_ddm$") ~ "Basic",
+      str_detect(model_name, "^ddm$") ~ "None",
+      TRUE ~ "Unknown"
+    ),
+    model_type = case_when(
+      model_name == "ddm" ~ "DDM-only",
+      str_detect(model_name, "_ddm") ~ "Hybrid",
+      TRUE ~ "RL-only"
+    )
+  )
+
+# Sort Factors
+# For recovery_data dataframe
+recovery_data <- recovery_data %>%
+  mutate(
+    # Order model_family factor
+    model_family = factor(model_family, 
+                         levels = c("DDM", "EV", "PVL", "PUL", "NNL", "Other")),
+    
+    # Order learning_rule factor
+    learning_rule = factor(learning_rule, 
+                          levels = c("None", "Basic", "Delta", "Decay", "Both", "Unknown")),
+    
+    # Order model_type factor
+    model_type = factor(model_type, 
+                       levels = c("RL-only", "DDM-only", "Hybrid")),
+    
+    # Order parameter_family factor
+    parameter_family = factor(parameter_family, 
+                             levels = c("DDM Process", "Consistency", "Motivational", "Cognitive", "Other")),
+    
+    # Add parameter factor ordering
+    parameter = factor(parameter, 
+                      levels = c(
+                        # DDM Process parameters
+                        "boundary", "tau", "beta",
+                        # Consistency parameters
+                        "con", "drift_con", "drift",
+                        # Motivational parameters
+                        "gain", "loss", "wgt_pun", "wgt_rew", "mag", "shape",
+                        # Learning parameters
+                        "update", "decay"
+                      )),
+    
+    # Order model_name factor
+    model_name = factor(model_name, 
+                       levels = c(
+                         # DDM only
+                         "ddm",
+                         # EV models
+                         "ev", "ev_ddm",
+                         # PVL models
+                         "pvldelta", "pvldelta_ddm",
+                         "pvldecay", "pvldecay_ddm",
+                         "pvlboth", "pvlboth_ddm",
+                         # PUL models
+                         "puldelta", "puldelta_ddm",
+                         "puldecay", "puldecay_ddm",
+                         "pulboth", "pulboth_ddm",
+                         # NNL models
+                         "nnldelta", "nnldelta_ddm",
+                         "nnldecay", "nnldecay_ddm",
+                         "nnlboth", "nnlboth_ddm"
+                       ))
+  )
+
+# For ppc_data dataframe
+ppc_data <- ppc_data %>%
+  mutate(
+    # Order model_family factor
+    model_family = factor(model_family, 
+                         levels = c("DDM", "EV", "PVL", "PUL", "NNL", "Other")),
+    
+    # Order learning_rule factor
+    learning_rule = factor(learning_rule, 
+                          levels = c("None", "Basic", "Delta", "Decay", "Both", "Unknown")),
+    
+    # Order model_type factor
+    model_type = factor(model_type, 
+                       levels = c("RL-only", "DDM-only", "Hybrid"))
+  )
+
+# For model_ppc_data dataframe
+model_ppc_data <- model_ppc_data %>%
+  mutate(
+    # Order model_family factor
+    model_family = factor(model_family, 
+                         levels = c("DDM", "EV", "PVL", "PUL", "NNL", "Other")),
+    
+    # Order learning_rule factor
+    learning_rule = factor(learning_rule, 
+                          levels = c("None", "Basic", "Delta", "Decay", "Both", "Unknown")),
+    
+    # Order model_type factor
+    model_type = factor(model_type, 
+                       levels = c("RL-only", "DDM-only", "Hybrid"))
+  )
+```
+
+# Parameter Recovery Analysis
+
+## Overall Recovery Quality By Model Family
+
+```{r overall-recovery}
+# Function to calculate recovery metrics
+calculate_recovery_metrics <- function(df) {
+  # Calculate metrics by group
+  metrics <- df %>%
+    group_by(model_family, learning_rule, model_type, model_name, parameter) %>%
+    mutate(
+      true_value_std = (true_value - mean(true_value, na.rm=TRUE)) / 
+                       (sd(true_value, na.rm=TRUE) + 1e-10),
+      recovered_value_std = (recovered_value - mean(true_value, na.rm=TRUE)) / 
+                           (sd(true_value, na.rm=TRUE) + 1e-10)
+    ) %>%
+    summarize(
+      correlation = cor(true_value, recovered_value, use = "pairwise.complete.obs"),
+      rmse = sqrt(mean((recovered_value - true_value)^2, na.rm = TRUE)),
+      bias = mean(recovered_value - true_value, na.rm = TRUE),
+      relative_bias = mean(relative_error, na.rm = TRUE),
+      std_rmse = sqrt(mean((recovered_value_std - true_value_std)^2, na.rm = TRUE)),
+      std_bias = mean(recovered_value_std - true_value_std, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Join metrics back to original data
+  result <- df %>%
+    left_join(metrics, by = c("model_family", "learning_rule", "model_type", "model_name", "parameter"))
+  
+  return(result)
+}
+
+# Calculate parameter-level recovery metrics
+parameter_metrics <- calculate_recovery_metrics(recovery_data)
+
+# Aggregate to model level
+model_metrics <- parameter_metrics %>%
+  group_by(model_family, learning_rule, model_type, model_name) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    std_bias = mean(std_bias, na.rm = TRUE),
+    relative_bias = mean(relative_bias, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(correlation))
+
+# Create a table of overall recovery metrics
+model_metrics %>%
+  select(model_family, learning_rule, model_type, correlation, std_rmse, std_bias) %>%
+  arrange(desc(correlation)) %>%
+  kable(caption = "Overall Parameter Recovery by Model", digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+# Create a better overall recovery plot with standardized order and simplified legend
+# First, standardize the learning rule order by setting it as a factor with fixed levels
+model_metrics <- model_metrics %>%
+  mutate(
+    # Create consistent ordering of learning rules
+    learning_rule = factor(learning_rule, levels = c("Delta", "Decay", "Both", "Basic", "None")),
+    # Create a display label that combines learning rule and model type
+    display_label = paste0(learning_rule, " (", model_type, ")"),
+    # Create a grouping variable for ordering within each model family
+    order_group = paste(model_family, as.numeric(learning_rule), model_type)
+  )
+
+# Create the improved plot
+ggplot(model_metrics, aes(x = correlation, 
+                        # Order first by model family (via facet), then by learning rule, then by model type
+                        y = reorder(display_label, desc(as.numeric(learning_rule))),
+                        # Keep color for model family to maintain visual consistency
+                        fill = model_family, 
+                        # Keep shape for model type which is informative
+                        shape = model_type)) +
+  # Add a light background grid for reference lines
+  geom_vline(xintercept = seq(0, 1, 0.1), color = "gray90", linewidth = 0.3) +
+  # Use points instead of bars
+  geom_point(size = 4, color = "black", stroke = 1, alpha = 0.8) +
+  # Add a horizontal line for each model to connect to the point
+  geom_segment(aes(x = 0, xend = correlation, 
+                  y = reorder(display_label, desc(as.numeric(learning_rule))), 
+                  yend = reorder(display_label, desc(as.numeric(learning_rule)))),
+               color = "gray60", linewidth = 0.7) +
+  # Add text labels with the correlation value
+  geom_text(aes(label = sprintf("%.2f", correlation)), 
+            nudge_x = 0.05, hjust = 0, size = 3) +
+  # Split by model family using facets
+  facet_grid(model_family ~ ., scales = "free_y", space = "free_y") +
+  # Adjust the scales
+  scale_x_continuous(limits = c(0, 1.2), breaks = seq(0, 1, 0.2)) +
+  scale_fill_brewer(palette = "Set1") +
+  scale_shape_manual(values = c("RL-only" = 21, "DDM-only" = 22, "Hybrid" = 24)) +
+  # Improve theme
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.text.y = element_text(size = 9),
+    axis.title = element_text(size = 11, face = "bold"),
+    strip.text = element_text(size = 12, face = "bold"),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    legend.position = "bottom",
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.title = element_text(face = "bold")
+  ) +
+  # Remove the model family legend but keep the model type legend
+  guides(fill = "none") +
+  # Improve labels
+  labs(title = "Parameter Recovery Quality by Model",
+       subtitle = "Higher values indicate better parameter recovery",
+       x = "Mean Recovery Correlation",
+       y = "",
+       shape = "Model Type")
+```
+
+## Recovery By Parameter Type
+
+```{r parameter-type-recovery}
+# Parameter recovery by parameter family and model type
+# Use the parameter metrics already calculated
+parameter_family_recovery <- parameter_metrics %>%
+  group_by(model_family, parameter_family, model_type) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    std_bias = mean(std_bias, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(parameter_family, desc(correlation))
+
+# Visualize recovery by parameter family
+ggplot(parameter_family_recovery, 
+       aes(x = model_family, y = correlation, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ parameter_family) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(title = "Parameter Recovery by Parameter Family",
+       x = "Model Family", y = "Recovery Correlation",
+       fill = "Model Type") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Individual Parameter Recovery 
+
+```{r individual-parameter-recovery}
+# Already calculated parameter-level metrics in parameter_metrics
+
+# Group parameters by parameter family
+parameter_correlations <- parameter_metrics %>%
+  filter(!is.na(correlation)) %>%
+  group_by(model_family, parameter, parameter_family, model_type) %>%
+  summarize(correlation = mean(correlation, na.rm = TRUE), .groups = "drop") %>%
+  # Add sequence number within parameter family for ordering
+  group_by(parameter_family) %>%
+  mutate(param_seq = dense_rank(as.character(parameter))) %>%
+  ungroup() %>%
+  # Create combined parameter label with family
+  mutate(param_label = paste0(parameter_family, ": ", parameter))
+
+ggplot(parameter_correlations, 
+       aes(x = model_family, 
+           y = reorder(as.character(parameter), param_seq),
+           fill = correlation)) +
+  # Main heatmap tiles
+  geom_tile(color = "white", linewidth = 0.2) +
+  # Add correlation values as text
+  geom_text(aes(label = sprintf("%.2f", correlation),
+                color = ifelse(correlation > 0.7, "white", "black")),
+            size = 3) +
+  # Facet by model type and parameter family
+  facet_grid(parameter_family ~ model_type, scales = "free_y", space = "free_y") +
+  # Use custom color scale with better graduated colors
+  scale_fill_gradientn(
+    colors = c("#440154", "#414487", "#2a788e", "#22a884", "#7ad151", "#fde725"),
+    limits = c(0, 1), 
+    breaks = seq(0, 1, 0.2),
+    labels = scales::number_format(accuracy = 0.1)
+  ) +
+  scale_color_identity() +
+  # Improve theme elements
+  theme_minimal() +
+  theme(
+    # Remove gridlines that conflict with the heatmap
+    panel.grid = element_blank(),
+    # Adjust text elements
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+    axis.text.y = element_text(size = 9),
+    axis.title = element_text(size = 11, face = "bold"),
+    # Improve facet appearance
+    strip.text = element_text(size = 11, face = "bold"),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    # Position the legend
+    legend.position = "right",
+    legend.title = element_text(face = "bold"),
+    # Improve plot title
+    plot.title = element_text(size = 14, face = "bold")
+  ) +
+  # Improve labels
+  labs(title = "Parameter Recovery Quality by Family and Model Type",
+       subtitle = "Values show mean correlation between true and recovered parameter values",
+       x = "Model Family",
+       y = "Parameter",
+       fill = "Recovery\nCorrelation")
+```
+
+## Bonus: Parameter Recovery by Learning Rule
+
+```{r learning_rule_recovery, fig.width=10, fig.height=7}
+# Create a plot showing parameter recovery by learning rule
+learning_rule_recovery <- parameter_metrics %>%
+  filter(!is.na(correlation)) %>%
+  group_by(learning_rule, parameter, parameter_family) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    n_models = n(),
+    .groups = "drop"
+  ) %>%
+  # Filter to only include parameters present in most learning rules
+  group_by(parameter) %>%
+  filter(n() >= 3) %>%
+  ungroup()
+
+# Create a bar plot comparing recovery by learning rule
+ggplot(learning_rule_recovery, 
+       aes(x = reorder(parameter, correlation), y = correlation, fill = learning_rule)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = seq(0, 1, 0.2), color = "white", linewidth = 0.5) +
+  # Separate by parameter family
+  facet_grid(. ~ parameter_family, scales = "free_x", space = "free_x") +
+  # Adjust scales and colors
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  scale_fill_brewer(palette = "Set2") +
+  # Improve theme
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 12, face = "bold"),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    legend.position = "bottom",
+    plot.title = element_text(size = 14, face = "bold")
+  ) +
+  # Improve labels
+  labs(title = "Parameter Recovery by Learning Rule",
+       subtitle = "Comparing how different learning rules affect parameter recovery",
+       x = "Parameter",
+       y = "Mean Recovery Correlation",
+       fill = "Learning Rule")
+```
+
+
+## Focused Parameter Comparisons
+
+### Gain Parameter Across Model Families
+
+```{r gain-parameter-comparison}
+# Comparing gain parameter across model families using parameter_metrics
+gain_recovery <- parameter_metrics %>%
+  filter(parameter %in% c("gain", "wgt_rew")) %>%
+  # Group data is already calculated, so we can use it directly
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of gain parameter recovery
+ggplot(gain_recovery, aes(x = model_family, y = correlation, 
+                         color = parameter, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Recovery of Gain-Related Parameters Across Models",
+       x = "Model Family", y = "Recovery Correlation",
+       color = "Parameter", fill = "Model Type") +
+  theme_minimal()
+```
+
+### Shape and Gain Parameter Comparisons
+
+```{r shape-gain-comparison}
+# Comparing PVL gain (interpreted as shape) with PUL shape parameter
+shape_comparison <- parameter_metrics %>%
+  filter((model_family == "PVL" & parameter == "gain") | 
+         (model_family == "PUL" & parameter == "shape")) %>%
+  # This data is already calculated
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of shape parameter recovery
+ggplot(shape_comparison, aes(x = paste(model_family, parameter, sep = "-"), 
+                            y = correlation, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Comparing PVL Gain vs PUL Shape Parameter Recovery",
+       x = "Parameter", y = "Recovery Correlation",
+       fill = "Model Type") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Loss Parameter Across Model Families
+
+```{r loss-parameter-comparison}
+# Comparing loss parameter across model families using parameter_metrics
+loss_recovery <- parameter_metrics %>%
+  filter(parameter %in% c("loss", "wgt_pun")) %>%
+  # Group data is already calculated, so we can use it directly
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of gain parameter recovery
+ggplot(loss_recovery, aes(x = model_family, y = correlation, 
+                         color = parameter, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Recovery of Loss-Related Parameters Across Models",
+       x = "Model Family", y = "Recovery Correlation",
+       color = "Parameter", fill = "Model Type") +
+  theme_minimal()
+```
+
+### Delta Parameter Across Model Families
+
+```{r delta-parameter-comparison}
+# Comparing delta parameter across model families using parameter_metrics
+delta_recovery <- parameter_metrics %>%
+  filter(parameter %in% c("delta", "update")) %>%
+  # Group data is already calculated, so we can use it directly
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of gain parameter recovery
+ggplot(delta_recovery, aes(x = model_family, y = correlation, 
+                         color = parameter, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Recovery of Delta-Related Parameters Across Models",
+       x = "Model Family", y = "Recovery Correlation",
+       color = "Parameter", fill = "Model Type") +
+  theme_minimal()
+```
+
+### Decay Parameter Across Model Families
+
+```{r decay-parameter-comparison}
+# Comparing decay parameter across model families using parameter_metrics
+decay_recovery <- parameter_metrics %>%
+  filter(parameter %in% c("decay")) %>%
+  # Group data is already calculated, so we can use it directly
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of gain parameter recovery
+ggplot(decay_recovery, aes(x = model_family, y = correlation, 
+                         color = parameter, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Recovery of Decay-Related Parameters Across Models",
+       x = "Model Family", y = "Recovery Correlation",
+       color = "Parameter", fill = "Model Type") +
+  theme_minimal()
+```
+
+### Consistency Parameter Across Model Families
+
+```{r con-parameter-comparison}
+# Comparing con parameter across model families using parameter_metrics
+con_recovery <- parameter_metrics %>%
+  filter(parameter %in% c("con", "drift_con", "drift")) %>%
+  # Group data is already calculated, so we can use it directly
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of gain parameter recovery
+ggplot(con_recovery, aes(x = model_family, y = correlation, 
+                         color = parameter, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Recovery of Consistency-Related Parameters Across Models",
+       x = "Model Family", y = "Recovery Correlation",
+       color = "Parameter", fill = "Model Type") +
+  theme_minimal()
+```
+
+### DDM Process Parameter Across Model Families
+
+```{r ddm-parameter-comparison}
+# Comparing ddm parameter across model families using parameter_metrics
+ddm_recovery <- parameter_metrics %>%
+  filter(parameter %in% c("tau", "beta", "boundary")) %>%
+  # Group data is already calculated, so we can use it directly
+  group_by(model_family, learning_rule, model_type, parameter) %>%
+  summarize(
+    correlation = mean(correlation, na.rm = TRUE),
+    std_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualization of gain parameter recovery
+ggplot(ddm_recovery, aes(x = model_family, y = correlation, 
+                         color = parameter, fill = model_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ learning_rule) +
+  labs(title = "Recovery of DDM Process-Related Parameters Across Models",
+       x = "Model Family", y = "Recovery color",
+       fill = "Parameter", fill = "Model Type") +
+  theme_minimal()
+```
+
+
+# Posterior Predictive Check Analysis
+
+## Overall PPC Quality
+
+```{r ppc-quality}
+# Calculate PPC quality metrics for all models
+# The ppc_data already contains the ppp_value and ppp_extreme columns
+ppc_summary <- ppc_data %>%
+  group_by(model_family, learning_rule, model_type, component) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    median_ppp = median(ppp_value, na.rm = TRUE),
+    extreme_ppp_ratio = mean(ppp_extreme, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display PPC quality metrics
+ppc_summary %>%
+  filter(!is.na(extreme_ppp_ratio)) %>%
+  arrange(extreme_ppp_ratio) %>%
+  kable(caption = "PPC Quality by Model (Lower Extreme PPP Ratio is Better)", digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+# Visualize PPC quality metrics
+# Create a combined variable for learning rule and model type
+ppc_summary <- ppc_summary %>%
+  mutate(rule_type = paste(learning_rule, model_type, sep = " - "))
+
+ggplot(ppc_summary, aes(x = model_family, y = extreme_ppp_ratio, fill = component)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ rule_type, ncol = 3) +  # Adjust ncol as needed
+  labs(title = "PPC Quality: Proportion of Extreme PPP Values",
+       subtitle = "Lower values indicate better model fit",
+       x = "Model Family", y = "Proportion of Extreme PPP Values",
+       fill = "Component") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 0, hjust = 0.5)  # Horizontal text for better readability
+  )
+```
+
+## PPC for Specific Behavioral Metrics
+
+```{r specific-metrics}
+# Extract specific behavioral statistics PPP values
+behavioral_metrics <- c("good_deck_ratio", "win_stay_ratio", "lose_shift_ratio")
+
+behavioral_ppc <- ppc_data %>%
+  filter(str_detect(statistic, paste(behavioral_metrics, collapse = "|"))) %>%
+  group_by(model_family, learning_rule, model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    extreme_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualize PPC for specific behavioral metrics
+ggplot(behavioral_ppc, aes(x = model_family, y = mean_ppp, fill = model_type)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  facet_grid(learning_rule ~ statistic) +
+  labs(title = "PPC for Key Behavioral Metrics",
+       subtitle = "Closer to 0.5 is better",
+       x = "Model Family", y = "Mean PPP Value",
+       fill = "Model Type") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r more-metrics}
+# Extract specific behavioral statistics PPP values
+behavioral_metrics <- c("total_money", "skip_ratio")
+
+behavioral_ppc <- ppc_data %>%
+  filter(str_detect(statistic, paste(behavioral_metrics, collapse = "|"))) %>%
+  group_by(model_family, learning_rule, model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    extreme_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create a combined variable for model type and statistic
+behavioral_ppc <- behavioral_ppc %>%
+  mutate(type_stat = paste(model_type, statistic, sep = " - "))
+
+ggplot(behavioral_ppc, aes(x = model_family, y = mean_ppp, fill = learning_rule)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  facet_wrap(~ type_stat, ncol = 2) +  # Use ncol=2 to keep statistics aligned
+  labs(title = "PPC for Key Behavioral Metrics",
+       subtitle = "Closer to 0.5 is better",
+       x = "Model Family", y = "Mean PPP Value",
+       fill = "Learning Rule") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 10, hjust = 0.5)  # Less angle for better readability
+  )
+```
+
+
+```{r gen-rt-metrics}
+# Extract specific behavioral statistics PPP values
+behavioral_metrics <- c("mean_rt", "median_rt")
+
+behavioral_ppc <- ppc_data %>%
+  filter(str_detect(statistic, paste(behavioral_metrics, collapse = "|"))) %>%
+  group_by(model_family, learning_rule, model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    extreme_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualize PPC for specific behavioral metrics
+ggplot(behavioral_ppc, aes(x = model_family, y = mean_ppp, fill = learning_rule)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  facet_wrap(~ statistic) + 
+  labs(title = "PPC for General RT Metrics",
+       subtitle = "Closer to 0.5 is better",
+       x = "Model Family", y = "Mean PPP Value",
+       fill = "Learning Rule") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r play-rt-metrics}
+# Extract specific behavioral statistics PPP values
+behavioral_metrics <- c("rt_play_quantiles_10%", "rt_play_mean", "rt_play_median", "rt_play_quantiles_70%")
+
+behavioral_ppc <- ppc_data %>%
+  filter(str_detect(statistic, paste(behavioral_metrics, collapse = "|"))) %>%
+  group_by(model_family, learning_rule, model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    extreme_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualize PPC for specific behavioral metrics
+ggplot(behavioral_ppc, aes(x = model_family, y = mean_ppp, fill = learning_rule)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  facet_wrap(~ statistic) + 
+  labs(title = "PPC for Play RT Metrics",
+       subtitle = "Closer to 0.5 is better",
+       x = "Model Family", y = "Mean PPP Value",
+       fill = "Learning Rule") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r pass-rt-metrics}
+# Extract specific behavioral statistics PPP values
+behavioral_metrics <- c("rt_skip_quantiles_10%", "rt_skip_mean", "rt_skip_median", "rt_skip_quantiles_70%")
+
+behavioral_ppc <- ppc_data %>%
+  filter(str_detect(statistic, paste(behavioral_metrics, collapse = "|"))) %>%
+  group_by(model_family, learning_rule, model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    extreme_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualize PPC for specific behavioral metrics
+ggplot(behavioral_ppc, aes(x = model_family, y = mean_ppp, fill = learning_rule)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  facet_wrap(~ statistic) + 
+  labs(title = "PPC for Pass RT Metrics",
+       subtitle = "Closer to 0.5 is better",
+       x = "Model Family", y = "Mean PPP Value",
+       fill = "Learning Rule") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r choice-rt-metrics}
+# Extract specific behavioral statistics PPP values
+behavioral_metrics <- c("choice_prob")
+
+behavioral_ppc <- ppc_data %>%
+  filter(str_detect(statistic, paste(behavioral_metrics, collapse = "|"))) %>%
+  group_by(model_family, learning_rule, model_type, statistic) %>%
+  summarize(
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    extreme_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Visualize PPC for specific behavioral metrics
+ggplot(behavioral_ppc, aes(x = model_family, y = mean_ppp, fill = learning_rule)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  labs(title = "PPC for Choice Probabilities",
+       subtitle = "Closer to 0.5 is better",
+       x = "Model Family", y = "Mean PPP Value",
+       fill = "Learning Rule") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+## Response Time Analysis
+
+This section analyzes response time distributions and patterns across model families to evaluate how well different model formulations capture the temporal dynamics of decision making in the modified IGT task.
+
+### RT Distributions by Model Family
+
+```{r rt_family_distributions, fig.width=12, fig.height=10}
+# Extract RT quantile data
+rt_quantile_data <- ppc_data %>%
+  filter(grepl("rt_.*_quantiles|rt_.*_q[0-9]", statistic)) %>%
+  # Create separate columns for RT type and quantile
+  mutate(
+    quantile = as.numeric(sub(".*_quantiles_([0-9]+).*", "\\1", statistic)),
+    rt_type = case_when(
+      grepl("rt_play", statistic) ~ "Play",
+      grepl("rt_skip|rt_pass", statistic) ~ "Skip/Pass",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  # Filter out rows where quantile extraction failed (would be NA)
+  filter(!is.na(quantile))
+
+# Only proceed if we have RT quantile data
+if(nrow(rt_quantile_data) > 0) {
+  # Create list of model families to iterate through
+  model_families <- unique(rt_quantile_data$model_family)
+  
+  # Process each model family separately for better clarity
+  for(family in model_families) {
+    # Filter data for the current model family
+    family_data <- rt_quantile_data %>%
+      filter(model_family == family)
+    
+    # Get all available learning rules for this family
+    all_rules <- family_data %>%
+      group_by(learning_rule, model_type) %>%
+      summarize(
+        extreme_ppp = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(extreme_ppp) %>%
+      # No slicing - include all learning rules
+      mutate(model_group = paste(learning_rule, model_type, sep="-"))
+    
+    # Filter data to include all models
+    if(nrow(all_rules) > 0) {
+      plot_data <- family_data %>%
+        mutate(model_group = paste(learning_rule, model_type, sep="-")) %>%
+        filter(model_group %in% all_rules$model_group)
+      
+      # Aggregate RT quantiles
+      rt_agg <- plot_data %>%
+        group_by(model_group, rt_type, quantile) %>%
+        summarize(
+          predicted_mean = mean(predicted_mean, na.rm = TRUE),
+          predicted_q025 = mean(predicted_q025, na.rm = TRUE),
+          predicted_q975 = mean(predicted_q975, na.rm = TRUE),
+          observed = mean(observed, na.rm = TRUE),
+          .groups = 'drop'
+        )
+      
+      # Convert quantile to factor for proper ordering
+      rt_agg$quantile <- factor(rt_agg$quantile, 
+                               levels = sort(unique(rt_agg$quantile)))
+      
+      # Calculate number of columns to use in facet grid
+      n_model_groups <- length(unique(rt_agg$model_group))
+      n_cols <- min(3, n_model_groups)  # Up to 3 columns to keep readable
+      
+      # Create the plot with side-by-side play/pass comparison
+      p <- ggplot(rt_agg, aes(x = quantile, y = predicted_mean, group = 1)) +
+        # Predicted means and CIs
+        geom_line(size = 1, color = "blue") +
+        geom_ribbon(aes(ymin = predicted_q025, ymax = predicted_q975), 
+                   alpha = 0.3, fill = "blue") +
+        # Observed values
+        geom_line(aes(y = observed), linetype = "dashed", color = "red", size = 1) +
+        geom_point(aes(y = observed), color = "red", shape = 4, size = 3) +
+        # Facet by RT type and model group
+        facet_grid(rt_type ~ model_group, scales = "free_y") +
+        # Theme and labels
+        theme_minimal() +
+        labs(title = paste(family, "Model Family: RT Quantile Distributions"),
+             subtitle = "Blue lines/bands = Predicted with 95% CI, Red dashed/X = Observed",
+             x = "Quantile", y = "Response Time (s)") +
+        theme(
+          strip.text = element_text(size = 12, face = "bold"),
+          panel.border = element_rect(color = "gray80", fill = NA),
+          panel.grid.minor = element_blank()
+        )
+      
+      print(p)
+    } else {
+      message(paste("No suitable data found for model family:", family))
+    }
+  }
+} else {
+  message("RT quantile data not available in the PPC results.")
+}
+```
+
+### RT Central Tendencies by Model Family
+
+```{r rt_central_tendencies, fig.width=10, fig.height=8}
+# Extract RT mean and median data
+rt_central_data <- ppc_data %>%
+  filter(grepl("rt_.*_mean|rt_.*_median", statistic)) %>%
+  mutate(
+    rt_type = case_when(
+      grepl("rt_play", statistic) ~ "Play",
+      grepl("rt_skip|rt_pass", statistic) ~ "Skip/Pass",
+      grepl("rt_mean|rt_median", statistic) ~ "Overall",
+      TRUE ~ "Other"
+    ),
+    metric_type = case_when(
+      grepl("mean", statistic) ~ "Mean",
+      grepl("median", statistic) ~ "Median",
+      TRUE ~ "Other"
+    )
+  )
+
+# Only proceed if we have RT central tendency data
+if(nrow(rt_central_data) > 0) {
+  # Create a mapping table for cleaner labels
+  rt_label_map <- c(
+    "Play Mean" = "Play - Mean",
+    "Play Median" = "Play - Median",
+    "Skip/Pass Mean" = "Skip/Pass - Mean",
+    "Skip/Pass Median" = "Skip/Pass - Median",
+    "Overall Mean" = "Overall - Mean",
+    "Overall Median" = "Overall - Median"
+  )
+  
+  # Prepare data for plotting
+  rt_plot_data <- rt_central_data %>%
+    # Create a combined label
+    mutate(rt_metric = paste(rt_type, metric_type)) %>%
+    # Map to cleaner labels
+    mutate(rt_metric = factor(rt_metric, 
+                              levels = names(rt_label_map),
+                              labels = rt_label_map)) %>%
+    # Organize by model family and learning rule
+    group_by(model_family, learning_rule, model_type, rt_metric) %>%
+    summarize(
+      predicted_mean = mean(predicted_mean, na.rm = TRUE),
+      predicted_q025 = mean(predicted_q025, na.rm = TRUE),
+      predicted_q975 = mean(predicted_q975, na.rm = TRUE),
+      observed = mean(observed, na.rm = TRUE),
+      misfit = observed - predicted_mean,
+      misfit_pct = (misfit / observed) * 100,
+      .groups = 'drop'
+    )
+  
+  # Create plot with side-by-side model types
+  p <- ggplot(rt_plot_data, aes(x = model_family, fill = learning_rule)) +
+    # Predicted values
+    geom_bar(aes(y = predicted_mean), stat = "identity", 
+             position = position_dodge(), alpha = 0.7) +
+    # Observed values as points
+    geom_point(aes(y = observed), shape = 4, size = 3, color = "red",
+              position = position_dodge(width = 0.9)) +
+    # Separate by RT metric and model type
+    facet_grid( ~ rt_metric, scales = "free_y") +
+    # Theme and labels
+    theme_minimal() +
+    labs(title = "RT Central Tendencies Across Model Families",
+         subtitle = "Bars = Predicted values, Red X = Observed values",
+         x = "Model Family", y = "Response Time (s)",
+         fill = "Learning Rule") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.text = element_text(size = 11, face = "bold"),
+      panel.border = element_rect(color = "gray80", fill = NA),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p)
+  
+  # Create misfit summary table
+  rt_misfit_summary <- rt_plot_data %>%
+    group_by(model_family, learning_rule, model_type) %>%
+    summarize(
+      mean_abs_misfit = mean(abs(misfit), na.rm = TRUE),
+      mean_abs_misfit_pct = mean(abs(misfit_pct), na.rm = TRUE),
+      play_misfit = mean(misfit[grepl("Play", rt_metric)], na.rm = TRUE),
+      skip_misfit = mean(misfit[grepl("Skip/Pass", rt_metric)], na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(mean_abs_misfit_pct)
+  
+  # Display misfit summary
+  kable(rt_misfit_summary, 
+       caption = "RT Prediction Error by Model", 
+       digits = c(NA, NA, NA, 3, 1, 3, 3)) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+} else {
+  message("RT central tendency data not available in the PPC results.")
+}
+```
+
+### RT Prediction Quality Summary
+
+```{r rt_prediction_summary, fig.width=10, fig.height=6}
+# Summarize RT prediction quality across models
+rt_summary <- ppc_data %>%
+  filter(grepl("rt_", statistic)) %>%
+  group_by(model_family, learning_rule, model_type) %>%
+  summarize(
+    # PPP-value based metrics
+    mean_ppp = mean(ppp_value, na.rm = TRUE),
+    median_ppp = median(ppp_value, na.rm = TRUE),
+    extreme_ppp_ratio = mean(ppp_value < 0.05 | ppp_value > 0.95, na.rm = TRUE),
+    # Distance metrics
+    mean_abs_error = mean(abs(observed - predicted_mean), na.rm = TRUE),
+    mean_rel_error = mean(abs((observed - predicted_mean) / observed), na.rm = TRUE) * 100,
+    # Count metrics for this group
+    n_metrics = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(extreme_ppp_ratio)
+
+# Display summary table
+kable(rt_summary, caption = "RT Prediction Quality Summary by Model", 
+     digits = c(NA, NA, NA, 3, 3, 3, 3, 1, 0)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+# Create visualization of RT prediction quality
+ggplot(rt_summary, aes(x = mean_abs_error, y = extreme_ppp_ratio, 
+                      color = model_family, shape = model_type, 
+                      size = n_metrics)) +
+  geom_point(alpha = 0.7) +
+  ggrepel::geom_text_repel(aes(label = paste0(model_family, "-", learning_rule)), 
+                 size = 3, max.overlaps = 15) +
+  scale_x_continuous(name = "Mean Absolute Error (s)") +
+  scale_y_continuous(name = "Proportion of Extreme PPP Values", 
+                    limits = c(0, max(rt_summary$extreme_ppp_ratio) * 1.1)) +
+  scale_color_brewer(palette = "Set1") +
+  scale_size_continuous(range = c(3, 6)) +
+  theme_minimal() +
+  labs(title = "RT Prediction Quality Across Models",
+       subtitle = "Lower values on both axes indicate better model fit",
+       color = "Model Family", shape = "Model Type", size = "# Metrics") +
+  theme(legend.position = "bottom")
+```
+
+# Combined PR and PPC Analysis
+
+## Integrated Performance Metrics
+
+```{r integrated-metrics}
+# Join recovery and PPC data to create integrated metrics
+# Prepare recovery summary at model family level using the properly calculated metrics
+recovery_model_summary <- model_metrics %>%
+  group_by(model_family, learning_rule, model_type) %>%
+  summarize(
+    recovery_correlation = mean(correlation, na.rm = TRUE),
+    recovery_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Prepare PPC summary at model family level
+# The PPC metrics were already calculated correctly
+ppc_model_summary <- ppc_data %>%
+  group_by(model_family, learning_rule, model_type) %>%
+  summarize(
+    ppc_extreme_ratio = mean(ppp_extreme, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Join the data
+integrated_metrics <- recovery_model_summary %>%
+  left_join(ppc_model_summary, 
+            by = c("model_family", "learning_rule", "model_type")) %>%
+  # Create an integrated score balancing recovery and model fit
+  mutate(
+    integrated_score = (recovery_correlation * 0.5) + ((1 - ppc_extreme_ratio) * 0.5)
+  ) %>%
+  arrange(desc(integrated_score))
+
+# Display integrated metrics
+integrated_metrics %>%
+  select(model_family, learning_rule, model_type, 
+         recovery_correlation, ppc_extreme_ratio, integrated_score) %>%
+  kable(caption = "Integrated Model Performance", digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+# Visualize integrated performance
+ggplot(integrated_metrics, 
+       aes(x = recovery_correlation, y = 1 - ppc_extreme_ratio, 
+           color = model_family, shape = model_type, size = integrated_score)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Integrated Model Performance",
+       x = "Parameter Recovery Quality", 
+       y = "Model Fit Quality (1 - Extreme PPP Ratio)",
+       color = "Model Family", shape = "Model Type", size = "Integrated Score") +
+  theme_minimal()
+```
+
+## Model Performance by Parameter Family
+
+```{r parameter-family-performance}
+# Analyze models' performance by parameter family using parameter_metrics
+parameter_family_performance <- parameter_metrics %>%
+  group_by(model_family, learning_rule, model_type, parameter_family) %>%
+  summarize(
+    recovery_correlation = mean(correlation, na.rm = TRUE),
+    recovery_rmse = mean(std_rmse, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(ppc_model_summary, 
+            by = c("model_family", "learning_rule", "model_type")) %>%
+  filter(!is.na(recovery_correlation), !is.na(ppc_extreme_ratio))
+
+# Display best model for each parameter family
+parameter_family_performance %>%
+  group_by(parameter_family) %>%
+  slice_max(recovery_correlation, n = 3) %>%
+  select(parameter_family, model_family, learning_rule, model_type, 
+         recovery_correlation, ppc_extreme_ratio) %>%
+  arrange(parameter_family, desc(recovery_correlation)) %>%
+  kable(caption = "Best Models by Parameter Family", digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+<!-- # Model Selection by Research Focus -->
+
+<!-- ## For Studying Motivational Processes -->
+
+<!-- ```{r motivational-recommendations} -->
+<!-- # Display best models for motivational parameters -->
+<!-- parameter_metrics %>% -->
+<!--   filter(parameter_family == "Motivational") %>% -->
+<!--   group_by(model_family, learning_rule, model_type) %>% -->
+<!--   summarize( -->
+<!--     recovery_correlation = mean(correlation, na.rm = TRUE), -->
+<!--     recovery_rmse = mean(std_rmse, na.rm = TRUE), -->
+<!--     .groups = "drop" -->
+<!--   ) %>% -->
+<!--   arrange(desc(recovery_correlation)) %>% -->
+<!--   head(5) %>% -->
+<!--   kable(caption = "Best Models for Motivational Parameters", digits = 3) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) -->
+<!-- ``` -->
+
+<!-- ## For Studying Learning Processes -->
+
+<!-- ```{r learning-recommendations} -->
+<!-- # Display best models for learning parameters -->
+<!-- parameter_metrics %>% -->
+<!--   filter(parameter_family == "Cognitive") %>% -->
+<!--   group_by(model_family, learning_rule, model_type) %>% -->
+<!--   summarize( -->
+<!--     recovery_correlation = mean(correlation, na.rm = TRUE), -->
+<!--     recovery_rmse = mean(std_rmse, na.rm = TRUE), -->
+<!--     .groups = "drop" -->
+<!--   ) %>% -->
+<!--   arrange(desc(recovery_correlation)) %>% -->
+<!--   head(5) %>% -->
+<!--   kable(caption = "Best Models for Cognitive Parameters", digits = 3) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) -->
+<!-- ``` -->
+
+<!-- ## For Studying Decision Dynamics -->
+
+<!-- ```{r decision-recommendations} -->
+<!-- # Display best models for DDM process parameters -->
+<!-- parameter_metrics %>% -->
+<!--   filter(parameter_family == "DDM Process") %>% -->
+<!--   group_by(model_family, learning_rule, model_type) %>% -->
+<!--   summarize( -->
+<!--     recovery_correlation = mean(correlation, na.rm = TRUE), -->
+<!--     recovery_rmse = mean(std_rmse, na.rm = TRUE), -->
+<!--     .groups = "drop" -->
+<!--   ) %>% -->
+<!--   arrange(desc(recovery_correlation)) %>% -->
+<!--   head(5) %>% -->
+<!--   kable(caption = "Best Models for Decision Process Parameters", digits = 3) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) -->
+<!-- ``` -->
+
+<!-- # Top Models By Performance -->
+
+<!-- ```{r top-models} -->
+<!-- # Display top models by integrated score -->
+<!-- integrated_metrics %>% -->
+<!--   arrange(desc(integrated_score)) %>% -->
+<!--   head(10) %>% -->
+<!--   select(model_family, learning_rule, model_type,  -->
+<!--          recovery_correlation, ppc_extreme_ratio, integrated_score) %>% -->
+<!--   kable(caption = "Top 10 Models by Integrated Performance", digits = 3) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) -->
+
+<!-- # Top models by recovery correlation -->
+<!-- model_metrics %>% -->
+<!--   arrange(desc(correlation)) %>% -->
+<!--   head(10) %>% -->
+<!--   select(model_family, learning_rule, model_type, correlation, std_rmse, std_bias) %>% -->
+<!--   kable(caption = "Top 10 Models by Parameter Recovery", digits = 3) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) -->
+
+<!-- # Top models by PPC fit -->
+<!-- ppc_summary %>% -->
+<!--   group_by(model_family, learning_rule, model_type) %>% -->
+<!--   summarize( -->
+<!--     mean_extreme_ratio = mean(extreme_ppp_ratio, na.rm = TRUE), -->
+<!--     .groups = "drop" -->
+<!--   ) %>% -->
+<!--   arrange(mean_extreme_ratio) %>% -->
+<!--   head(10) %>% -->
+<!--   kable(caption = "Top 10 Models by PPC Fit (Lower is Better)", digits = 3) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) -->
+<!-- ``` -->

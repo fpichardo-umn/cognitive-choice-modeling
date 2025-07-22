@@ -1,0 +1,112 @@
+functions {
+  vector igt_model_lp(
+        array[] int choice, array[] real wins, array[] real losses,
+        vector ev, vector ef, int Tsub,
+        real sensitivity, real Arew, real Apun, real K, real betaF, real betaP
+        ) {
+    // Define values
+    vector[4] local_ev = ev;
+    vector[4] local_ef = ef;
+    vector[4] pers = rep_vector(0.0, 4);  // perseverance
+    vector[4] util;
+    real PEval;
+    real PEfreq;
+    vector[4] PEfreq_fic;
+    array[Tsub] real sign_outcome;
+    real K_tr = pow(3, K) - 1;
+    
+    // Calculate sign for each trial
+    for (t in 1:Tsub) {
+      sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
+    }
+
+    // For each trial
+    for (t in 1:Tsub) {
+      // Calculate utility for decision
+      util = local_ev + local_ef * betaF + pers * betaP;
+      
+      // Choice probability using sensitivity
+      target += categorical_logit_lpmf(choice[t] | sensitivity * util);
+      
+      // Prediction errors for value and frequency
+      PEval = wins[t] - losses[t] - local_ev[choice[t]];
+      PEfreq = sign_outcome[t] - local_ef[choice[t]];
+      
+      // Calculate fictive prediction errors for non-chosen decks
+      for (d in 1:4) {
+        PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
+      }
+      
+      // Update EV and EF based on valence
+      if (wins[t] >= losses[t]) {
+        // Update ef for all decks with fictive outcomes
+        local_ef += Apun * PEfreq_fic;
+        // Update chosen deck
+        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
+        local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
+      } else {
+        // Update ef for all decks with fictive outcomes
+        local_ef += Arew * PEfreq_fic;
+        // Update chosen deck
+        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
+        local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
+      }
+      
+      // Perseverance updating
+      pers[choice[t]] = 1;  // set chosen deck perseverance
+      pers = pers / (1 + K_tr);  // decay perseverance
+    }
+    
+    return local_ev;
+  }
+}
+
+data {
+  int<lower=1> T;                        // Number of trials
+  array[T] int<lower=1, upper=4> choice; // Choices made at each trial
+  array[T] real<lower=0> wins;           // Win amount at each trial
+  array[T] real<lower=0> losses;         // Loss amount at each trial
+}
+
+parameters {
+  real con_pr;     // Consistency parameter
+  real Arew_pr;    // Reward learning rate
+  real Apun_pr;    // Punishment learning rate
+  real K_pr;       // Decay rate for perseverance
+  real betaF_pr;   // Weight for frequency (EF)
+  real betaP_pr;   // Weight for perseverance
+}
+
+transformed parameters {
+  real<lower=0, upper=5> con;
+  real<lower=0, upper=1> Arew;
+  real<lower=0, upper=1> Apun;
+  real<lower=0, upper=5> K;
+  real betaF;
+  real betaP;
+  
+  con   = inv_logit(con_pr) * 5;
+  Arew  = inv_logit(Arew_pr);
+  Apun  = inv_logit(Apun_pr);
+  K     = inv_logit(K_pr) * 5;
+  betaF = betaF_pr;  // Unbounded
+  betaP = betaP_pr;  // Unbounded
+}
+
+model {
+  // Priors
+  con_pr   ~ normal(0, 1);
+  Arew_pr  ~ normal(0, 1);
+  Apun_pr  ~ normal(0, 1);
+  K_pr     ~ normal(0, 1);
+  betaF_pr ~ normal(0, 1);
+  betaP_pr ~ normal(0, 1);
+  
+  // Initialize values
+  vector[4] ev = rep_vector(0., 4);  // Expected value
+  vector[4] ef = rep_vector(0., 4);  // Expected frequency
+  real sensitivity = pow(3, con) - 1;
+  
+  // Run model
+  ev = igt_model_lp(choice, wins, abs(losses), ev, ef, T, sensitivity, Arew, Apun, K, betaF, betaP);
+}

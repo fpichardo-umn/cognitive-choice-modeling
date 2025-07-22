@@ -1,0 +1,145 @@
+# Parameter Groups Configuration for Model Comparison
+# Defines psychological constructs and their corresponding parameters
+
+parameter_groups:
+  learning:
+    description: "Learning and memory parameters"
+    parameters:
+      - update
+      - update_rate_mb
+      - update_rate_mf
+      - decay
+      - decay_factor
+      - var_pe_update
+    
+  motivational:
+    description: "Reward/punishment sensitivity and valuation"
+    parameters:
+      - gain
+      - loss
+      - wgt_pun
+      - wgt_rew
+      - Arew
+      - Apun
+      - pos_val
+      - neg_val
+      - mag
+    
+  cognitive_control:
+    description: "Response consistency and decision control"
+    parameters:
+      - con
+      - consistency
+      - K
+      - betaF
+      - betaP
+      - boundary
+      - boundary1
+    
+  bias_perseveration:
+    description: "Choice bias and perseveration tendencies"
+    parameters:
+      - w
+      - ep
+      - epP
+      - epN
+      - pattern_weight
+      - beta  # when in SSM context
+    
+  exploration:
+    description: "Exploration and strategy parameters"
+    parameters:
+      - explore_alpha
+      - explore_bonus
+      - mb_weight
+      - pe_threshold
+    
+  motor_perceptual:
+    description: "Non-decision and perceptual processes"
+    parameters:
+      - tau
+      - tau1
+      - drift
+      - drift_con
+
+# Model parameter sets - defines which parameters each model has
+model_parameter_sets:
+  # Basic RL models
+  ev: [motivational, cognitive_control]
+  pvl_delta: [motivational, learning, cognitive_control]
+  pvl_decay: [motivational, learning, cognitive_control]
+  pvl_both: [motivational, learning, cognitive_control]
+  
+  # PUL models
+  pul_delta: [motivational, learning, cognitive_control]
+  pul_decay: [motivational, learning, cognitive_control]
+  pul_both: [motivational, learning, cognitive_control]
+  
+  # NNL models
+  nnl_delta: [motivational, learning, cognitive_control]
+  nnl_decay: [motivational, learning, cognitive_control]
+  nnl_both: [motivational, learning, cognitive_control]
+  
+  # VPP models
+  vpp_base: [bias_perseveration, exploration]
+  vpp_igt: [bias_perseveration, exploration]
+  
+  # ORL model
+  orl: [motivational, cognitive_control]
+  
+  # VSE model
+  vse_base: [exploration]
+  
+  # Dual processing models
+  dual: [learning, motivational, exploration, cognitive_control]
+  dual_bbu: [learning, motivational]
+  dual_bbup: [learning, motivational, bias_perseveration]
+  
+  # SSM models
+  ddm_base: [cognitive_control, motor_perceptual]
+  ddm_simple: [cognitive_control, motor_perceptual]
+  ddm_drift: [cognitive_control, motor_perceptual]
+  ddm_b1b: [cognitive_control, motor_perceptual]
+  ddm_b1p2: [cognitive_control, motor_perceptual]
+  
+  # Hybrid models (RL + SSM)
+  ev_ddm: [motivational, cognitive_control, motor_perceptual]
+  pvl_delta_ddm: [motivational, learning, cognitive_control, motor_perceptual]
+  pvl_decay_ddm: [motivational, learning, cognitive_control, motor_perceptual]
+  pvl_both_ddm: [motivational, learning, cognitive_control, motor_perceptual]
+  orl_ddm: [motivational, cognitive_control, motor_perceptual]
+
+# Model type definitions
+model_types:
+  RL:
+    description: "Reinforcement learning models"
+    models: ["ev", "pvl_delta", "pvl_decay", "pvl_both", "pul_delta", "pul_decay", "pul_both", "nnl_delta", "nnl_decay", "nnl_both", "vpp_base", "vpp_igt", "orl", "vse_base", "dual", "dual_bbu", "dual_bbup"]
+    parameter_groups: ["learning", "motivational", "cognitive_control", "bias_perseveration", "exploration"]
+    
+  SSM:
+    description: "Sequential sampling models"
+    models: ["ddm_base", "ddm_simple", "ddm_drift", "ddm_b1b", "ddm_b1p2"]
+    parameter_groups: ["cognitive_control", "motor_perceptual", "bias_perseveration"]
+    
+  hybrid:
+    description: "Hybrid RL + SSM models"
+    models: ["ev_ddm", "pvl_delta_ddm", "pvl_decay_ddm", "pvl_both_ddm", "orl_ddm"]
+    parameter_groups: ["learning", "motivational", "cognitive_control", "motor_perceptual", "bias_perseveration"]
+
+# Analysis configuration
+analysis_config:
+  recovery_thresholds:
+    excellent: 0.8
+    good: 0.6
+    acceptable: 0.4
+    poor: 0.0
+    
+  ppc_thresholds:
+    extreme_lower: 0.05
+    extreme_upper: 0.95
+    
+  ic_performance_tiers:
+    top_tier: 2.0
+    competitive: 4.0
+    considerable: 7.0
+    strong: 10.0

@@ -1,0 +1,115 @@
+opt_model = "vse"
+opt_task = "igt"
+opt_cohort = "luc"
+opt_session = "00"
+opt_nsubs = 2
+opt_group = "hier"
+#opt_group2 = "batch_001"
+opt_group2 = "hier"
+
+# Fit
+opt <- list(
+  model = opt_model,
+  type = "fit",
+  task = opt_task,
+  group = opt_group,
+  source = opt_cohort,
+  ses = opt_session,
+  data = NULL,
+  params = NULL,
+  n_subs = opt_nsubs,
+  n_trials = 100,
+  RTbound_min_ms = 50,
+  RTbound_max_ms = 2500,
+  rt_method = "remove",
+  n_warmup = 3000,
+  n_iter = 15000,
+  n_chains = 4,
+  adapt_delta = 0.95,
+  max_treedepth = 12,
+  seed = 29518,
+  dry_run = FALSE,
+  check_iter = 100000,
+  init = FALSE
+)
+
+# Gen Params
+opt = list(
+  model = opt_model,
+  task = opt_task,
+  group = opt_group,
+  cohort = opt_cohort,
+  session = opt_session,
+  n_subjects = opt_nsubs,
+  method = "mbSPSepse",
+  output_dir = NULL,
+  fit_file = NULL,
+  params = NULL,
+  seed = 12345,
+  config = NULL,
+  exclude_file = NULL #"Data/AHRB/subs/subject_ids_excludes.txt"
+)
+
+
+# Sim
+opt = list(
+  model = opt_model,
+  task = opt_task,
+  group = opt_group,
+  cohort = opt_cohort,
+  session = opt_session,
+  param_file = file.path("Data", opt_task, "sim", "params", paste0("task-", opt_task, "_cohort-", opt_cohort, "_ses-", opt_session, "_group-", opt_group2, "_model-", opt_model, "_type-params_desc-mbSPSepse_n-", opt_nsubs, ".rds")),
+  output_dir = NULL, # specify if you have a default output directory
+  n_blocks = ifelse(opt_task == "igt", 5, 6),
+  trials_per_block = 20,
+  seed = 12345
+)
+
+
+# PR
+opt = list(
+  sim_data = NULL, #paste0("Data/sim/rds/igt_mod_batch_001_", opt_model, "_desc-sim_params.rds"),
+  model = opt_model,
+  task = opt_task,
+  group = opt_group,
+  cohort = opt_cohort,
+  session = opt_session,
+  indiv = F,
+  output_fit_dir = NULL,
+  output_rec_dir = NULL,
+  n_warmup = 1000,
+  n_iter = 2000,
+  n_chains = 4,
+  seed = 12345,
+  adapt_delta = 0.95,
+  max_treedepth = 12,
+  render = TRUE
+)
+
+
+# Rec Analysis
+opt = list(
+  input = paste0("Data/sim/recovery/recovery_igt_mod_", opt_model, "_batch_001.csv"),  # Fitted model file
+  model = opt_model,  # Model name (e.g., vppdeltag, pvl)
+  task = opt_task,  # Task name (e.g., igt_mod)
+  group = opt_group,  # Group type
+  output_dir = NULL,  # Output directory
+  render = "TRUE"
+)
+
+
+# PPC
+opt = list(
+  fit_file = paste0("Data/sim/fit/fits_igt_mod_", opt_model, "_batch_001.rds"),  # Fitted model file
+  sim_data = paste0("Data/sim/rds/igt_mod_batch_001_", opt_model, "_desc-sim_params.rds"),  # Simulation data file
+  model = opt_model,  # Model name (e.g., vppdeltag, pvl)
+  task = "igt_mod",  # Task name (e.g., igt_mod)
+  group = "batch_001",  # Group type
+  n_sims = 100,  # Number of PPC simulations
+  stats_level = "standard",  # Statistics lvppdeltagel [basic|standard|extended]
+  output_dir = NULL,  # Output directory
+  parallel = FALSE,  # Use parallel processing
+  n_cores = 2,  # Number of cores for parallel processing
+  checkpoint_interval = 10, # Checkpoint save interval (subjects)
+  render = "TRUE"
+)

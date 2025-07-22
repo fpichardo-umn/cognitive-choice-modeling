@@ -1,0 +1,387 @@
+```{r task-specific-setup}
+# Task-specific analysis based on the task type
+task_config <- get_task_config(params$task)
+```
+
+## Task Overview: {{TASK}}
+
+```{r task-overview, results='asis'}
+if (params$task == "igt_mod") {
+  cat("### Modified Iowa Gambling Task (mIGT)\n\n")
+  cat("The mIGT is a variant of the classic IGT where participants make **play/pass decisions** ")
+  cat("when shown individual cards from different decks, rather than directly selecting decks.\n\n")
+  
+  cat("**Key Behavioral Measures:**\n")
+  cat("- Play/pass rates overall and by deck type\n")
+  cat("- Good deck (3,4) vs bad deck (1,2) play rates\n")
+  cat("- Learning trajectories across blocks\n")
+  cat("- Response time patterns for different decisions\n\n")
+  
+} else if (params$task == "igt") {
+  cat("### Iowa Gambling Task (IGT)\n\n")
+  cat("The IGT is a classic decision-making task where participants ")
+  cat("**select from four decks** with different reward/punishment contingencies.\n\n")
+  
+  cat("**Key Behavioral Measures:**\n")
+  cat("- Deck selection frequencies\n")
+  cat("- Good deck (3,4) vs bad deck (1,2) preferences\n")
+  cat("- Win-stay/lose-shift strategies\n")
+  cat("- Learning curves and strategy development\n\n")
+}
+
+cat("**Deck Contingencies:**\n")
+cat("- **Deck 1 & 2:** High immediate rewards, larger long-term losses (disadvantageous)\n")
+cat("- **Deck 3 & 4:** Lower immediate rewards, smaller long-term losses (advantageous)\n\n")
+```
+
+## Task-Specific Model Performance
+
+### mIGT-Specific Analysis {.tabset .tabset-pills}
+
+```{r migt-analysis-check}
+show_migt <- params$task == "igt_mod" && 
+            "ppc" %in% names(analysis_results) && 
+            "task_specific_analysis" %in% names(analysis_results$ppc)
+```
+
+#### Play/Pass Decision Modeling
+
+```{r migt-play-pass, eval=show_migt}
+if (show_migt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("play_pass_analysis" %in% names(task_analysis) && nrow(task_analysis$play_pass_analysis) > 0) {
+    play_pass_summary <- task_analysis$play_pass_analysis %>%
+      group_by(model) %>%
+      summarise(
+        mean_ppp_play = mean(mean_ppp[statistic == "play_ratio"], na.rm = TRUE),
+        mean_ppp_good_play = mean(mean_ppp[statistic == "good_play_ratio"], na.rm = TRUE),
+        mean_ppp_bad_play = mean(mean_ppp[statistic == "bad_play_ratio"], na.rm = TRUE),
+        avg_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(avg_extreme_rate) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    DT::datatable(play_pass_summary, 
+                  caption = "Play/Pass Pattern Reproduction by Model",
+                  options = list(pageLength = 10))
+  } else {
+    cat("No play/pass analysis data available.")
+  }
+}
+```
+
+#### Deck Preference Patterns
+
+```{r migt-deck-preference, eval=show_migt}
+if (show_migt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("deck_preference_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_preference_analysis) > 0) {
+    # Deck preference summary
+    deck_summary <- task_analysis$deck_preference_analysis %>%
+      group_by(model, deck_type) %>%
+      summarise(
+        mean_ppp = mean(mean_ppp, na.rm = TRUE),
+        mean_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      pivot_wider(names_from = deck_type, values_from = c(mean_ppp, mean_extreme_rate), 
+                  names_sep = "_") %>%
+      arrange(mean_extreme_rate_good + mean_extreme_rate_bad) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(deck_summary, caption = "Deck Preference Modeling Performance") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    # Best models for each deck type
+    best_good_deck <- task_analysis$deck_preference_analysis %>%
+      filter(deck_type == "good") %>%
+      group_by(model) %>%
+      summarise(avg_extreme = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_extreme) %>%
+      slice(1) %>%
+      pull(model)
+    
+    best_bad_deck <- task_analysis$deck_preference_analysis %>%
+      filter(deck_type == "bad") %>%
+      group_by(model) %>%
+      summarise(avg_extreme = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_extreme) %>%
+      slice(1) %>%
+      pull(model)
+    
+    cat("\n\n**Best models for deck preferences:**\n")
+    cat("- Good deck patterns:", best_good_deck, "\n")
+    cat("- Bad deck patterns:", best_bad_deck, "\n")
+    
+  } else {
+    cat("No deck preference analysis data available.")
+  }
+}
+```
+
+### IGT-Specific Analysis {.tabset .tabset-pills}
+
+```{r igt-analysis-check}
+show_igt <- params$task == "igt" && 
+           "ppc" %in% names(analysis_results) && 
+           "task_specific_analysis" %in% names(analysis_results$ppc)
+```
+
+#### Deck Selection Modeling
+
+```{r igt-deck-selection, eval=show_igt}
+if (show_igt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("deck_selection_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_selection_analysis) > 0) {
+    deck_selection_summary <- task_analysis$deck_selection_analysis %>%
+      group_by(model) %>%
+      summarise(
+        mean_ppp_individual = mean(mean_ppp[grepl("deck[1-4]_freq", statistic)], na.rm = TRUE),
+        mean_ppp_good_bad = mean(mean_ppp[statistic %in% c("good_deck_freq", "bad_deck_freq")], na.rm = TRUE),
+        avg_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(avg_extreme_rate) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    DT::datatable(deck_selection_summary, 
+                  caption = "Deck Selection Pattern Reproduction by Model",
+                  options = list(pageLength = 10))
+  } else {
+    cat("No deck selection analysis data available.")
+  }
+}
+```
+
+#### Strategy Pattern Modeling
+
+```{r igt-strategy, eval=show_igt}
+if (show_igt) {
+  task_analysis <- analysis_results$ppc$task_specific_analysis
+  
+  if ("strategy_analysis" %in% names(task_analysis) && nrow(task_analysis$strategy_analysis) > 0) {
+    strategy_summary <- task_analysis$strategy_analysis %>%
+      group_by(model) %>%
+      summarise(
+        mean_ppp_wsls = mean(mean_ppp[statistic %in% c("win_stay", "lose_shift")], na.rm = TRUE),
+        mean_ppp_perseveration = mean(mean_ppp[statistic == "perseveration"], na.rm = TRUE),
+        avg_extreme_rate = mean(proportion_extreme, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      arrange(avg_extreme_rate) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(strategy_summary, caption = "Strategy Pattern Reproduction by Model") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    # Best strategy model
+    best_strategy_model <- strategy_summary$model[1]
+    cat("\n\n**Best model for strategy patterns:**", best_strategy_model)
+    
+  } else {
+    cat("No strategy analysis data available.")
+  }
+}
+```
+
+## Learning Dynamics Analysis
+
+```{r learning-dynamics}
+# Analyze block-level performance (learning curves)
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$by_domain_and_model) > 0) {
+  learning_domain_data <- analysis_results$ppc$by_domain_and_model %>%
+    filter(domain == "learning_dynamics")
+  
+  if (nrow(learning_domain_data) > 0) {
+    learning_summary <- learning_domain_data %>%
+      arrange(proportion_extreme) %>%
+      select(model, model_type, mean_ppp, proportion_extreme, domain_quality) %>%
+      mutate(across(where(is.numeric), ~round(.x, 3)))
+    
+    kable(learning_summary, caption = "Learning Dynamics Modeling Performance") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    
+    best_learning_model <- learning_summary$model[1]
+    
+    # Learning performance by model type
+    if (length(unique(learning_summary$model_type)) > 1) {
+      learning_by_type <- learning_summary %>%
+        group_by(model_type) %>%
+        summarise(
+          n_models = n(),
+          mean_proportion_extreme = mean(proportion_extreme, na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        arrange(mean_proportion_extreme)
+      
+      cat("\n\n### Learning Performance by Model Type\n\n")
+      kable(learning_by_type, caption = "Learning Dynamics by Model Type") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+    }
+    
+    cat("\n\n**Best model for learning dynamics:**", best_learning_model)
+  }
+} else {
+  cat("No learning dynamics analysis available.")
+}
+```
+
+## Response Time Analysis
+
+```{r rt-analysis, results='asis'}
+# RT analysis for SSM and hybrid models
+rt_capable_models <- names(comparison_data)[sapply(names(comparison_data), function(m) {
+  classify_model_type(m) %in% c("SSM", "hybrid")
+})]
+
+if (length(rt_capable_models) > 0) {
+  cat("### Response Time Modeling\n\n")
+  cat("Models capable of RT prediction:", paste(rt_capable_models, collapse = ", "), "\n\n")
+  
+  # RT domain performance
+  if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$by_domain_and_model) > 0) {
+    rt_domain_data <- analysis_results$ppc$by_domain_and_model %>%
+      filter(domain == "rt_patterns", model %in% rt_capable_models)
+    
+    if (nrow(rt_domain_data) > 0) {
+      rt_summary <- rt_domain_data %>%
+        arrange(proportion_extreme) %>%
+        select(model, model_type, mean_ppp, proportion_extreme, domain_quality) %>%
+        mutate(across(where(is.numeric), ~round(.x, 3)))
+      
+      kable(rt_summary, caption = "Response Time Pattern Reproduction") %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+      
+      best_rt_model <- rt_summary$model[1]
+      cat("\n**Best model for RT patterns:**", best_rt_model, "\n\n")
+      
+      # RT performance insights
+      if (params$task == "igt_mod") {
+        cat("#### mIGT RT Insights\n\n")
+        cat("- RT patterns include overall distributions and play/pass differences\n")
+        cat("- Good models should capture different RT distributions for different decision types\n")
+        cat("- Hybrid models can link choice preferences to decision confidence (via RT)\n\n")
+      }
+    } else {
+      cat("No RT domain data available for RT-capable models.\n\n")
+    }
+  }
+} else {
+  cat("### Response Time Analysis\n\nNo RT-capable models (SSM or hybrid) included in this comparison.\n\n")
+}
+```
+
+## Task-Specific Insights and Recommendations
+
+```{r task-insights, results='asis'}
+cat("### Key Task-Specific Findings\n\n")
+
+# Generate insights based on task type and available results
+insights <- list()
+
+if (params$task == "igt_mod") {
+  insights$task_nature <- "**mIGT Modeling Challenges:** The play/pass decision structure requires models to capture binary choice processes with deck-specific value learning."
+  
+  if ("ppc" %in% names(analysis_results)) {
+    # Find models that do well on play/pass vs deck preferences
+    domain_performance <- analysis_results$ppc$by_domain_and_model %>%
+      filter(domain %in% c("choice_patterns", "performance")) %>%
+      group_by(model) %>%
+      summarise(avg_performance = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_performance)
+    
+    if (nrow(domain_performance) > 0) {
+      best_choice_model <- domain_performance$model[1]
+      insights$choice_modeling <- paste("**Best choice pattern model:**", best_choice_model, "- excels at capturing play/pass and deck preference patterns")
+    }
+  }
+  
+} else if (params$task == "igt") {
+  insights$task_nature <- "**IGT Modeling Challenges:** Direct deck selection requires models to capture sequential choice patterns and strategy development over time."
+  
+  if ("ppc" %in% names(analysis_results)) {
+    # Find models that balance deck selection and strategy patterns
+    strategy_performance <- analysis_results$ppc$by_domain_and_model %>%
+      filter(domain %in% c("choice_patterns", "strategies")) %>%
+      group_by(model) %>%
+      summarise(avg_performance = mean(proportion_extreme, na.rm = TRUE), .groups = "drop") %>%
+      arrange(avg_performance)
+    
+    if (nrow(strategy_performance) > 0) {
+      best_strategy_model <- strategy_performance$model[1]
+      insights$strategy_modeling <- paste("**Best strategy model:**", best_strategy_model, "- captures both deck preferences and strategic patterns")
+    }
+  }
+}
+
+# Model type recommendations for this task
+if (length(rt_capable_models) > 0 && length(rt_capable_models) < length(names(comparison_data))) {
+  insights$model_type_rec <- "**Model Type Recommendation:** Consider hybrid models if RT data is available and important for your research questions, otherwise RL models provide efficient choice modeling."
+} else if (length(rt_capable_models) == 0) {
+  insights$model_type_rec <- "**Model Type Recommendation:** RL models are most appropriate for choice-only analysis of this task."
+} else {
+  insights$model_type_rec <- "**Model Type Recommendation:** All models in this comparison can handle RT data - choose based on other performance criteria."
+}
+
+# Recovery recommendations
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$group_summary) > 0) {
+  best_recovery_groups <- head(analysis_results$recovery$group_summary$group, 2)
+  worst_recovery_groups <- tail(analysis_results$recovery$group_summary$group, 2)
+  
+  insights$recovery_rec <- paste("**Parameter Recovery:** Focus on", paste(best_recovery_groups, collapse = " and "), 
+                                "parameters as they show excellent recovery. Be cautious interpreting", 
+                                paste(worst_recovery_groups, collapse = " and "), "parameters due to poor recovery.")
+}
+
+# Print all insights
+for (i in seq_along(insights)) {
+  cat(insights[[i]], "\n\n")
+}
+```
+
+## Task-Specific Visualization
+
+```{r task-visualization, fig.height=8}
+# Create task-specific summary plot
+if ("ppc" %in% names(analysis_results)) {
+  
+  if (params$task == "igt_mod") {
+    # mIGT: Focus on play/pass and deck preferences
+    key_domains <- c("choice_patterns", "performance")
+    domain_title <- "mIGT: Choice Patterns and Performance"
+    
+  } else if (params$task == "igt") {
+    # IGT: Focus on deck selection and strategies  
+    key_domains <- c("choice_patterns", "strategies")
+    domain_title <- "IGT: Deck Selection and Strategies"
+  }
+  
+  task_viz_data <- analysis_results$ppc$by_domain_and_model %>%
+    filter(domain %in% key_domains)
+  
+  if (nrow(task_viz_data) > 0) {
+    task_plot <- task_viz_data %>%
+      ggplot(aes(x = model, y = proportion_extreme, fill = domain)) +
+      geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
+      scale_fill_viridis_d(name = "Behavioral Domain", option = "viridis") +
+      scale_y_continuous(labels = scales::percent_format()) +
+      labs(
+        title = paste("Task-Specific Performance:", domain_title),
+        x = "Model",
+        y = "Proportion Extreme PPP",
+        caption = "Lower values indicate better model fit"
+      ) +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom"
+      )
+    
+    print(task_plot)
+  }
+}
+```

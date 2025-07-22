@@ -1,0 +1,90 @@
+## Information Criteria Rankings
+
+```{r ic-ranking-table}
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  ic_method <- analysis_results$ic$metadata$ic_method
+  
+  # Display main ranking table
+  display_cols <- c("rank", "model", "model_type")
+  display_cols <- c(display_cols, grep("estimate$|^delta_|_se$|model_weight|performance_tier", 
+                                      names(ic_ranking), value = TRUE))
+  
+  ranking_table <- ic_ranking[display_cols] %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(ranking_table, 
+                caption = paste("Model Ranking by", toupper(ic_method)),
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("performance_tier",
+                    backgroundColor = DT::styleEqual(
+                      c("top_tier", "competitive", "considerable_difference", "strong_difference", "decisive_difference"),
+                      c("#d4edda", "#fff3cd", "#ffeaa7", "#fdcb6e", "#e17055")
+                    ))
+} else {
+  cat("No information criteria results available.")
+}
+```
+
+## Model Selection Evidence
+
+```{r ic-evidence}
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {
+  ic_ranking <- analysis_results$ic$overall_ranking
+  
+  # Create evidence strength summary
+  evidence_summary <- ic_ranking %>%
+    mutate(
+      evidence_against_best = case_when(
+        performance_tier == "top_tier" ~ "Negligible difference",
+        performance_tier == "competitive" ~ "Weak evidence against",
+        performance_tier == "considerable_difference" ~ "Moderate evidence against", 
+        performance_tier == "strong_difference" ~ "Strong evidence against",
+        performance_tier == "decisive_difference" ~ "Decisive evidence against",
+        TRUE ~ "Unknown"
+      )
+    ) %>%
+    count(evidence_against_best, model_type) %>%
+    pivot_wider(names_from = model_type, values_from = n, values_fill = 0)
+  
+  kable(evidence_summary, caption = "Evidence Strength Summary") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
+
+## Information Criteria Plots
+
+```{r ic-plots, fig.height=8}
+if ("ic" %in% names(analysis_results)) {
+  # Create IC plots
+  ic_plots <- create_ic_plots(analysis_results$ic, models_by_type)
+  
+  # Display ranking plot
+  if (!is.null(ic_plots$ranking_plot)) {
+    print(ic_plots$ranking_plot)
+  }
+  
+  # Display weights plot
+  if (!is.null(ic_plots$weights_plot)) {
+    print(ic_plots$weights_plot)
+  }
+  
+  # Display complexity plot if available
+  if (!is.null(ic_plots$complexity_plot)) {
+    print(ic_plots$complexity_plot)
+  }
+}
+```
+
+## Model Complexity Analysis
+
+```{r complexity-analysis}
+if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$complexity_analysis) > 0) {
+  complexity_table <- analysis_results$ic$complexity_analysis %>%
+    select(model, model_type, p_eff, complexity_category) %>%
+    arrange(desc(p_eff))
+  
+  kable(complexity_table, caption = "Model Complexity Analysis") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+}
+```
