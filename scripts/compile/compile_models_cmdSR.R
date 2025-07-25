@@ -75,7 +75,7 @@ compile_stan_model <- function(stan_file, bin_dir, output_filename, verbose = FA
     
     if (need_compile) {
       if (verbose) cat(paste0("Compiling: ", stan_filename, "\n"))
-      model <- cmdstan_model(stan_file, compile = TRUE, cpp_options = list(stan_opencl = FALSE),
+      model <- cmdstan_model(stan_file, compile = TRUE,
                              force_recompile = TRUE, exe_file = exe_file,
                              quiet = !verbose)
       # Save the new hash

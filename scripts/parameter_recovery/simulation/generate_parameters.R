@@ -153,11 +153,15 @@ if (!is.null(model_fit) && "subjects" %in% names(model_fit)) {
   names(model_fit) <- c(unlist(model_fit$subjects), "subjects")
 }
 
+highest_num_subs = max(as.numeric(gsub(".*\\[(\\d+)\\].*", "\\1", 
+                                       model_fit$all_params[grepl("\\[\\d+\\]", model_fit$all_params)])), 
+                       na.rm = TRUE)
+
 params <- generate_parameters(
   config_file = config_file,
   method = opt$method,
   model_fit = model_fit,
-  n_subjects = opt$n_subjects
+  n_subjects = min(opt$n_subjects, highest_num_subs)
 )
 
 # Save parameters using BIDS-inspired filename
@@ -173,7 +177,7 @@ filename <- file.path(
     additional_tags = list(
       "type" = "params",
       "desc" = opt$method,
-      "n" = opt$n_subjects
+      "n" = min(opt$n_subjects, highest_num_subs)
     ),
     ext = "rds"
   )

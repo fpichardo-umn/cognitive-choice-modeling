@@ -18,7 +18,7 @@ library(reshape2)  # For melting matrices
 library(here)
 
 # File path to recovery data
-recovery_file <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/igt/sim/recovery/task-igt_cohort-luc_ses-00_group-hier_model-orl_type-rec_desc-data.csv"
+recovery_file <- "/users/7/fpichard/Projects/modeling_mIGT/Data/igt/sim/recovery/task-igt_cohort-luc_ses-00_group-hier_model-orl_type-rec_desc-data.csv"
 
 # Load recovery data
 recovery_data <- read.csv(recovery_file)

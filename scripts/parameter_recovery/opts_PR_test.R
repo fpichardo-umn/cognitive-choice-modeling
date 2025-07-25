@@ -1,8 +1,8 @@
-opt_model = "vse"
+opt_model = "ev"
 opt_task = "igt"
 opt_cohort = "luc"
 opt_session = "00"
-opt_nsubs = 2
+opt_nsubs = 182
 opt_group = "hier"
 #opt_group2 = "batch_001"
 opt_group2 = "hier"

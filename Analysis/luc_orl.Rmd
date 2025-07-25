@@ -1,0 +1,626 @@
+---
+title: "IGT ORL Model Parameter Analysis Across Adolescence"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(broom)
+library(corrr)
+library(ggcorrplot)
+library(car)
+library(emmeans)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+
+# Set theme for plots
+theme_set(theme_minimal(base_size = 12))
+```
+
+# Configuration
+
+```{r config}
+# Model configuration - easy to change
+MODEL_TYPE <- "orl"  # Change to "vse" for VSE model
+SESSION <- "00"
+
+# Parameter names for each model
+VSE_PARAMS <- c("con", "gain", "loss", "decay", "explore_alpha", "explore_bonus")
+ORL_PARAMS <- c("con", "Arew", "Apun", "K", "betaF", "betaP")
+
+# Select current parameters
+CURRENT_PARAMS <- if(MODEL_TYPE == "vse") VSE_PARAMS else ORL_PARAMS
+
+# File paths
+DATA_PATH <- "/users/7/fpichard//Projects/modeling_mIGT/Data/raw/luc/luc_00_data.csv"
+RDS_PATH <- paste0("/users/7/fpichard//Projects/modeling_mIGT/Data/igt/rds/fit/luc/task-igt_cohort-luc_ses-", SESSION, "_group-hier_model-", MODEL_TYPE, "_type-fit_desc-output.rds")
+
+print(paste("Analysis configuration:", MODEL_TYPE, "model"))
+print(paste("Parameters:", paste(CURRENT_PARAMS, collapse = ", ")))
+```
+
+# Data Loading and Preprocessing
+
+```{r load-data}
+# Load behavioral data
+raw_data <- read_csv(DATA_PATH)
+
+# Load model fit
+model_fit <- readRDS(RDS_PATH)
+
+# Extract summary statistics
+fit_summary <- model_fit$summary_stats
+
+print("Data loaded successfully")
+print(paste("N trials:", nrow(raw_data)))
+print(paste("N unique subjects:", n_distinct(raw_data$subjID)))
+print(paste("N parameters in fit:", nrow(fit_summary)))
+```
+
+```{r extract-parameters}
+# Create subject mapping (position to subjID)
+subject_mapping <- raw_data %>%
+  select(subjID) %>%
+  distinct() %>%
+  arrange(subjID) %>%
+  mutate(sub_index = row_number())
+
+print("Subject mapping created:")
+print(paste("N subjects:", nrow(subject_mapping)))
+
+# Extract individual parameter estimates (medians)
+extract_param_estimates <- function(fit_summary, param_name, subject_mapping) {
+  # Get parameter rows for this parameter
+  param_rows <- fit_summary %>%
+    filter(str_detect(variable, paste0("^", param_name, "\\["))) %>%
+    mutate(sub_index = as.numeric(str_extract(variable, "(?<=\\[)\\d+(?=\\])"))) %>%
+    select(sub_index, median) %>%
+    rename(!!param_name := median)
+  
+  # Join with subject mapping
+  subject_mapping %>%
+    left_join(param_rows, by = "sub_index") %>%
+    select(subjID, !!param_name)
+}
+
+# Extract all parameters
+param_data <- subject_mapping %>% select(subjID)
+
+for(param in CURRENT_PARAMS) {
+  param_estimates <- extract_param_estimates(fit_summary, param, subject_mapping)
+  param_data <- param_data %>%
+    left_join(param_estimates, by = "subjID")
+}
+
+print("Parameter extraction completed")
+print(paste("Parameters extracted:", paste(names(param_data)[-1], collapse = ", ")))
+```
+
+```{r create-performance-metrics}
+# Calculate IGT performance metrics
+igt_performance <- raw_data %>%
+  group_by(subjID) %>%
+  summarise(
+    # Advantageous deck selections (assuming decks 3,4 are advantageous based on common IGT)
+    adv_deck_selections = sum(choice %in% c(3, 4), na.rm = TRUE),
+    total_trials = n(),
+    prop_adv_selections = adv_deck_selections / total_trials,
+    
+    # Net score (total wins - total losses)
+    total_wins = sum(wins, na.rm = TRUE),
+    total_losses = sum(abs(losses), na.rm = TRUE),  # losses are typically negative
+    net_score = total_wins - total_losses,
+    
+    .groups = 'drop'
+  )
+
+print("Performance metrics calculated")
+head(igt_performance)
+```
+
+```{r merge-datasets}
+# Get subject demographics
+demographics <- raw_data %>%
+  select(subjID, age_group) %>%
+  distinct() %>%
+  # Fix age group ordering for plots
+  mutate(age_group = factor(age_group, levels = c("Early", "Middle", "Late")))
+
+# Check if we have gender data
+if("gender" %in% names(raw_data)) {
+  demographics <- demographics %>%
+    left_join(
+      raw_data %>% select(subjID, gender) %>% distinct(),
+      by = "subjID"
+    )
+  HAS_GENDER <- TRUE
+} else {
+  HAS_GENDER <- FALSE
+  print("Note: Gender variable not found in dataset")
+}
+
+# Merge all data
+analysis_data <- demographics %>%
+  left_join(param_data, by = "subjID") %>%
+  left_join(igt_performance, by = "subjID")
+
+print("Final analysis dataset created")
+print(paste("N subjects in final dataset:", nrow(analysis_data)))
+print("Age group distribution:")
+table(analysis_data$age_group)
+```
+
+```{r check-outliers}
+# Function to identify outliers (99.9th percentile)
+identify_outliers <- function(x, threshold = 0.999) {
+  cutoff <- quantile(x, threshold, na.rm = TRUE)
+  which(x > cutoff)
+}
+
+# Check for outliers in parameters and performance metrics
+numeric_vars <- analysis_data %>% 
+  select(all_of(CURRENT_PARAMS), adv_deck_selections, net_score) %>%
+  names()
+
+outlier_summary <- map_dfr(numeric_vars, function(var) {
+  outliers <- identify_outliers(analysis_data[[var]])
+  tibble(
+    variable = var,
+    n_outliers = length(outliers),
+    outlier_threshold = quantile(analysis_data[[var]], 0.999, na.rm = TRUE),
+    outlier_subjects = ifelse(length(outliers) > 0, 
+                             paste(analysis_data$subjID[outliers], collapse = ", "), 
+                             "None")
+  )
+})
+
+print("Outlier summary (99.9th percentile):")
+outlier_summary %>% kable() %>% kable_styling()
+```
+
+```{r normality-checks}
+# Test normality for key variables
+normality_tests <- map_dfr(numeric_vars, function(var) {
+  shapiro_result <- shapiro.test(analysis_data[[var]])
+  tibble(
+    variable = var,
+    shapiro_p = shapiro_result$p.value,
+    normal = shapiro_p > 0.05
+  )
+})
+
+print("Normality tests (Shapiro-Wilk):")
+normality_tests %>% 
+  mutate(shapiro_p = round(shapiro_p, 4)) %>%
+  kable() %>% 
+  kable_styling()
+```
+
+# Descriptive Statistics
+
+```{r descriptive-stats}
+# Overall descriptive statistics
+desc_stats <- analysis_data %>%
+  select(all_of(CURRENT_PARAMS), adv_deck_selections, net_score) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "value") %>%
+  group_by(variable) %>%
+  summarise(
+    n = sum(!is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    mad = mad(value, na.rm = TRUE),
+    min = min(value, na.rm = TRUE),
+    max = max(value, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(across(where(is.numeric), round, 3))
+
+print("Descriptive statistics:")
+desc_stats %>% kable() %>% kable_styling()
+```
+
+```{r descriptive-by-age-group}
+# Descriptive statistics by age group
+desc_by_age <- analysis_data %>%
+  select(age_group, all_of(CURRENT_PARAMS), adv_deck_selections, net_score) %>%
+  pivot_longer(-age_group, names_to = "variable", values_to = "value") %>%
+  group_by(age_group, variable) %>%
+  summarise(
+    n = sum(!is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(across(where(is.numeric), round, 3))
+
+print("Descriptive statistics by age group:")
+desc_by_age %>% 
+  kable() %>% 
+  kable_styling() %>%
+  scroll_box(height = "400px")
+```
+
+# Analysis 1: Age-Related Differences in Parameters
+
+## Age Group Comparisons
+
+```{r age-group-comparisons}
+# Function to run ANOVA and pairwise comparisons
+run_age_group_analysis <- function(data, outcome_var) {
+  # ANOVA
+  formula_str <- paste(outcome_var, "~ age_group")
+  aov_model <- aov(as.formula(formula_str), data = data)
+  aov_summary <- summary(aov_model)
+  
+  # Pairwise comparisons
+  emmeans_result <- emmeans(aov_model, "age_group")
+  pairwise_result <- pairs(emmeans_result, adjust = "none")  # We'll do FDR later
+  
+  # Extract results
+  tibble(
+    variable = outcome_var,
+    f_statistic = aov_summary[[1]][["F value"]][1],
+    df_num = aov_summary[[1]][["Df"]][1],
+    df_den = aov_summary[[1]][["Df"]][2],
+    p_value = aov_summary[[1]][["Pr(>F)"]][1]
+  )
+}
+
+# Run age group comparisons for all parameters
+age_group_results <- map_dfr(CURRENT_PARAMS, ~run_age_group_analysis(analysis_data, .x))
+
+# Add FDR correction
+age_group_results <- age_group_results %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Age group comparison results:")
+age_group_results %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+```{r pairwise-comparisons}
+# Function to get pairwise comparison details for significant results
+get_pairwise_details <- function(data, outcome_var) {
+  formula_str <- paste(outcome_var, "~ age_group")
+  aov_model <- aov(as.formula(formula_str), data = data)
+  emmeans_result <- emmeans(aov_model, "age_group")
+  pairwise_result <- pairs(emmeans_result, adjust = "none")
+  
+  as_tibble(pairwise_result) %>%
+    mutate(variable = outcome_var) %>%
+    select(variable, contrast, estimate, SE, df, t.ratio, p.value)
+}
+
+# Get pairwise details for significant parameters (uncorrected)
+sig_params <- age_group_results %>%
+  filter(sig_uncorrected) %>%
+  pull(variable)
+
+if(length(sig_params) > 0) {
+  pairwise_details <- map_dfr(sig_params, ~get_pairwise_details(analysis_data, .x))
+  
+  # Add FDR correction across all pairwise tests
+  pairwise_details <- pairwise_details %>%
+    mutate(
+      p_fdr = p.adjust(p.value, method = "fdr"),
+      sig_uncorrected = p.value < 0.05,
+      sig_fdr = p_fdr < 0.05
+    )
+  
+  print("Pairwise comparison details:")
+  pairwise_details %>%
+    mutate(across(where(is.numeric), round, 4)) %>%
+    kable() %>%
+    kable_styling()
+} else {
+  print("No significant age group effects found for parameters")
+}
+```
+
+## Visualizations: Parameters by Age Group
+
+```{r plot-params-by-age}
+# Create boxplots for parameters by age group
+param_plots <- map(CURRENT_PARAMS, function(param) {
+  # Check if this parameter showed significant age effects
+  is_significant <- param %in% (age_group_results %>% filter(sig_fdr) %>% pull(variable))
+  
+  p <- analysis_data %>%
+    ggplot(aes(x = age_group, y = !!sym(param), fill = age_group)) +
+    geom_boxplot(alpha = 0.7) +
+    geom_jitter(width = 0.2, alpha = 0.5) +
+    scale_fill_viridis_d() +
+    labs(
+      title = paste0(param, ifelse(is_significant, " *", "")),
+      x = "Age Group",
+      y = param
+    ) +
+    theme(legend.position = "none")
+  
+  return(p)
+})
+
+# Arrange plots
+wrap_plots(param_plots, ncol = 3)
+```
+
+# Analysis 2: Parameter-Performance Relationships
+
+## Correlations
+
+```{r parameter-performance-correlations}
+# Calculate correlations between parameters and performance
+perf_vars <- c("adv_deck_selections", "net_score")
+
+correlation_results <- expand_grid(
+  parameter = CURRENT_PARAMS,
+  performance = perf_vars
+) %>%
+  rowwise() %>%
+  mutate(
+    cor_test = list(cor.test(analysis_data[[parameter]], analysis_data[[performance]])),
+    correlation = cor_test$estimate,
+    p_value = cor_test$p.value,
+    ci_lower = cor_test$conf.int[1],
+    ci_upper = cor_test$conf.int[2]
+  ) %>%
+  select(-cor_test) %>%
+  ungroup()
+
+# Add FDR correction
+correlation_results <- correlation_results %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Parameter-Performance Correlations:")
+correlation_results %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+```{r correlation-matrix-plot}
+# Create correlation matrix plot
+cor_data <- analysis_data %>%
+  select(all_of(CURRENT_PARAMS), adv_deck_selections, net_score) %>%
+  cor(use = "complete.obs")
+
+# Plot correlation matrix
+ggcorrplot(cor_data, 
+           hc.order = TRUE, 
+           type = "lower",
+           lab = TRUE,
+           lab_size = 3,
+           colors = c("#6D9EC1", "white", "#E46726")) +
+  labs(title = "Parameter-Performance Correlation Matrix")
+```
+
+## Scatter Plots for Significant Correlations
+
+```{r scatter-plots-significant}
+# Create scatter plots for significant correlations
+sig_correlations <- correlation_results %>%
+  filter(sig_fdr) %>%
+  select(parameter, performance)
+
+if(nrow(sig_correlations) > 0) {
+  scatter_plots <- pmap(sig_correlations, function(parameter, performance) {
+    analysis_data %>%
+      ggplot(aes(x = !!sym(parameter), y = !!sym(performance))) +
+      geom_point(alpha = 0.6) +
+      geom_smooth(method = "lm", se = TRUE, color = "red") +
+      labs(
+        title = paste(parameter, "vs", performance),
+        x = parameter,
+        y = performance
+      )
+  })
+  
+  wrap_plots(scatter_plots, ncol = 2)
+} else {
+  print("No significant parameter-performance correlations found after FDR correction")
+}
+```
+
+# Analysis 3: Linear Regression Models
+
+```{r regression-models}
+# Function to run regression model
+run_regression_model <- function(outcome_var) {
+  # Create formula
+  predictors <- paste(CURRENT_PARAMS, collapse = " + ")
+  formula_str <- paste(outcome_var, "~", predictors)
+  
+  # Fit model
+  model <- lm(as.formula(formula_str), data = analysis_data)
+  
+  # Get model summary
+  model_summary <- summary(model)
+  
+  # Check VIF
+  vif_values <- car::vif(model)
+  
+  # Extract results
+  coef_results <- tidy(model) %>%
+    filter(term != "(Intercept)") %>%
+    mutate(outcome = outcome_var)
+  
+  model_stats <- tibble(
+    outcome = outcome_var,
+    r_squared = model_summary$r.squared,
+    adj_r_squared = model_summary$adj.r.squared,
+    f_statistic = model_summary$fstatistic[1],
+    f_p_value = pf(model_summary$fstatistic[1], 
+                   model_summary$fstatistic[2], 
+                   model_summary$fstatistic[3], 
+                   lower.tail = FALSE),
+    max_vif = max(vif_values)
+  )
+  
+  list(
+    coefficients = coef_results,
+    model_stats = model_stats,
+    vif = vif_values,
+    model = model
+  )
+}
+
+# Run regression models for both performance metrics
+regression_results <- map(perf_vars, run_regression_model)
+names(regression_results) <- perf_vars
+
+# Combine coefficient results
+all_coefficients <- map_dfr(regression_results, "coefficients")
+
+# Add FDR correction to coefficients
+all_coefficients <- all_coefficients %>%
+  mutate(
+    p_fdr = p.adjust(p.value, method = "fdr"),
+    sig_uncorrected = p.value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Regression coefficients:")
+all_coefficients %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+
+# Model statistics
+model_stats <- map_dfr(regression_results, "model_stats")
+print("Model statistics:")
+model_stats %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+# ```{r vif-check}
+# # Check VIF values
+# print("Variance Inflation Factors:")
+# vif_results <- map_dfr(names(regression_results), function(outcome) {
+#   tibble(
+#     outcome = outcome,
+#     parameter = names(regression_results[[outcome]]$vif),
+#     vif = regression_results[[outcome]]$vif
+#   )
+# })
+# 
+# vif_results %>%
+#   mutate(vif = round(vif, 3)) %>%
+#   kable() %>%
+#   kable_styling()
+# 
+# # Flag high VIF values
+# high_vif <- vif_results %>% filter(vif > 5)
+# if(nrow(high_vif) > 0) {
+#   print("WARNING: High VIF values detected (>5):")
+#   print(high_vif)
+# } else {
+#   print("All VIF values are acceptable (<5)")
+# }
+# ```
+
+```{r residual-plots}
+# Create residual plots for model diagnostics
+residual_plots <- map2(regression_results, names(regression_results), function(reg_result, outcome) {
+  model <- reg_result$model
+  
+  # Get residuals and fitted values
+  plot_data <- tibble(
+    fitted = fitted(model),
+    residuals = residuals(model),
+    standardized_residuals = rstandard(model)
+  )
+  
+  # Residuals vs Fitted
+  p1 <- plot_data %>%
+    ggplot(aes(x = fitted, y = residuals)) +
+    geom_point(alpha = 0.6) +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+    geom_smooth(se = FALSE, color = "blue") +
+    labs(title = paste("Residuals vs Fitted:", outcome),
+         x = "Fitted Values", y = "Residuals")
+  
+  # Q-Q plot
+  p2 <- plot_data %>%
+    ggplot(aes(sample = standardized_residuals)) +
+    stat_qq() +
+    stat_qq_line(color = "red") +
+    labs(title = paste("Q-Q Plot:", outcome),
+         x = "Theoretical Quantiles", y = "Sample Quantiles")
+  
+  p1 + p2
+})
+
+# Display residual plots
+walk(residual_plots, print)
+```
+
+# Analysis 4: Gender Comparisons
+
+*Placeholder for gender analyses - to be implemented when gender data is available*
+
+# Summary of Results
+
+```{r results-summary}
+# Create summary of significant findings
+summary_results <- list()
+
+# Age group effects
+age_sig <- age_group_results %>% filter(sig_fdr) %>% pull(variable)
+summary_results$age_effects <- if(length(age_sig) > 0) {
+  paste("Significant age group effects found for:", paste(age_sig, collapse = ", "))
+} else {
+  "No significant age group effects found after FDR correction"
+}
+
+# Parameter-performance correlations
+cor_sig <- correlation_results %>% filter(sig_fdr)
+summary_results$correlations <- if(nrow(cor_sig) > 0) {
+  paste("Significant parameter-performance correlations found for:", 
+        paste(paste(cor_sig$parameter, cor_sig$performance, sep = "-"), collapse = ", "))
+} else {
+  "No significant parameter-performance correlations found after FDR correction"
+}
+
+# Regression predictors
+reg_sig <- all_coefficients %>% filter(sig_fdr)
+summary_results$regression <- if(nrow(reg_sig) > 0) {
+  paste("Significant regression predictors found for:", 
+        paste(paste(reg_sig$term, reg_sig$outcome, sep = " predicting "), collapse = ", "))
+} else {
+  "No significant regression predictors found after FDR correction"
+}
+
+print("=== ANALYSIS SUMMARY ===")
+iwalk(summary_results, ~cat(.y, ":", .x, "\n"))
+```
+
+```{r session-info}
+sessionInfo()
+```
