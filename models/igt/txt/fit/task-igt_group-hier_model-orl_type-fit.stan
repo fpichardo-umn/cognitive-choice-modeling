@@ -93,11 +93,11 @@ transformed parameters {
   
   // Hierarchical transformation
   for (n in 1:N) {
-    Arew[n]   = inv_logit(mu_pr[2] + sigma[2] * Arew_pr[n]);
-    Apun[n]   = inv_logit(mu_pr[3] + sigma[3] * Apun_pr[n]);
-    K[n]      = inv_logit(mu_pr[4] + sigma[4] * K_pr[n]) * 5;
-    betaF[n]  = mu_pr[5] + sigma[5] * betaF_pr[n];
-    betaP[n]  = mu_pr[6] + sigma[6] * betaP_pr[n];
+    Arew[n]   = inv_logit(mu_pr[1] + sigma[1] * Arew_pr[n]);
+    Apun[n]   = inv_logit(mu_pr[2] + sigma[2] * Apun_pr[n]);
+    K[n]      = inv_logit(mu_pr[3] + sigma[3] * K_pr[n]) * 5;
+    betaF[n]  = mu_pr[4] + sigma[4] * betaF_pr[n];
+    betaP[n]  = mu_pr[5] + sigma[5] * betaP_pr[n];
   }
 }
 
@@ -139,9 +139,9 @@ generated quantities {
   real mu_betaP;
   
   // Compute interpretable group-level parameters
-  mu_Arew  = inv_logit(mu_pr[2]);
-  mu_Apun  = inv_logit(mu_pr[3]);
-  mu_K     = inv_logit(mu_pr[4]) * 5;
-  mu_betaF = mu_pr[5];
-  mu_betaP = mu_pr[6];
+  mu_Arew  = inv_logit(mu_pr[1]);
+  mu_Apun  = inv_logit(mu_pr[2]);
+  mu_K     = inv_logit(mu_pr[3]) * 5;
+  mu_betaF = mu_pr[4];
+  mu_betaP = mu_pr[5];
 }
