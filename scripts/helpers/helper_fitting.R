@@ -12,6 +12,25 @@ suppressPackageStartupMessages({
 source(file.path(here::here(), "scripts", "helpers", "helper_dirs.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
 
+#' Remove duplicate cohort directories from path
+#' @param file_path Character string with file path
+#' @param cohort Character string with cohort name
+#' @return Character string with corrected path
+fix_duplicate_cohort_path <- function(file_path, cohort) {
+  # Create the duplicate pattern to look for
+  duplicate_pattern <- paste0("/", cohort, "/", cohort, "/")
+  single_pattern <- paste0("/", cohort, "/")
+  
+  # Replace the duplicate with single occurrence
+  if (grepl(duplicate_pattern, file_path)) {
+    fixed_path <- gsub(duplicate_pattern, single_pattern, file_path)
+    cat("Fixed duplicate cohort path:", file_path, "->", fixed_path, "\n")
+    return(fixed_path)
+  }
+  
+  return(file_path)
+}
+
 #' Fit and save a model
 #' @param task Character string specifying the task name
 #' @param group_type Character string specifying the group type (e.g., "sing", "hier")
@@ -86,6 +105,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   output_file <- get_output_file_path(task, cohort, group_type, model_name, model_type, 
                                      emp_bayes, subid, index, ses = ses, 
                                      output_dir = output_dir, cohort_sub_dir)
+  output_file <- fix_duplicate_cohort_path(output_file, cohort)
   checkpoint_file <- paste0(tools::file_path_sans_ext(output_file), "_checkpoint.rds")
   
   # Dry run only prints information without fitting

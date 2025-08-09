@@ -33,7 +33,18 @@ option_list = list(
   make_option(c("-p", "--parallel"), action="store_true", default=FALSE, 
               help="Run subjects in parallel (uses multiple cores)"),
   make_option(c("-c", "--cores"), type="integer", default=4, 
-              help="Number of cores to use for parallel processing (default: 4)")
+              help="Number of cores to use for parallel processing (default: 4)"),
+  make_option(c("--n_trials"), type = "integer", default = 120, help = "Number of trials"),
+  make_option(c("--RTbound_min_ms"), type = "integer", default = 50, help = "Min RT bound in ms"),
+  make_option(c("--RTbound_max_ms"), type = "integer", default = 2500, help = "Max RT bound in ms"),
+  make_option(c("--rt_method"), type = "character", default = "raw", help = "RT preprocessing method"),
+  make_option(c("--n_warmup"), type = "integer", default = 3000, help = "Number of warmup iterations"),
+  make_option(c("--n_iter"), type = "integer", default = 15000, help = "Total number of iterations"),
+  make_option(c("--n_chains"), type = "integer", default = 4, help = "Number of chains"),
+  make_option(c("--adapt_delta"), type = "double", default = 0.95, help = "Stan adapt delta"),
+  make_option(c("--max_treedepth"), type = "integer", default = 12, help = "Stan max tree depth"),
+  make_option(c("--check_iter"), type = "integer", default = 1000, help = "Iteration interval to check convergence"),
+  make_option(c("--seed"), type = "integer", help = "Random seed")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -224,26 +235,24 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
     "-k", opt$task,
     "-s", opt$source,
     "--subid", subject_id,
-    "--index", index
+    "--index", index,
+    "--n_trials", as.character(opt$n_trials),
+    "--RTbound_min_ms", as.character(opt$RTbound_min_ms),
+    "--RTbound_max_ms", as.character(opt$RTbound_max_ms),
+    "--rt_method", opt$rt_method,
+    "--n_warmup", as.character(opt$n_warmup),
+    "--n_iter", as.character(opt$n_iter),
+    "--n_chains", as.character(opt$n_chains),
+    "--adapt_delta", as.character(opt$adapt_delta),
+    "--max_treedepth", as.character(opt$max_treedepth),
+    "--check_iter", as.character(opt$check_iter),
+    "--seed", as.character(opt$seed)
   )
   
   # Add session parameter if provided
   if (!is.null(opt$ses)) {
     cmd_args <- c(cmd_args, "--ses", opt$ses)
   }
-  
-  # Add parameters with default values if not found in config
-  cmd_args <- c(cmd_args, "--n_trials", ifelse(is.null(fit_params$n_trials), "120", as.character(fit_params$n_trials)))
-  cmd_args <- c(cmd_args, "--RTbound_min_ms", ifelse(is.null(fit_params$RTbound_min_ms), "50", as.character(fit_params$RTbound_min_ms)))
-  cmd_args <- c(cmd_args, "--RTbound_max_ms", ifelse(is.null(fit_params$RTbound_max_ms), "2500", as.character(fit_params$RTbound_max_ms)))
-  cmd_args <- c(cmd_args, "--rt_method", rt_method)
-  cmd_args <- c(cmd_args, "--n_warmup", ifelse(is.null(fit_params$n_warmup), "3000", as.character(fit_params$n_warmup)))
-  cmd_args <- c(cmd_args, "--n_iter", ifelse(is.null(fit_params$n_iter), "15000", as.character(fit_params$n_iter)))
-  cmd_args <- c(cmd_args, "--n_chains", ifelse(is.null(fit_params$n_chains), "4", as.character(fit_params$n_chains)))
-  cmd_args <- c(cmd_args, "--adapt_delta", ifelse(is.null(fit_params$adapt_delta), "0.95", as.character(fit_params$adapt_delta)))
-  cmd_args <- c(cmd_args, "--max_treedepth", ifelse(is.null(fit_params$max_treedepth), "12", as.character(fit_params$max_treedepth)))
-  cmd_args <- c(cmd_args, "--check_iter", ifelse(is.null(fit_params$check_iter), "1000", as.character(fit_params$check_iter)))
-  cmd_args <- c(cmd_args, "--seed", sample.int(1e5, 1))  # Random seed
   
   # Add --init flag if needed
   if (is.null(fit_params$init) || fit_params$init) {
