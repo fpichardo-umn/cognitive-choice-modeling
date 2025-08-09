@@ -365,6 +365,16 @@ print_fit_options() {
         echo "    --data_config $DATA_CONFIG \\"
         echo "    --subjects $SUBJECTS \\"
         echo "    --subs_file $SUBS_FILE \\"
+        echo "    n_subs = $N_SUBJECTS,"
+        echo "    n_trials = ${N_TRIALS:-120},"
+        echo "    type = '$MODEL_TYPE',"
+        echo "    n_warmup = $N_WARMUP,"
+        echo "    n_iter = $N_ITER,"
+        echo "    n_chains = $N_CHAINS,"
+        echo "    adapt_delta = $ADAPT_DELTA,"
+        echo "    max_treedepth = $MAX_TREEDEPTH,"
+        echo "    check_iter = $CHECK_ITER,"
+        echo "    seed = $SEED"
         if [ "$PARALLEL" = true ]; then
             echo "    --parallel \\"
             echo "    --cores $CORES"
@@ -559,6 +569,13 @@ run_fit() {
             "--data_config $DATA_CONFIG"
             "--subjects $SUBJECTS"
             "--subs_file $SUBS_FILE"
+            "--n_warmup $N_WARMUP"
+            "--n_iter $N_ITER"
+            "--n_chains $N_CHAINS"
+            "--adapt_delta $ADAPT_DELTA"
+            "--max_treedepth $MAX_TREEDEPTH"
+            "--check_iter $CHECK_ITER"
+            "--seed $SEED"
         )
         if [ "$PARALLEL" = true ]; then
             CMD_ARGS+=(

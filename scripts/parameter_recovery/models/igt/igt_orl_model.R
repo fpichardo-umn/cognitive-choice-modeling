@@ -22,7 +22,6 @@ igtORLModel <- R6::R6Class("igtORLModel",
     get_parameter_info = function() {
       # Parameter information based on the Stan model
       return(list(
-        con = list(range = c(0, 5)),
         Arew = list(range = c(0, 1)),
         Apun = list(range = c(0, 1)),
         K = list(range = c(0, 5)),
@@ -44,7 +43,6 @@ igtORLModel <- R6::R6Class("igtORLModel",
       pers_history <- matrix(0, nrow = n_trials, ncol = 4)
       
       # Extract parameters - Using exact parameter names from the Stan model
-      con <- parameters$con
       Arew <- parameters$Arew
       Apun <- parameters$Apun
       K <- parameters$K
@@ -52,7 +50,6 @@ igtORLModel <- R6::R6Class("igtORLModel",
       betaP <- parameters$betaP
       
       # Convert consistency parameter to sensitivity (as in Stan model)
-      sensitivity <- (3^con) - 1
       K_tr <- (3^K) - 1
       
       # For each trial
@@ -66,7 +63,7 @@ igtORLModel <- R6::R6Class("igtORLModel",
         util <- self$ev + self$ef * betaF + self$pers * betaP
         
         # Calculate choice probabilities using softmax
-        probs <- exp(sensitivity * util)
+        probs <- exp(util)
         probs <- probs / sum(probs)
         
         # Make choice
@@ -127,7 +124,6 @@ igtORLModel <- R6::R6Class("igtORLModel",
     
     calculate_loglik = function(data, parameters) {
       # Extract parameters
-      con <- parameters$con
       Arew <- parameters$Arew
       Apun <- parameters$Apun
       K <- parameters$K
@@ -135,7 +131,6 @@ igtORLModel <- R6::R6Class("igtORLModel",
       betaP <- parameters$betaP
       
       # Convert consistency parameter to sensitivity
-      sensitivity <- (3^con) - 1
       K_tr <- (3^K) - 1
       
       # Initialize variables
@@ -155,7 +150,7 @@ igtORLModel <- R6::R6Class("igtORLModel",
         util <- ev + ef * betaF + pers * betaP
         
         # Calculate probabilities
-        probs <- exp(sensitivity * util)
+        probs <- exp(util)
         probs <- probs / sum(probs)
         
         # Add log-likelihood of observing this choice

@@ -1,5 +1,5 @@
 ---
-title: "Parameter Recovery Analysis: igt - vppdelta - hier"
+title: "Parameter Recovery Analysis: igt - orl - hier"
 output: 
   html_document:
     toc: true
@@ -18,7 +18,7 @@ library(reshape2)  # For melting matrices
 library(here)
 
 # File path to recovery data
-recovery_file <- "/users/7/fpichard/Projects/modeling_mIGT/Data/igt/sim/recovery/task-igt_cohort-luc_ses-00_group-hier_model-vppdelta_type-rec_desc-data.csv"
+recovery_file <- "/users/7/fpichard/Projects/modeling_mIGT/Data/igt/sim/recovery/task-igt_cohort-luc_ses-00_group-hier_model-orl_type-rec_desc-data.csv"
 
 # Load recovery data
 recovery_data <- read.csv(recovery_file)
@@ -131,7 +131,7 @@ stats <- calculate_recovery_statistics(recovery_data)
 
 ## Overview
 
-This document presents parameter recovery analysis for the **vppdelta** model (RL type) applied to the **igt** task with group type **hier**.
+This document presents parameter recovery analysis for the **orl** model (RL type) applied to the **igt** task with group type **hier**.
 
 ## Recovery Metrics
 ### Standardized Metrics (for cross-model comparison)
@@ -335,6 +335,6 @@ corrplot::corrplot(cor_matrix, type = "upper", tl.col = "black", tl.srt = 45, ad
 
 ## Conclusion
 
-This analysis examines parameter recovery performance for the vppdelta model. Key metrics include correlation between true and recovered parameters, RMSE (root mean square error), bias, and relative bias.
+This analysis examines parameter recovery performance for the orl model. Key metrics include correlation between true and recovered parameters, RMSE (root mean square error), bias, and relative bias.
 
 Good parameter recovery is indicated by high correlations, low RMSE, and bias values close to zero.

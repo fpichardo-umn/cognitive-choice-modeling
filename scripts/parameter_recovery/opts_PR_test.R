@@ -1,11 +1,11 @@
-opt_model = "ev"
+opt_model = "dual_orl"
 opt_task = "igt"
 opt_cohort = "luc"
 opt_session = "00"
 opt_nsubs = 182
-opt_group = "hier"
+opt_group = "sing"
 #opt_group2 = "batch_001"
-opt_group2 = "hier"
+opt_group2 = "batch_001"
 
 # Fit
 opt <- list(
@@ -29,7 +29,7 @@ opt <- list(
   max_treedepth = 12,
   seed = 29518,
   dry_run = FALSE,
-  check_iter = 100000,
+  check_iter = 5000,
   init = FALSE
 )
 

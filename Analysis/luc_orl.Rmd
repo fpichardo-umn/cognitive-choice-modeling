@@ -39,7 +39,7 @@ SESSION <- "00"
 
 # Parameter names for each model
 VSE_PARAMS <- c("con", "gain", "loss", "decay", "explore_alpha", "explore_bonus")
-ORL_PARAMS <- c("con", "Arew", "Apun", "K", "betaF", "betaP")
+ORL_PARAMS <- c("Arew", "Apun", "K", "betaF", "betaP")
 
 # Select current parameters
 CURRENT_PARAMS <- if(MODEL_TYPE == "vse") VSE_PARAMS else ORL_PARAMS

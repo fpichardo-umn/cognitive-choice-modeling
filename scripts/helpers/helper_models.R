@@ -37,7 +37,7 @@ param_sets <- list(
   vpp_igt = c("epP", "epN", "K", "w"),
   
   # ORL model parameters
-  orl = c("con", "Arew", "Apun", "K", "betaF", "betaP"),
+  orl = c("Arew", "Apun", "K", "betaF", "betaP"),
   
   # VSE model params
   vse_base = c("explore_alpha", "explore_bonus"),
@@ -45,6 +45,8 @@ param_sets <- list(
   # Dual Processing parameters
   dual = c("consistency", "update_rate_mb", "update_rate_mf", "decay_factor", 
            "pos_val", "neg_val", "mb_weight", "pe_threshold"),
+  dual_igt = c("consistency", "mb_weight", "update_rate_mf", "decay_factor", 
+           "pos_val", "neg_val", "betaF", "var_update_rate", "K"),
   dual_bbu = c("consistency", "update_rate_mf", "decay_factor", "pos_val", 
                "neg_val", "var_pe_update"),
   dual_bbup = c("consistency", "update_rate_mf", "decay_factor", "pos_val", 
@@ -222,6 +224,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  # Dual Model
+  models[["igt_sing_dual_orl"]] <- list(
+    data = data_types$basic_igt,
+    params = param_sets$dual_igt,
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
   
   # EV Model
   models[["igt_sing_ev"]] <- list(
