@@ -75,6 +75,10 @@ parameters {
   array[5] real mu_pr;                // Group means for all parameters
   array[5] real<lower=0> sigma;       // Group standard deviations
 
+  //
+  Real mu_early_pr;
+  Real sigma_early;
+
   // Subject-level raw parameters
   array[N] real Arew_pr;              // Reward learning rate
   array[N] real Apun_pr;              // Punishment learning rate

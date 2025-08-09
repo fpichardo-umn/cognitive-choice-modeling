@@ -39,14 +39,15 @@ SESSION <- "00"
 
 # Parameter names for each model
 VSE_PARAMS <- c("con", "gain", "loss", "decay", "explore_alpha", "explore_bonus")
-ORL_PARAMS <- c("con", "Arew", "Apun", "K", "betaF", "betaP")
+ORL_PARAMS <- c("Arew", "Apun", "K", "betaF", "betaP")
 
 # Select current parameters
 CURRENT_PARAMS <- if(MODEL_TYPE == "vse") VSE_PARAMS else ORL_PARAMS
 
 # File paths
-DATA_PATH <- "/users/7/fpichard//Projects/modeling_mIGT/Data/raw/luc/luc_00_data.csv"
-RDS_PATH <- paste0("/users/7/fpichard//Projects/modeling_mIGT/Data/igt/rds/fit/luc/task-igt_cohort-luc_ses-", SESSION, "_group-hier_model-", MODEL_TYPE, "_type-fit_desc-output.rds")
+DATA_PATH <- file.path(here(), "Data/raw/luc/igt_luc_00.csv")
+DEMO_PATH <- file.path(here(), "Data/raw/luc/igt_luc_00_demo.csv")
+RDS_PATH <- file.path(here(), paste0("Data/igt/rds/fit/luc/task-igt_cohort-luc_ses-", SESSION, "_group-hier_model-", MODEL_TYPE, "_type-fit_desc-output.rds"))
 
 print(paste("Analysis configuration:", MODEL_TYPE, "model"))
 print(paste("Parameters:", paste(CURRENT_PARAMS, collapse = ", ")))
@@ -58,6 +59,16 @@ print(paste("Parameters:", paste(CURRENT_PARAMS, collapse = ", ")))
 # Load behavioral data
 raw_data <- read_csv(DATA_PATH)
 
+# Load demographics data
+demo_data <- read_csv(DEMO_PATH) %>%
+  rename(subjID = ID) %>%  # Match column names - it's ID not subid!
+  mutate(
+    gender = factor(ifelse(Gender == 1, "Male", "Female")),
+    age_continuous = Age,
+    iq = FIQ  # It's FIQ not WASI!
+  ) %>%
+  select(subjID, gender, age_continuous, iq)
+
 # Load model fit
 model_fit <- readRDS(RDS_PATH)
 
@@ -66,7 +77,8 @@ fit_summary <- model_fit$summary_stats
 
 print("Data loaded successfully")
 print(paste("N trials:", nrow(raw_data)))
-print(paste("N unique subjects:", n_distinct(raw_data$subjID)))
+print(paste("N unique subjects in behavioral data:", n_distinct(raw_data$subjID)))
+print(paste("N unique subjects in demographics:", n_distinct(demo_data$subjID)))
 print(paste("N parameters in fit:", nrow(fit_summary)))
 ```
 
@@ -132,25 +144,27 @@ head(igt_performance)
 ```
 
 ```{r merge-datasets}
-# Get subject demographics
+# Get subject demographics from behavioral data
 demographics <- raw_data %>%
   select(subjID, age_group) %>%
   distinct() %>%
   # Fix age group ordering for plots
   mutate(age_group = factor(age_group, levels = c("Early", "Middle", "Late")))
 
-# Check if we have gender data
-if("gender" %in% names(raw_data)) {
-  demographics <- demographics %>%
-    left_join(
-      raw_data %>% select(subjID, gender) %>% distinct(),
-      by = "subjID"
-    )
-  HAS_GENDER <- TRUE
-} else {
-  HAS_GENDER <- FALSE
-  print("Note: Gender variable not found in dataset")
-}
+# Merge with demographics data
+demographics <- demographics %>%
+  left_join(demo_data, by = "subjID")
+
+# Check data completeness
+missing_demo <- demographics %>%
+  summarise(
+    missing_gender = sum(is.na(gender)),
+    missing_age = sum(is.na(age_continuous)),
+    missing_iq = sum(is.na(iq))
+  )
+
+print("Missing demographics data:")
+print(missing_demo)
 
 # Merge all data
 analysis_data <- demographics %>%
@@ -161,6 +175,8 @@ print("Final analysis dataset created")
 print(paste("N subjects in final dataset:", nrow(analysis_data)))
 print("Age group distribution:")
 table(analysis_data$age_group)
+print("Gender distribution:")
+table(analysis_data$gender, useNA = "ifany")
 ```
 
 ```{r check-outliers}
@@ -207,6 +223,143 @@ normality_tests %>%
   mutate(shapiro_p = round(shapiro_p, 4)) %>%
   kable() %>% 
   kable_styling()
+```
+
+```{r transformations}
+# Apply transformations to improve normality
+
+# First, calculate Box-Cox lambda for betaP outside of mutate
+betaP_shifted <- analysis_data$betaP + abs(min(analysis_data$betaP, na.rm = TRUE)) + 1
+bc_result <- car::boxCox(lm(betaP_shifted ~ 1), plotit = FALSE)
+optimal_lambda <- bc_result$x[which.max(bc_result$y)]
+
+print(paste("Optimal Box-Cox lambda for betaP:", round(optimal_lambda, 3)))
+
+transform_data <- analysis_data %>%
+  mutate(
+    # Log transforms for bounded parameters
+    Arew_log = log(Arew),
+    Apun_log = log(Apun),
+    K_log = log(K),
+    
+    # Alternative transforms for still non-normal variables
+    Apun_sqrt = sqrt(Apun),
+    K_sqrt = sqrt(K),
+    
+    # Box-Cox transform for betaP
+    betaP_shifted = betaP + abs(min(betaP, na.rm = TRUE)) + 1,
+    betaP_bc = if(abs(optimal_lambda) < 0.1) {
+      log(betaP_shifted)
+    } else {
+      (betaP_shifted^optimal_lambda - 1) / optimal_lambda
+    },
+    
+    # Rank-based transforms as backup (convert to normal scores)
+    Apun_rank = qnorm((rank(Apun) - 0.5) / n()),
+    K_rank = qnorm((rank(K) - 0.5) / n()),
+    betaP_rank = qnorm((rank(betaP) - 0.5) / n())
+  )
+
+# Test normality of transformed variables
+transform_vars <- c("Arew_log", "Apun_log", "K_log", "Apun_sqrt", "K_sqrt", 
+                   "betaP_bc", "Apun_rank", "K_rank", "betaP_rank")
+
+transform_normality <- map_dfr(transform_vars, function(var) {
+  if(var %in% names(transform_data)) {
+    shapiro_result <- shapiro.test(transform_data[[var]])
+    tibble(
+      variable = var,
+      shapiro_p = shapiro_result$p.value,
+      normal = shapiro_p > 0.05,
+      transform_type = case_when(
+        str_ends(var, "_log") ~ "Log",
+        str_ends(var, "_sqrt") ~ "Square root", 
+        str_ends(var, "_bc") ~ "Box-Cox",
+        str_ends(var, "_rank") ~ "Rank-based",
+        TRUE ~ "Other"
+      )
+    )
+  } else {
+    tibble(variable = var, shapiro_p = NA, normal = NA, transform_type = "Missing")
+  }
+})
+
+print("Normality tests for transformed variables:")
+transform_normality %>% 
+  mutate(shapiro_p = round(shapiro_p, 4)) %>%
+  arrange(transform_type, variable) %>%
+  kable() %>% 
+  kable_styling()
+
+# Summary of best transforms
+best_transforms <- tibble(
+  original = c("Arew", "Apun", "K", "betaF", "betaP"),
+  original_normal = c(
+    normality_tests$normal[normality_tests$variable == "Arew"],
+    normality_tests$normal[normality_tests$variable == "Apun"], 
+    normality_tests$normal[normality_tests$variable == "K"],
+    normality_tests$normal[normality_tests$variable == "betaF"],
+    normality_tests$normal[normality_tests$variable == "betaP"]
+  )
+) %>%
+  mutate(
+    recommended_transform = case_when(
+      original == "Arew" ~ "Arew_log",
+      original == "Apun" ~ {
+        apun_sqrt_normal <- transform_normality$normal[transform_normality$variable == "Apun_sqrt"]
+        if(length(apun_sqrt_normal) > 0 && !is.na(apun_sqrt_normal) && apun_sqrt_normal) {
+          "Apun_sqrt"
+        } else {
+          "Apun_rank"
+        }
+      },
+      original == "K" ~ {
+        k_sqrt_normal <- transform_normality$normal[transform_normality$variable == "K_sqrt"]
+        if(length(k_sqrt_normal) > 0 && !is.na(k_sqrt_normal) && k_sqrt_normal) {
+          "K_sqrt"
+        } else {
+          "K_rank"
+        }
+      },
+      original == "betaF" ~ "betaF (already normal)",
+      original == "betaP" ~ "betaP_bc"
+    )
+  )
+
+print("Recommended transformations:")
+best_transforms %>% kable() %>% kable_styling()
+
+# Note about proceeding with analyses
+cat("\n=== ANALYSIS STRATEGY ===\n")
+cat("Given that log transforms didn't achieve normality for all parameters:\n")
+cat("1. Primary analyses use original parameters (more interpretable)\n") 
+cat("2. Non-parametric alternatives provided for robustness\n")
+cat("3. Transformed variables available if needed for specific analyses\n")
+cat("4. Outlier sensitivity analyses included\n\n")
+
+# Create transformed dataset without outliers  
+transform_data_no_outliers <- transform_data %>%
+  filter(!subjID %in% outlier_summary$outlier_subjects)
+```
+
+```{r outlier-handling}
+# Create datasets with and without outliers
+outlier_subjects <- outlier_summary %>%
+  filter(n_outliers > 0) %>%
+  pull(outlier_subjects) %>%
+  str_split(", ") %>%
+  unlist() %>%
+  unique() %>%
+  .[. != "None"] %>%
+  as.numeric()
+
+print(paste("Outlier subjects to be excluded:", paste(outlier_subjects, collapse = ", ")))
+
+# Create analysis datasets
+analysis_data_no_outliers <- analysis_data %>%
+  filter(!subjID %in% outlier_subjects)
+
+print(paste("N subjects after outlier removal:", nrow(analysis_data_no_outliers)))
 ```
 
 # Descriptive Statistics
@@ -338,23 +491,136 @@ if(length(sig_params) > 0) {
 }
 ```
 
+```{r nonparametric-age-comparisons}
+# Non-parametric alternatives (Kruskal-Wallis tests)
+kruskal_results <- map_dfr(CURRENT_PARAMS, function(param) {
+  kw_test <- kruskal.test(analysis_data[[param]] ~ analysis_data$age_group)
+  tibble(
+    variable = param,
+    chi_squared = kw_test$statistic,
+    df = kw_test$parameter,
+    p_value = kw_test$p.value
+  )
+})
+
+# Add FDR correction
+kruskal_results <- kruskal_results %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Non-parametric age group comparisons (Kruskal-Wallis):")
+kruskal_results %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+
+# Post-hoc tests for significant Kruskal-Wallis results
+if(any(kruskal_results$sig_uncorrected)) {
+  sig_kw_params <- kruskal_results %>%
+    filter(sig_uncorrected) %>%
+    pull(variable)
+  
+  print("Post-hoc pairwise comparisons (Dunn test) for significant Kruskal-Wallis results:")
+  
+  dunn_results <- map_dfr(sig_kw_params, function(param) {
+    # Manual pairwise Mann-Whitney tests
+    groups <- levels(analysis_data$age_group)
+    comparisons <- combn(groups, 2, simplify = FALSE)
+    
+    map_dfr(comparisons, function(comp) {
+      group1_data <- analysis_data %>% filter(age_group == comp[1]) %>% pull(!!sym(param))
+      group2_data <- analysis_data %>% filter(age_group == comp[2]) %>% pull(!!sym(param))
+      
+      wt_result <- wilcox.test(group1_data, group2_data)
+      
+      tibble(
+        variable = param,
+        comparison = paste(comp[1], "vs", comp[2]),
+        W = wt_result$statistic,
+        p_value = wt_result$p.value
+      )
+    })
+  })
+  
+  # Add FDR correction for post-hoc tests
+  dunn_results <- dunn_results %>%
+    mutate(
+      p_fdr = p.adjust(p_value, method = "fdr"),
+      sig_uncorrected = p_value < 0.05,
+      sig_fdr = p_fdr < 0.05
+    )
+  
+  dunn_results %>%
+    mutate(across(where(is.numeric), round, 4)) %>%
+    kable() %>%
+    kable_styling()
+}
+```
+
+```{r age-comparisons-no-outliers}
+# Repeat age group comparisons without outliers
+print("=== AGE GROUP COMPARISONS WITHOUT OUTLIERS ===")
+
+age_group_results_no_outliers <- map_dfr(CURRENT_PARAMS, ~run_age_group_analysis(analysis_data_no_outliers, .x))
+
+age_group_results_no_outliers <- age_group_results_no_outliers %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Age group comparison results (no outliers):")
+age_group_results_no_outliers %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+
+# Pairwise comparisons for significant results without outliers
+sig_params_no_outliers <- age_group_results_no_outliers %>%
+  filter(sig_uncorrected) %>%
+  pull(variable)
+
+if(length(sig_params_no_outliers) > 0) {
+  pairwise_details_no_outliers <- map_dfr(sig_params_no_outliers, ~get_pairwise_details(analysis_data_no_outliers, .x))
+  
+  pairwise_details_no_outliers <- pairwise_details_no_outliers %>%
+    mutate(
+      p_fdr = p.adjust(p.value, method = "fdr"),
+      sig_uncorrected = p.value < 0.05,
+      sig_fdr = p_fdr < 0.05
+    )
+  
+  print("Pairwise comparison details (no outliers):")
+  pairwise_details_no_outliers %>%
+    mutate(across(where(is.numeric), round, 4)) %>%
+    kable() %>%
+    kable_styling()
+}
+```
+
 ## Visualizations: Parameters by Age Group
 
 ```{r plot-params-by-age}
-# Create boxplots for parameters by age group
+# Create violin plots for parameters by age group
 param_plots <- map(CURRENT_PARAMS, function(param) {
   # Check if this parameter showed significant age effects
   is_significant <- param %in% (age_group_results %>% filter(sig_fdr) %>% pull(variable))
   
   p <- analysis_data %>%
     ggplot(aes(x = age_group, y = !!sym(param), fill = age_group)) +
-    geom_boxplot(alpha = 0.7) +
-    geom_jitter(width = 0.2, alpha = 0.5) +
+    geom_violin(alpha = 0.7, trim = FALSE) +
+    geom_boxplot(width = 0.1, alpha = 0.8, outlier.alpha = 0.3) +
+    geom_jitter(width = 0.15, alpha = 0.4, size = 0.8) +
     scale_fill_viridis_d() +
     labs(
       title = paste0(param, ifelse(is_significant, " *", "")),
       x = "Age Group",
-      y = param
+      y = param,
+      subtitle = ifelse(is_significant, "Significant age group difference (FDR corrected)", "")
     ) +
     theme(legend.position = "none")
   
@@ -363,6 +629,31 @@ param_plots <- map(CURRENT_PARAMS, function(param) {
 
 # Arrange plots
 wrap_plots(param_plots, ncol = 3)
+```
+
+```{r plot-params-by-age-no-outliers}
+# Same plots without outliers for comparison
+param_plots_no_outliers <- map(CURRENT_PARAMS, function(param) {
+  is_significant <- param %in% (age_group_results %>% filter(sig_fdr) %>% pull(variable))
+  
+  p <- analysis_data_no_outliers %>%
+    ggplot(aes(x = age_group, y = !!sym(param), fill = age_group)) +
+    geom_violin(alpha = 0.7, trim = FALSE) +
+    geom_boxplot(width = 0.1, alpha = 0.8, outlier.alpha = 0.3) +
+    geom_jitter(width = 0.15, alpha = 0.4, size = 0.8) +
+    scale_fill_viridis_d() +
+    labs(
+      title = paste0(param, " (No Outliers)", ifelse(is_significant, " *", "")),
+      x = "Age Group",
+      y = param
+    ) +
+    theme(legend.position = "none")
+  
+  return(p)
+})
+
+print("Parameter distributions without outliers:")
+wrap_plots(param_plots_no_outliers, ncol = 3)
 ```
 
 # Analysis 2: Parameter-Performance Relationships
@@ -396,8 +687,69 @@ correlation_results <- correlation_results %>%
     sig_fdr = p_fdr < 0.05
   )
 
-print("Parameter-Performance Correlations:")
+print("Parameter-Performance Correlations (Pearson):")
 correlation_results %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+```{r nonparametric-correlations}
+# Non-parametric correlations (Spearman)
+spearman_results <- expand_grid(
+  parameter = CURRENT_PARAMS,
+  performance = perf_vars
+) %>%
+  rowwise() %>%
+  mutate(
+    cor_test = list(cor.test(analysis_data[[parameter]], analysis_data[[performance]], method = "spearman")),
+    correlation = cor_test$estimate,
+    p_value = cor_test$p.value
+  ) %>%
+  select(-cor_test) %>%
+  ungroup()
+
+# Add FDR correction
+spearman_results <- spearman_results %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Parameter-Performance Correlations (Spearman):")
+spearman_results %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+```{r correlations-no-outliers}
+# Repeat correlations without outliers
+print("=== CORRELATIONS WITHOUT OUTLIERS ===")
+
+correlation_results_no_outliers <- expand_grid(
+  parameter = CURRENT_PARAMS,
+  performance = perf_vars
+) %>%
+  rowwise() %>%
+  mutate(
+    cor_test = list(cor.test(analysis_data_no_outliers[[parameter]], analysis_data_no_outliers[[performance]])),
+    correlation = cor_test$estimate,
+    p_value = cor_test$p.value,
+    ci_lower = cor_test$conf.int[1],
+    ci_upper = cor_test$conf.int[2]
+  ) %>%
+  select(-cor_test) %>%
+  ungroup() %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Parameter-Performance Correlations without outliers (Pearson):")
+correlation_results_no_outliers %>%
   mutate(across(where(is.numeric), round, 4)) %>%
   kable() %>%
   kable_styling()
@@ -446,17 +798,37 @@ if(nrow(sig_correlations) > 0) {
 }
 ```
 
+```{r scatter-plots-no-outliers}
+# Create scatter plots without outliers for comparison
+if(nrow(sig_correlations) > 0) {
+  scatter_plots_no_outliers <- pmap(sig_correlations, function(parameter, performance) {
+    analysis_data_no_outliers %>%
+      ggplot(aes(x = !!sym(parameter), y = !!sym(performance))) +
+      geom_point(alpha = 0.6) +
+      geom_smooth(method = "lm", se = TRUE, color = "red") +
+      labs(
+        title = paste(parameter, "vs", performance, "(No Outliers)"),
+        x = parameter,
+        y = performance
+      )
+  })
+  
+  print("Scatter plots without outliers:")
+  wrap_plots(scatter_plots_no_outliers, ncol = 2)
+}
+```
+
 # Analysis 3: Linear Regression Models
 
 ```{r regression-models}
 # Function to run regression model
-run_regression_model <- function(outcome_var) {
+run_regression_model <- function(outcome_var, data = analysis_data_no_outliers) {
   # Create formula
   predictors <- paste(CURRENT_PARAMS, collapse = " + ")
   formula_str <- paste(outcome_var, "~", predictors)
   
   # Fit model
-  model <- lm(as.formula(formula_str), data = analysis_data)
+  model <- lm(as.formula(formula_str), data = data)
   
   # Get model summary
   model_summary <- summary(model)
@@ -519,31 +891,31 @@ model_stats %>%
   kable_styling()
 ```
 
-# ```{r vif-check}
-# # Check VIF values
-# print("Variance Inflation Factors:")
-# vif_results <- map_dfr(names(regression_results), function(outcome) {
-#   tibble(
-#     outcome = outcome,
-#     parameter = names(regression_results[[outcome]]$vif),
-#     vif = regression_results[[outcome]]$vif
-#   )
-# })
-# 
-# vif_results %>%
-#   mutate(vif = round(vif, 3)) %>%
-#   kable() %>%
-#   kable_styling()
-# 
-# # Flag high VIF values
-# high_vif <- vif_results %>% filter(vif > 5)
-# if(nrow(high_vif) > 0) {
-#   print("WARNING: High VIF values detected (>5):")
-#   print(high_vif)
-# } else {
-#   print("All VIF values are acceptable (<5)")
-# }
-# ```
+```{r vif-check}
+# Check VIF values
+print("Variance Inflation Factors:")
+vif_results <- map_dfr(names(regression_results), function(outcome) {
+  tibble(
+    outcome = outcome,
+    parameter = names(regression_results[[outcome]]$vif),
+    vif = regression_results[[outcome]]$vif
+  )
+})
+
+vif_results %>%
+  mutate(vif = round(vif, 3)) %>%
+  kable() %>%
+  kable_styling()
+
+# Flag high VIF values
+high_vif <- vif_results %>% filter(vif > 5)
+if(nrow(high_vif) > 0) {
+  print("WARNING: High VIF values detected (>5):")
+  print(high_vif)
+} else {
+  print("All VIF values are acceptable (<5)")
+}
+```
 
 ```{r residual-plots}
 # Create residual plots for model diagnostics
@@ -583,42 +955,200 @@ walk(residual_plots, print)
 
 # Analysis 4: Gender Comparisons
 
-*Placeholder for gender analyses - to be implemented when gender data is available*
+```{r gender-analysis}
+# Gender differences in parameters
+gender_results <- map_dfr(CURRENT_PARAMS, function(param) {
+  # Remove any missing gender data
+  analysis_subset <- analysis_data_no_outliers %>% 
+    filter(!is.na(gender)) %>%
+    filter(!is.na(!!sym(param)))
+  
+  if(nrow(analysis_subset) > 0 && length(unique(analysis_subset$gender)) == 2) {
+    t_test <- t.test(analysis_subset[[param]] ~ analysis_subset$gender)
+    tibble(
+      parameter = param,
+      mean_female = t_test$estimate[1],
+      mean_male = t_test$estimate[2],
+      t_statistic = t_test$statistic,
+      df = t_test$parameter,
+      p_value = t_test$p.value,
+      ci_lower = t_test$conf.int[1],
+      ci_upper = t_test$conf.int[2],
+      n_female = sum(analysis_subset$gender == "Female", na.rm = TRUE),
+      n_male = sum(analysis_subset$gender == "Male", na.rm = TRUE)
+    )
+  } else {
+    tibble(
+      parameter = param,
+      mean_female = NA, mean_male = NA, t_statistic = NA,
+      df = NA, p_value = NA, ci_lower = NA, ci_upper = NA,
+      n_female = NA, n_male = NA
+    )
+  }
+})
+
+# Add FDR correction
+gender_results <- gender_results %>%
+  mutate(
+    p_fdr = p.adjust(p_value, method = "fdr"),
+    sig_uncorrected = p_value < 0.05,
+    sig_fdr = p_fdr < 0.05
+  )
+
+print("Gender comparison results:")
+gender_results %>%
+  mutate(across(where(is.numeric), round, 4)) %>%
+  kable() %>%
+  kable_styling()
+
+# Gender by age group interactions for significant gender effects
+sig_gender_params <- gender_results %>%
+  filter(sig_uncorrected & !is.na(p_value)) %>%
+  pull(parameter)
+
+if(length(sig_gender_params) > 0) {
+  print("Testing gender by age group interactions for significant parameters:")
+  
+  interaction_results <- map_dfr(sig_gender_params, function(param) {
+    analysis_subset <- analysis_data %>% 
+      filter(!is.na(gender)) %>%
+      filter(!is.na(!!sym(param)))
+    formula_str <- paste(param, "~ gender * age_group")
+    aov_model <- aov(as.formula(formula_str), data = analysis_subset)
+    aov_summary <- summary(aov_model)
+    
+    tibble(
+      parameter = param,
+      gender_f = aov_summary[[1]][["F value"]][1],
+      gender_p = aov_summary[[1]][["Pr(>F)"]][1],
+      age_f = aov_summary[[1]][["F value"]][2],
+      age_p = aov_summary[[1]][["Pr(>F)"]][2],
+      interaction_f = aov_summary[[1]][["F value"]][3],
+      interaction_p = aov_summary[[1]][["Pr(>F)"]][3]
+    )
+  })
+  
+  interaction_results %>%
+    mutate(across(where(is.numeric), round, 4)) %>%
+    kable() %>%
+    kable_styling()
+} else {
+  print("No significant gender effects found to test for interactions")
+}
+```
+
+```{r gender-visualization}
+# Visualize gender differences for significant parameters
+if(length(sig_gender_params) > 0) {
+  gender_plots <- map(sig_gender_params, function(param) {
+    analysis_data %>%
+      filter(!is.na(gender)) %>%
+      ggplot(aes(x = gender, y = !!sym(param), fill = gender)) +
+      geom_violin(alpha = 0.7, trim = FALSE) +
+      geom_boxplot(width = 0.1, alpha = 0.8) +
+      geom_jitter(width = 0.15, alpha = 0.4, size = 0.8) +
+      scale_fill_viridis_d() +
+      labs(
+        title = paste("Gender differences in", param),
+        x = "Gender",
+        y = param
+      ) +
+      theme(legend.position = "none")
+  })
+  
+  wrap_plots(gender_plots, ncol = 2)
+} else {
+  print("No significant gender effects to visualize")
+}
+```
 
 # Summary of Results
 
 ```{r results-summary}
-# Create summary of significant findings
+# Create comprehensive summary of significant findings
 summary_results <- list()
 
-# Age group effects
+# Age group effects (parametric)
 age_sig <- age_group_results %>% filter(sig_fdr) %>% pull(variable)
-summary_results$age_effects <- if(length(age_sig) > 0) {
-  paste("Significant age group effects found for:", paste(age_sig, collapse = ", "))
+summary_results$age_effects_parametric <- if(length(age_sig) > 0) {
+  paste("Significant age group effects (ANOVA, FDR corrected):", paste(age_sig, collapse = ", "))
 } else {
-  "No significant age group effects found after FDR correction"
+  "No significant age group effects found (ANOVA, FDR corrected)"
 }
 
-# Parameter-performance correlations
+# Age group effects (non-parametric)
+age_sig_np <- kruskal_results %>% filter(sig_fdr) %>% pull(variable)
+summary_results$age_effects_nonparametric <- if(length(age_sig_np) > 0) {
+  paste("Significant age group effects (Kruskal-Wallis, FDR corrected):", paste(age_sig_np, collapse = ", "))
+} else {
+  "No significant age group effects found (Kruskal-Wallis, FDR corrected)"
+}
+
+# Outlier sensitivity for age effects
+age_sig_no_outliers <- age_group_results_no_outliers %>% filter(sig_fdr) %>% pull(variable)
+summary_results$age_effects_no_outliers <- if(length(age_sig_no_outliers) > 0) {
+  paste("Significant age group effects without outliers:", paste(age_sig_no_outliers, collapse = ", "))
+} else {
+  "No significant age group effects found without outliers"
+}
+
+# Parameter-performance correlations (Pearson)
 cor_sig <- correlation_results %>% filter(sig_fdr)
-summary_results$correlations <- if(nrow(cor_sig) > 0) {
-  paste("Significant parameter-performance correlations found for:", 
+summary_results$correlations_pearson <- if(nrow(cor_sig) > 0) {
+  paste("Significant parameter-performance correlations (Pearson, FDR corrected):", 
         paste(paste(cor_sig$parameter, cor_sig$performance, sep = "-"), collapse = ", "))
 } else {
-  "No significant parameter-performance correlations found after FDR correction"
+  "No significant parameter-performance correlations found (Pearson, FDR corrected)"
 }
 
-# Regression predictors
-reg_sig <- all_coefficients %>% filter(sig_fdr)
-summary_results$regression <- if(nrow(reg_sig) > 0) {
-  paste("Significant regression predictors found for:", 
-        paste(paste(reg_sig$term, reg_sig$outcome, sep = " predicting "), collapse = ", "))
+# Parameter-performance correlations (Spearman)
+cor_sig_sp <- spearman_results %>% filter(sig_fdr)
+summary_results$correlations_spearman <- if(nrow(cor_sig_sp) > 0) {
+  paste("Significant parameter-performance correlations (Spearman, FDR corrected):", 
+        paste(paste(cor_sig_sp$parameter, cor_sig_sp$performance, sep = "-"), collapse = ", "))
 } else {
-  "No significant regression predictors found after FDR correction"
+  "No significant parameter-performance correlations found (Spearman, FDR corrected)"
 }
 
-print("=== ANALYSIS SUMMARY ===")
-iwalk(summary_results, ~cat(.y, ":", .x, "\n"))
+# Outlier sensitivity for correlations
+cor_sig_no_outliers <- correlation_results_no_outliers %>% filter(sig_fdr)
+summary_results$correlations_no_outliers <- if(nrow(cor_sig_no_outliers) > 0) {
+  paste("Significant correlations without outliers:", 
+        paste(paste(cor_sig_no_outliers$parameter, cor_sig_no_outliers$performance, sep = "-"), collapse = ", "))
+} else {
+  "No significant correlations found without outliers"
+}
+
+# Regression predictors (basic model)
+reg_sig_basic <- all_coefficients %>% 
+  filter(sig_fdr) 
+summary_results$regression_basic <- if(nrow(reg_sig_basic) > 0) {
+  paste("Significant regression predictors (basic model, FDR corrected):", 
+        paste(paste(reg_sig_basic$term, reg_sig_basic$outcome, sep = " → "), collapse = ", "))
+} else {
+  "No significant regression predictors found (basic model, FDR corrected)"
+}
+
+# Gender effects
+gender_sig <- gender_results %>% filter(sig_fdr & !is.na(p_value)) %>% pull(parameter)
+summary_results$gender_effects <- if(length(gender_sig) > 0) {
+  paste("Significant gender effects (FDR corrected):", paste(gender_sig, collapse = ", "))
+} else {
+  "No significant gender effects found (FDR corrected)"
+}
+
+# Data quality notes
+outlier_count <- length(outlier_subjects)
+summary_results$data_quality <- paste(
+  "Data quality notes:",
+  paste0("- ", outlier_count, " outlier subjects identified and analyzed separately"),
+  paste0("- ", sum(!normality_tests$normal), "/", nrow(normality_tests), " parameters violated normality assumptions"),
+  "- Non-parametric alternatives provided for robustness",
+  sep = "\n"
+)
+
+print("=== COMPREHENSIVE ANALYSIS SUMMARY ===")
+iwalk(summary_results, ~cat(.y, ":\n", .x, "\n\n"))
 ```
 
 ```{r session-info}
