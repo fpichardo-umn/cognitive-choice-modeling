@@ -6,6 +6,7 @@
 /Data/sim/rds/*
 /models/rds/*
 /models/bin/*
+/models/**/bin/*
 /log_files/*
 .DS_Store
 .Rproj.user/

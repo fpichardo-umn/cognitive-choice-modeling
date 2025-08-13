@@ -58,7 +58,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
                               n_subs, n_trials, n_warmup, n_iter, n_chains, adapt_delta, max_treedepth, 
                               model_params, dry_run = FALSE, checkpoint_interval = 1000, 
                               output_dir = NULL, emp_bayes = FALSE, informative_priors = NULL,
-                              subid = NULL, index = NULL, init_params = NULL, cohort_sub_dir = TRUE) {
+                              subid = NULL, subject_list = NULL, index = NULL, init_params = NULL, cohort_sub_dir = TRUE) {
   
   # Create the model string and get the model path
   model_str <- paste(task, group_type, model_name, sep="_")
@@ -213,6 +213,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   # Add subid and index to the fit object if provided
   if (!is.null(subid)) fit_result$subid <- subid
   if (!is.null(index)) fit_result$index <- index
+  if (!is.null(subject_list)) fit_result$subject_list <- subject_list
   
   # Save fitted model
   cat("Saving fitted model to:", output_file, "\n")
