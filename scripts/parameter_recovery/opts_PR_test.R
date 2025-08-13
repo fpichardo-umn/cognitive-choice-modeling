@@ -1,14 +1,15 @@
-opt_model = "dual_orl"
+opt_model = "orl"
 opt_task = "igt"
-opt_cohort = "luc"
-opt_session = "00"
-opt_nsubs = 182
+opt_cohort = "es"
+opt_session = "04"
+opt_nsubs = 682
 opt_group = "sing"
-#opt_group2 = "batch_001"
 opt_group2 = "batch_001"
+#opt_group2 = "hier"
 
 # Fit
 opt <- list(
+  subjects = "1-682",
   model = opt_model,
   type = "fit",
   task = opt_task,
@@ -20,7 +21,7 @@ opt <- list(
   n_subs = opt_nsubs,
   n_trials = 100,
   RTbound_min_ms = 50,
-  RTbound_max_ms = 2500,
+  RTbound_max_ms = 25000,
   rt_method = "remove",
   n_warmup = 3000,
   n_iter = 15000,
@@ -29,7 +30,7 @@ opt <- list(
   max_treedepth = 12,
   seed = 29518,
   dry_run = FALSE,
-  check_iter = 5000,
+  check_iter = 20000,
   init = FALSE
 )
 

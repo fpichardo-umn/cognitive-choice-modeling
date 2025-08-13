@@ -26,7 +26,7 @@ option_list = list(
   make_option(c("--n_subs"), type="integer", default=1000, help="Number of subjects for hierarchical model"),
   make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
-  make_option(c("--RTbound_max_ms"), type="integer", default=2500, help="RT max bound in milliseconds"),
+  make_option(c("--RTbound_max_ms"), type="integer", default=25000, help="RT max bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="remove", help="RT method"),
   make_option(c("--n_warmup"), type="integer", default=3000, help="Number of warmup iterations"),
   make_option(c("--n_iter"), type="integer", default=15000, help="Number of iterations"),
@@ -42,7 +42,7 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
-set_cmdstan_path("~/stan/cmdstan-2.36.0/")
+#set_cmdstan_path("~/stan/cmdstan-2.36.0/")
 
 # Load helper functions for directory structure
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
