@@ -1,15 +1,15 @@
-opt_model = "orl"
+opt_model = "ev_ard_b1p2"
 opt_task = "igt"
-opt_cohort = "es"
-opt_session = "04"
-opt_nsubs = 682
+opt_cohort = "adb"
+opt_session = "00"
+opt_nsubs = 100
 opt_group = "sing"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 
 # Fit
 opt <- list(
-  subjects = "1-682",
+  #subjects = "1-682",
   model = opt_model,
   type = "fit",
   task = opt_task,
@@ -24,7 +24,7 @@ opt <- list(
   RTbound_max_ms = 25000,
   rt_method = "remove",
   n_warmup = 3000,
-  n_iter = 15000,
+  n_iter = 5000,
   n_chains = 4,
   adapt_delta = 0.95,
   max_treedepth = 12,
