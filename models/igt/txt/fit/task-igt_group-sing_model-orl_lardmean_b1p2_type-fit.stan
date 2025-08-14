@@ -27,7 +27,7 @@ functions {
     matrix other_mask, array[] int choice, array[] real wins, array[] real losses,
     vector rt_adjs, vector sqrt_rts, vector inv_sqrt_rts, vector inv_rts,
     vector ev_init, vector ef_init, int T,
-    real sensitivity, real Arew, real Apun, real K, real betaF, real betaP, real urgency,
+    real Arew, real Apun, real K, real betaF, real betaP, real urgency,
     vector boundaries
   ) {
   
@@ -65,7 +65,7 @@ functions {
       
       // Calculate relative drift rates using lARDMean on combined utility
       util_means_others = (other_mask * util) / 3.0;
-      drift_rates = to_vector(log1p_exp(urgency + sensitivity * (util - util_means_others)));
+      drift_rates = to_vector(log1p_exp(urgency + (util - util_means_others)));
       
       // Compute PDF for chosen option
       pdf = race_pdf_fast(rt_adjs[t], boundaries[t], drift_rates[chosen], sqrt_rts[t], inv_rts[t]);
@@ -139,7 +139,6 @@ parameters {
   real<lower=-3, upper=3> urgency_pr;   // Urgency signal (V0)
 
   // ORL
-  real<lower=-3, upper=3> drift_con_pr;     // Consistency parameter
   real Arew_pr;      // Reward learning rate
   real Apun_pr;      // Punishment learning rate
   real K_pr;         // Decay rate for perseverance
@@ -156,7 +155,6 @@ transformed parameters {
   real<lower=0>                    urgency;
 
   // ORL
-  real<lower=0, upper=5> drift_con;
   real<lower=0, upper=1> Arew;
   real<lower=0, upper=1> Apun;
   real<lower=0, upper=5> K;
@@ -169,7 +167,6 @@ transformed parameters {
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound) * 0.99 + RTbound; 
   tau       = inv_logit(tau_pr) * (minRT - RTbound) * 0.99 + RTbound;
   urgency   = exp(urgency_pr);
-  drift_con = inv_logit(drift_con_pr) * 5;
   Arew      = inv_logit(Arew_pr);
   Apun      = inv_logit(Apun_pr);
   K         = inv_logit(K_pr) * 5;
@@ -184,7 +181,6 @@ model {
   tau1_pr      ~ normal(0, 1);
   tau_pr       ~ normal(0, 1);
   urgency_pr   ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
   Arew_pr      ~ normal(0, 1);
   Apun_pr      ~ normal(0, 1);
   K_pr         ~ normal(0, 1);
@@ -194,7 +190,6 @@ model {
   // Initialize values
   vector[4] ev = rep_vector(0.0, 4);  // Expected value
   vector[4] ef = rep_vector(0.0, 4);  // Expected frequency
-  real sensitivity = pow(3, drift_con) - 1;
 
   // Other options mask for lARDMean
   matrix[4, 4] other_mask = [
@@ -222,6 +217,6 @@ model {
   // Combined model computation
   target += igt_race_model_lp(other_mask, choice, wins, abs(losses),
                               rt_adjs, sqrt_rts, inv_sqrt_rts, inv_rts, ev, ef, T, 
-                              sensitivity, Arew, Apun, K, betaF, betaP, urgency,
+                              Arew, Apun, K, betaF, betaP, urgency,
                               curr_boundaries);
 }

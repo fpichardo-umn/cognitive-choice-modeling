@@ -2,7 +2,7 @@ functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, vector ef, int Tsub,
-        real sensitivity, real Arew, real Apun, real K, real betaF, real betaP
+        real Arew, real Apun, real K, real betaF, real betaP
         ) {
     // Define values
     vector[4] local_ev = ev;
@@ -25,8 +25,8 @@ functions {
       // Calculate utility for decision
       util = local_ev + local_ef * betaF + pers * betaP;
       
-      // Choice probability using sensitivity
-      target += categorical_logit_lpmf(choice[t] | sensitivity * util);
+      // Choice probability
+      target += categorical_logit_lpmf(choice[t] | util);
       
       // Prediction errors for value and frequency
       PEval = wins[t] - losses[t] - local_ev[choice[t]];
@@ -69,7 +69,6 @@ data {
 }
 
 parameters {
-  real con_pr;     // Consistency parameter
   real Arew_pr;    // Reward learning rate
   real Apun_pr;    // Punishment learning rate
   real K_pr;       // Decay rate for perseverance
@@ -78,14 +77,12 @@ parameters {
 }
 
 transformed parameters {
-  real<lower=0, upper=5> con;
   real<lower=0, upper=1> Arew;
   real<lower=0, upper=1> Apun;
   real<lower=0, upper=5> K;
   real betaF;
   real betaP;
   
-  con   = inv_logit(con_pr) * 5;
   Arew  = inv_logit(Arew_pr);
   Apun  = inv_logit(Apun_pr);
   K     = inv_logit(K_pr) * 5;
@@ -95,7 +92,6 @@ transformed parameters {
 
 model {
   // Priors
-  con_pr   ~ normal(0, 1);
   Arew_pr  ~ normal(0, 1);
   Apun_pr  ~ normal(0, 1);
   K_pr     ~ normal(0, 1);
@@ -105,8 +101,7 @@ model {
   // Initialize values
   vector[4] ev = rep_vector(0., 4);  // Expected value
   vector[4] ef = rep_vector(0., 4);  // Expected frequency
-  real sensitivity = pow(3, con) - 1;
   
   // Run model
-  ev = igt_model_lp(choice, wins, abs(losses), ev, ef, T, sensitivity, Arew, Apun, K, betaF, betaP);
+  ev = igt_model_lp(choice, wins, abs(losses), ev, ef, T, Arew, Apun, K, betaF, betaP);
 }

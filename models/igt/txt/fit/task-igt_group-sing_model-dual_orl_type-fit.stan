@@ -4,7 +4,7 @@ functions {
     array[] int choice, array[] real wins, array[] real losses,
     int Tsub,
     // Parameters
-    real consistency, real mb_weight, real betaF,
+    real mb_weight, real betaF,
     real update_rate_mf,
     real var_update_rate, //-- UPDATE: Added new parameter for MB variance learning
     real decay_factor, real pos_val, real neg_val,
@@ -72,7 +72,7 @@ functions {
       }
 
       //--- ACTION SELECTION ---
-      target += categorical_logit_lpmf(choice[t] | consistency * integrated_values);
+      target += categorical_logit_lpmf(choice[t] | integrated_values);
 
       //--- LEARNING FROM OUTCOMES ---
       int chosen_deck = choice[t];
@@ -190,7 +190,6 @@ parameters {
   real neg_val_pr;
 
   // Other parameters
-  real consistency_pr;
   real decay_factor_pr;
   real K_pr;
 }
@@ -203,7 +202,6 @@ transformed parameters {
   real<lower=0, upper=1> var_update_rate = inv_logit(var_update_rate_pr);
   real<lower=0, upper=2> pos_val = inv_logit(pos_val_pr) * 2;
   real<lower=0, upper=2> neg_val = inv_logit(neg_val_pr) * 2;
-  real<lower=0, upper=5> consistency = inv_logit(consistency_pr) * 5;
   real<lower=0, upper=1> decay_factor = inv_logit(decay_factor_pr);
   real<lower=0, upper=5> K = inv_logit(K_pr) * 5;
 }
@@ -215,14 +213,13 @@ model {
   var_update_rate_pr ~ normal(0, 1); //-- UPDATE: Added prior for the new parameter
   pos_val_pr ~ normal(0, 1);
   neg_val_pr ~ normal(0, 1);
-  consistency_pr ~ normal(0, 1);
   decay_factor_pr ~ normal(0, 1);
   K_pr ~ normal(0, 1);
 
   //-- UPDATE: Corrected function call - no assignment
   igt_dual_process_lp(
     choice, wins, losses, T,
-    consistency, mb_weight, betaF,
+    mb_weight, betaF,
     update_rate_mf,
     var_update_rate, //-- UPDATE: Pass new parameter to function
     decay_factor, pos_val, neg_val, K
