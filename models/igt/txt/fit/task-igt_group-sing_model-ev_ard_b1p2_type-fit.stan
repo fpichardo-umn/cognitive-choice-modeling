@@ -1,6 +1,6 @@
 functions {
   // Direct log probability density function for the race model.
-  real race_lpdf(real t, real boundary, real drift) {
+  real race_lpdf_func(real t, real boundary, real drift) {
     // t > 0 is checked in the calling function.
     if (drift <= 0) return log(1e-10);
 
@@ -37,7 +37,7 @@ functions {
     // Sum log-PDFs for the 3 winning accumulators.
     for (i in 1:3) {
       int winning_idx = (choice - 1) * 3 + i;
-      log_lik += race_lpdf(t, boundary, drift_rates[winning_idx]);
+      log_lik += race_lpdf_func(t, boundary, drift_rates[winning_idx]);
     }
 
     // Sum log-survival probabilities for the 9 losing accumulators.
