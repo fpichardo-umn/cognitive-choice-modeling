@@ -1,4 +1,4 @@
-# Computational Modeling Pipeline for Decision-Making Tasks
+# Cognitive Choice Modeling Pipeline for Decision-Making Tasks
 
 ### 🚧 Work in Progress 🚧
 
