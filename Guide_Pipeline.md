@@ -78,10 +78,11 @@ Rscript scripts/fit/fit_single_model.R \
 ```
 models/
 ├── igt/                        # Iowa Gambling Task models
-│   ├── txt/                    # Stan source files (.stan)
-│   │   └── fit/                # Main model files
-│   └── bin/                    # Compiled executables (system-specific)
-│       └── fit/
+│   ├── canonical               # Status of model: canonical, experimental, and working (not tracked)
+│     ├── txt/                  # Stan source files (.stan)
+│     │   └── fit/              # Main model files
+│     └── bin/                  # Compiled executables (system-specific)
+│         └── fit/
 └── igt_mod/                    # Modified IGT models (play/pass paradigm)
 ```
 
@@ -99,8 +100,13 @@ task-igt_group-sing_model-pvldelta_type-fit.stan
 ```
 
 ### Available Models
+**Model Statuses:**
+It's beneficial to organize the models by their validation status to maintain a better set of models and work on others without uploading to the official pipeline. If you know the status, you can pass it where needed. However, the pipeline is able to auto-detect which status the specific model is in if it's been compiled.
+- **Canonical**: These are models that have been used previously in the literature
+- **Experimental**: These are models that are being tested with this pipeline but have not been published
+- **Working**: This is a working directory of models that are not tracked or maintained on the official pipeline but may be referenced in some code
 
-**Reinforcement Learning Models:**
+**Reinforcement Learning Canonical Models:**
 - **`ev`** - Expected Value: Basic utility tracking
 - **`pvldelta`** - Prospect Valuation Learning with delta rule
 - **`pvldecay`** - PVL with decay learning  
@@ -109,10 +115,10 @@ task-igt_group-sing_model-pvldelta_type-fit.stan
 - **`vpp`** - Value-Plus-Perseveration: Adds choice perseveration
 - **`vse`** - Value and Sequential Exploration: Explicit exploration
 
-**Sequential Sampling Models:**
+**Sequential Sampling Canonical Models:**
 - **`ddm`** - Drift Diffusion Model: Models reaction times
 
-**Hybrid Models (RL + SSM):**
+**Hybrid Experimental Models (RL + SSM):**
 - **`ev_ddm`**, **`pvldelta_ddm`**, **`orl_ddm`**, etc.
 - Currently developed for `igt_mod`, under development for `igt`
 
@@ -123,14 +129,14 @@ task-igt_group-sing_model-pvldelta_type-fit.stan
 ### Finding Models
 ```bash
 # List all available models for IGT
-ls models/igt/txt/fit/
+ls models/igt/*/txt/fit/
 
 # Find models with specific features
-ls models/igt/txt/fit/ | grep "pvl"     # All PVL variants
-ls models/igt/txt/fit/ | grep "hier"    # All hierarchical variants
+ls models/igt/*/txt/fit/ | grep "pvl"     # All PVL variants
+ls models/igt/*/txt/fit/ | grep "hier"    # All hierarchical variants
 
 # Check if model is compiled
-ls models/igt/bin/fit/task-igt_group-sing_model-ev_type-fit
+ls models/igt/*/bin/fit/task-igt_group-sing_model-ev_type-fit
 ```
 
 ---
@@ -148,6 +154,7 @@ Rscript scripts/fit/fit_single_model.R \
   -s cohort_name \                 # Data source
   --ses session \                  # Session number (00, 01)
   --subid 1001 \                   # Subject ID
+  --model_status canonical \       # Model validation status - this is not required!
   --n_warmup 1000 \                # MCMC warmup
   --n_iter 2000 \                  # MCMC iterations
   --n_chains 4                     # MCMC chains
@@ -342,31 +349,38 @@ Rscript fit_single_model.R -m ev -k igt --subid 1001 --config quick
 
 **Input data:**
 ```
-Data/igt/txt/cohort_name/
+Data/raw/COHORT_NAME/
 ├── TASK_COHORT_SES.csv          # Your behavioral data - e.g., igt_es_04.csv
 └── ses-SES/subject_ids_all.txt          # Subject identifier lists
 ```
 
 **Model fitting results:**
 ```
-Data/igt/rds/fit/cohort_name/
-├── task-igt_cohort-name_group-sing_model-ev_sub-1001_type-fit.rds
-├── task-igt_cohort-name_group-batch_model-ev_type-fit.rds
-└── task-igt_cohort-name_group-hier_model-ev_type-fit.rds
+Outputs/igt/fits/fit/cohort_name/
+├── task-igt_cohort-name_ses-session_group-sing_model-ev_sub-1001_type-fit.rds
+├── task-igt_cohort-name_ses-session_group-batch_model-ev_type-fit.rds
+└── task-igt_cohort-name_ses-session_group-hier_model-ev_type-fit.rds
+```
+
+**Simulation results:**
+```
+Outputs/igt/simulation/
+├── data/rds                      # Simulated behavioral data
+├── data/txt                      # Simulated behavioral data
+└── parameters/                   # Generated parameter setsRecovery analysis results
 ```
 
 **Parameter recovery results:**
 ```
-Data/igt/sim/
-├── params/                      # Generated parameter sets
-├── rds/                        # Simulated behavioral data
-└── recovery/                   # Recovery analysis results
+Outputs/igt/validation/parameter_recovery/
+├── fits/                       # Estimated fits for the simulated data
+└── analysis/                   # Recovery analysis results
 ```
 
 **PPC results:**
 ```
-Data/ppc/
-├── simulations/                # Simulated data from fitted models
+Data/ppc/cohort-name/ses-SES
+├── sim/                        # Simulated data from fitted models
 ├── stats/                      # Behavioral statistics
 ├── loglik/                     # Log-likelihood values  
 └── reports/                    # Generated reports
