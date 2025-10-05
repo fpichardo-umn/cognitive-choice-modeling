@@ -46,8 +46,8 @@ To use this pipeline, you will need R, CmdStanR, and the R packages listed in th
 
 1.  **Clone the Repository:**
     ```bash
-    git clone [https://github.com/fpichardo-umn/modeling_mIGT.git](https://github.com/fpichardo-umn/modeling_mIGT.git)
-    cd modeling_mIGT
+    git clone [https://github.com/fpichardo-umn/cognitive-choice-modeling.git](https://github.com/fpichardo-umn/cognitive-choice-modeling.git)
+    cd cognitive-choice-modeling
     ```
 
 2.  **Install R and CmdStanR:**
