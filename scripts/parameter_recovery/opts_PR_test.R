@@ -1,4 +1,4 @@
-opt_model = "ev_ard_b1p2"
+opt_model = "ev"
 opt_task = "igt"
 opt_cohort = "adb"
 opt_session = "00"

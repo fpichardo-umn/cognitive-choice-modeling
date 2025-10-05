@@ -18,7 +18,7 @@ library(reshape2)  # For melting matrices
 library(here)
 
 # File path to recovery data
-recovery_file <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/sim/recovery/recovery_igt_mod_pvldecay_batch_001.csv"
+recovery_file <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/igt_mod/sim/recovery/recovery_igt_mod_pvldecay_batch_001.csv"
 
 # Load recovery data
 recovery_data <- read.csv(recovery_file)
@@ -129,7 +129,7 @@ This document presents parameter recovery analysis for the **pvldecay** model (R
 ### Standardized Metrics (for cross-model comparison)
 
 ```{r std_metrics, echo=FALSE}
-kable(stats$overall[5:7], caption = "Standardized Recovery Metrics") %>% 
+kable(stats$overall, caption = "Standardized Recovery Metrics") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
@@ -142,7 +142,7 @@ kable(stats$by_parameter[, c("parameter", "parameter_type", "correlation", "rmse
   kable_styling(bootstrap_options = c("striped", "hover"))
 
 # Display standardized metrics
-kable(stats$by_parameter[, c("parameter", "parameter_type", "std_correlation", "std_rmse", "std_bias")],
+kable(stats$by_parameter[, c("parameter", "parameter_type", "correlation", "std_rmse", "std_bias")],
       caption = "Standardized Parameter Metrics") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```

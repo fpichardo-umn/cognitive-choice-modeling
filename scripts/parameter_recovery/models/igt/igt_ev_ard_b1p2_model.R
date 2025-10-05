@@ -78,6 +78,8 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                        drift_rates[12] = parameters$urgency + parameters$wd * (self$ev[4] - self$ev[3]) + parameters$ws * (self$ev[4] + self$ev[3])
                                        
                                        # Simulate decision times for each accumulator
+                                       drift_rates = sensitivity * drift_rates
+                                       drift_rates <- pmax(drift_rates, 1e-6) 
                                        decision_times <- numeric(12)
                                        for(i in 1:12) {
                                          drift <- drift_rates[i]
@@ -193,6 +195,9 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                        drift_rates[10] = parameters$urgency + parameters$wd * (self$ev[4] - self$ev[1]) + parameters$ws * (self$ev[4] + self$ev[1])
                                        drift_rates[11] = parameters$urgency + parameters$wd * (self$ev[4] - self$ev[2]) + parameters$ws * (self$ev[4] + self$ev[2])
                                        drift_rates[12] = parameters$urgency + parameters$wd * (self$ev[4] - self$ev[3]) + parameters$ws * (self$ev[4] + self$ev[3])
+                                       
+                                       drift_rates = sensitivity * drift_rates
+                                       drift_rates <- pmax(drift_rates, 1e-6) 
                                        
                                        trial_loglik[t] <- calculate_ard_loglik(rt_adj, current_boundary, drift_rates, choice)
                                        

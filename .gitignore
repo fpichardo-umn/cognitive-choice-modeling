@@ -4,9 +4,6 @@
 /Data/models/**/rds/*
 /Data/txt/subs/*
 /Data/sim/rds/*
-/models/rds/*
-/models/bin/*
-/models/**/bin/*
 /log_files/*
 .DS_Store
 .Rproj.user/
@@ -14,3 +11,9 @@
 .Rhistory
 *.rds
 *html
+**/working/
+**/exploratory/
+**/personal/
+**/archived/
+**/bin/
+**/rds/

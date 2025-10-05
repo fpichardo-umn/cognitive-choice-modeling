@@ -42,7 +42,7 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
-#set_cmdstan_path("~/stan/cmdstan-2.36.0/")
+set_cmdstan_path("~/stan/cmdstan-2.36.0/")
 
 # Load helper functions for directory structure
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
