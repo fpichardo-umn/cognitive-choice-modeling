@@ -76,7 +76,6 @@ PROJ_DIR="${SCRIPT_DIR}/.."
 source "${SCRIPT_DIR}/helpers/dir_helpers.sh"
 
 # Get task-specific directories
-MODEL_DIR="$(get_bin_dir "$TASK")"
 DATA_DIR="$(get_data_dir "$TASK")"
 TXT_DIR="$(get_txt_dir "$TASK")"
 RDS_DIR="$(get_rds_dir "$TASK" "$MODEL_TYPE")"
@@ -231,8 +230,11 @@ generate_r_call() {
 
 # Submit jobs or perform dry run
 for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
-  # Generate BIDS-style model filename
-  MODEL_FILE="${MODEL_DIR}/${MODEL_TYPE}/task-${TASK}_group-${GROUP_TYPE}_model-${MODEL_NAME}_type-${MODEL_TYPE}.stan"
+  MODEL_FILE=$(find_model_file "$TASK" "$GROUP_TYPE" "$MODEL_NAME" "$MODEL_TYPE")
+  if [ $? -ne 0 ]; then
+    echo "Model not found for ${MODEL_NAME}"
+    continue
+  fi
   echo "[OK] Model file: $MODEL_FILE"
   echo
   

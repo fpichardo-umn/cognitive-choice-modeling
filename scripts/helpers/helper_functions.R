@@ -14,10 +14,6 @@ get_models_dir <- function(task) {
   file.path(here::here(), "models", task)
 }
 
-get_bin_dir <- function(task) {
-  file.path(get_models_dir(task), "bin")
-}
-
 get_rds_dir <- function(task, model_type = "fit") {
   file.path(get_data_dir(task), "rds", model_type)
 }

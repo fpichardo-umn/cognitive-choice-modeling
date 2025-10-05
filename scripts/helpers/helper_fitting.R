@@ -58,11 +58,12 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
                               n_subs, n_trials, n_warmup, n_iter, n_chains, adapt_delta, max_treedepth, 
                               model_params, dry_run = FALSE, checkpoint_interval = 1000, 
                               output_dir = NULL, emp_bayes = FALSE, informative_priors = NULL,
-                              subid = NULL, subject_list = NULL, index = NULL, init_params = NULL, cohort_sub_dir = TRUE) {
+                              subid = NULL, subject_list = NULL, index = NULL, init_params = NULL, 
+                              cohort_sub_dir = TRUE, model_status = NULL, is_simulation = FALSE) {
   
   # Create the model string and get the model path
   model_str <- paste(task, group_type, model_name, sep="_")
-  model_path <- get_model_file_path(task, group_type, model_name, model_type)
+  model_path <- get_model_file_path(task, group_type, model_name, model_type, status = model_status)
   
   # Load the Stan model
   tryCatch({
@@ -92,9 +93,16 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   # Determine output directory and file paths
   if (is.null(output_dir)) {
     if (emp_bayes) {
-      output_dir <- get_empbayes_dir(task)
+      # Empirical Bayes individual fits
+      output_dir <- get_empbayes_output_dir(task, "individual", cohort)
+    } else if (is_simulation) {
+      # Fits to simulated data (for parameter recovery)
+      output_dir <- get_validation_output_dir(task, "parameter_recovery", "fits")
+      # Could add simulation run ID subfolder here
+      output_dir <- file.path(output_dir, paste0("sim-", format(Sys.Date(), "%Y%m%d")))
     } else {
-      output_dir <- get_rds_dir(task, model_type)
+      # Regular fits organized by cohort/session
+      output_dir <- get_fits_output_dir(task, cohort, ses)
     }
   }
   

@@ -21,7 +21,7 @@ source(file.path(here::here(), "scripts", "model_comparison", "helpers", "model_
 #' @return Data frame with recovery results
 load_parameter_recovery <- function(task, model, group_type = "batch", cohort, session = NULL) {
   # Construct file path using BIDS naming
-  recovery_dir <- file.path(here::here(), "Data", task, "sim", "recovery")
+  recovery_dir <- get_validation_output_dir(task, "parameter_recovery", "analysis")
   
   # Generate filename
   filename <- generate_bids_filename(

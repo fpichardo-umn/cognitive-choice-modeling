@@ -1179,3 +1179,94 @@ get_igt_mod_defaults = function() {
   # Return the model configurations
   return(models)
 }
+
+#' Check which status directory contains a model
+#' @param task Task name
+#' @param group_type Group type
+#' @param model_name Model name
+#' @param model_type Model type (default: "fit")
+#' @return Character string with status, or NULL if not found
+check_model_status <- function(task, group_type, model_name, model_type = "fit") {
+  
+  filename <- generate_bids_filename(
+    prefix = NULL,
+    task = task,
+    group = group_type,
+    model = model_name,
+    additional_tags = list("type" = model_type),
+    ext = "stan"
+  )
+  
+  statuses <- c("canonical", "experimental", "working", "archived")
+  found_in <- c()
+  
+  for (status in statuses) {
+    bin_path <- file.path(get_models_dir(task), status, "bin", model_type, filename)
+    txt_path <- file.path(get_models_dir(task), status, "txt", model_type, filename)
+    
+    if (file.exists(bin_path) || file.exists(txt_path)) {
+      found_in <- c(found_in, status)
+    }
+  }
+  
+  if (length(found_in) == 0) {
+    return(NULL)
+  }
+  
+  if (length(found_in) > 1) {
+    warning(sprintf(
+      "Model found in multiple statuses: %s\n  Using: %s",
+      paste(found_in, collapse = ", "),
+      found_in[1]
+    ))
+  }
+  
+  return(found_in[1])
+}
+
+#' List all available models for a task
+#' @param task Task name
+#' @param status Filter by status (NULL for all)
+#' @return Data frame with model information
+list_available_models <- function(task, status = NULL) {
+  
+  statuses_to_check <- if (is.null(status)) {
+    c("canonical", "experimental", "working")
+  } else {
+    status
+  }
+  
+  models <- list()
+  
+  for (stat in statuses_to_check) {
+    txt_dir <- file.path(get_models_dir(task), stat, "txt", "fit")
+    
+    if (!dir.exists(txt_dir)) next
+    
+    files <- list.files(txt_dir, pattern = "\\.stan$", full.names = FALSE)
+    
+    for (file in files) {
+      parsed <- parse_bids_filename(file)
+      models[[length(models) + 1]] <- data.frame(
+        task = parsed$task,
+        group = parsed$group,
+        model = parsed$model,
+        type = parsed$type,
+        status = stat,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  
+  if (length(models) == 0) {
+    return(data.frame(
+      task = character(0),
+      group = character(0),
+      model = character(0),
+      type = character(0),
+      status = character(0)
+    ))
+  }
+  
+  do.call(rbind, models)
+}

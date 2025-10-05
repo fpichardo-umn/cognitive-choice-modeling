@@ -141,3 +141,27 @@ generate_bids_filename() {
   
   echo "${result}${ext}"
 }
+
+# Find model file across status directories
+find_model_file() {
+  local task=$1
+  local group=$2
+  local model=$3
+  local type=$4
+  local statuses=("canonical" "experimental" "working")
+  
+  local filename="task-${task}_group-${group}_model-${model}_type-${type}.stan"
+  local models_dir=$(get_models_dir "$task")
+  
+  for status in "${statuses[@]}"; do
+    local model_path="${models_dir}/${status}/bin/${type}/${filename}"
+    if [ -f "$model_path" ]; then
+      echo "$model_path"
+      return 0
+    fi
+  done
+  
+  # Not found
+  echo "ERROR: Model not found: $filename" >&2
+  return 1
+}

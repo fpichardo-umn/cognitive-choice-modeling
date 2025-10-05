@@ -40,10 +40,13 @@ opt <- parse_args(opt_parser)
 dirs <- setup_directories(opt$task)
 
 # Set output directory
-output_dir <- dirs$PARAMS_DIR
+output_dir <- get_simulation_output_dir(opt$task, "parameters")
 if (!is.null(opt$output_dir)) {
   output_dir <- opt$output_dir
 }
+
+# Make sure directory exists
+ensure_dir_exists(output_dir)
 
 # Source parameter generation functions
 source(file.path(dirs$PR_DIR, "simulation/param_gen.R"))

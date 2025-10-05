@@ -46,15 +46,19 @@ dirs <- setup_directories(opt$task)
 source(file.path(dirs$PR_DIR, "recovery", "recovery.R"))
 
 # Set output directories
-output_fit_dir <- dirs$FIT_SIM_DIR
+output_fit_dir <- get_validation_output_dir(opt$task, "parameter_recovery", "fits")
 if (!is.null(opt$output_fit_dir)) {
   output_fit_dir <- opt$output_fit_dir
 }
 
-output_rec_dir <- dirs$REC_SIM_DIR
+output_rec_dir <- get_validation_output_dir(opt$task, "parameter_recovery", "analysis")
 if (!is.null(opt$output_rec_dir)) {
   output_rec_dir <- opt$output_rec_dir
 }
+
+# Make sure directories exist
+ensure_dir_exists(output_fit_dir)
+ensure_dir_exists(output_rec_dir)
 
 # Make sure the directories exist
 if (!dir.exists(output_fit_dir)) {
@@ -64,10 +68,10 @@ if (!dir.exists(output_rec_dir)) {
   dir.create(output_rec_dir, recursive = TRUE)
 }
 
-# Load simulated data - use file path with BIDS-inspired format if sim_data is not specified
+# Load simulated data - use new path if not specified
 if (is.null(opt$sim_data)) {
   sim_data_file <- file.path(
-    dirs$RDS_SIM_DIR,
+    get_simulation_output_dir(opt$task, "data"),
     generate_bids_filename(
       prefix = NULL,
       task = opt$task,
@@ -213,7 +217,8 @@ if (opt$indiv || is_batch) {
       max_treedepth = opt$max_treedepth,
       model_params = model_params,
       output_dir = output_fit_dir, 
-      checkpoint_interval = opt$check_iter
+      checkpoint_interval = opt$check_iter,
+      is_simulation = TRUE
     )
     
     # Save individual fit

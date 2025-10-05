@@ -58,7 +58,6 @@ SBATCH_SCRIPT_DIR="${SCRIPT_DIR}/sbatch_resc_scripts"
 SBATCH_SCRIPT="${SBATCH_SCRIPT_DIR}/resources_fit_hierarchical_models_cmdSR.sbatch"
 
 PROJ_DIR="${SCRIPT_DIR}/.."
-MODEL_DIR="${PROJ_DIR}/models/bin"
 DATA_FILE="${PROJ_DIR}/Data/AHRB/modigt_data_Wave1.sav"
 OUTPUT_DIR="${PROJ_DIR}/log_files"
 
@@ -114,7 +113,11 @@ generate_r_call() {
 
 # Check model files and submit jobs
 for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
-  MODEL_FILE="${MODEL_DIR}/${MODEL_TYPE}/${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}.stan"
+  MODEL_FILE=$(find_model_file "$TASK" "$GROUP_TYPE" "$MODEL_NAME" "$MODEL_TYPE")
+  if [ $? -ne 0 ]; then
+    echo "Model not found for ${MODEL_NAME}"
+    continue
+  fi
   echo "[OK] Model file: $MODEL_FILE"
   echo
 

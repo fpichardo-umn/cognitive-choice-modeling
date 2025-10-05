@@ -33,12 +33,6 @@ opt <- parse_args(opt_parser)
 # Get directory structure
 dirs <- setup_directories(opt$task)
 
-# Set output directory
-output_dir <- file.path(dirs$DATA_DIR, "sim")
-if (!is.null(opt$output_dir)) {
-  output_dir <- opt$output_dir
-}
-
 # Source required files
 source_required_files(dirs$PR_DIR, opt$task)
 source(file.path(dirs$PR_DIR, "simulation/simulator.R"))
@@ -71,7 +65,7 @@ sim_data <- simulate_data(
 
 # Save simulated data as CSV
 csv_filename <- file.path(
-  output_dir, "txt",
+  get_simulation_output_dir(opt$task, "data"),
   generate_bids_filename(
     prefix = NULL,
     task = task_name,
@@ -90,7 +84,7 @@ write.csv(data.frame(sim_data), csv_filename, row.names = FALSE)
 
 # Save simulated data as RDS
 rds_filename <- file.path(
-  output_dir, "rds",
+  get_simulation_output_dir(opt$task, "data"),
   generate_bids_filename(
     prefix = NULL,
     task = task_name,

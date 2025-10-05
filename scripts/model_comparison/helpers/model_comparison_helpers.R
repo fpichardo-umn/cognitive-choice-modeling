@@ -184,8 +184,8 @@ parse_model_name <- function(model_name) {
 #' @param comparison_name Name for this comparison
 #' @return List of directory paths
 setup_model_comparison_dirs <- function(task, cohort, session = NULL, comparison_name = "comparison") {
-  # Base directory
-  base_dir <- file.path(here::here(), "Data", task, "model_comparison")
+  # Use new model_comparison output structure
+  base_dir <- get_model_comparison_output_dir(task)
   
   # Cohort directory
   cohort_dir <- file.path(base_dir, paste0("cohort-", cohort))
@@ -200,13 +200,13 @@ setup_model_comparison_dirs <- function(task, cohort, session = NULL, comparison
   # Comparison-specific directory
   comp_dir <- file.path(session_dir, comparison_name)
   
-  # Subdirectories
+  # Subdirectories (data, plots, logs stay here; reports go to Analysis)
   dirs <- list(
     base = comp_dir,
-    reports = file.path(comp_dir, "reports"),
-    plots = file.path(comp_dir, "plots"),
     data = file.path(comp_dir, "data"),
-    logs = file.path(comp_dir, "logs")
+    plots = file.path(comp_dir, "plots"),
+    logs = file.path(comp_dir, "logs"),
+    reports = get_analysis_output_dir("canonical")  # Reports to Analysis
   )
   
   # Create all directories
@@ -276,11 +276,12 @@ is_ppp_extreme <- function(ppp_value) {
 #' @param group_type Group type ("batch" or "hier")
 #' @return Vector of available model names
 find_available_models <- function(task, cohort, session = NULL, group_type = "batch") {
-  # Check parameter recovery directory
-  recovery_dir <- file.path(here::here(), "Data", task, "sim", "recovery")
+  # Check parameter recovery directory - NEW LOCATION
+  recovery_dir <- get_validation_output_dir(task, "parameter_recovery", "analysis")
   
-  # Check PPC directories
-  ppc_base_dir <- file.path(here::here(), "Data", task, "ppc", paste0("cohort-", cohort))
+  # Check PPC directories - NEW LOCATION
+  ppc_base_dir <- get_validation_output_dir(task, "ppc")
+  ppc_base_dir <- file.path(ppc_base_dir, paste0("cohort-", cohort))
   if (!is.null(session)) {
     ppc_base_dir <- file.path(ppc_base_dir, paste0("ses-", session))
   }

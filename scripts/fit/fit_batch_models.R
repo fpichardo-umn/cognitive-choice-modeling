@@ -20,6 +20,8 @@ option_list = list(
               help="Data source"),
   make_option(c("--ses"), type="character", default=NULL, 
               help="Session identifier (optional)"),
+  make_option(c("--model_status"), type="character", default=NULL,
+              help="Model status (canonical/experimental/working). Default: auto-detect"),
   make_option(c("-f", "--fit_config"), type="character", default="sing", 
               help="Fit parameters config name (default: sing)"),
   make_option(c("-d", "--data_config"), type="character", default="default", 
@@ -252,6 +254,11 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
   # Add session parameter if provided
   if (!is.null(opt$ses)) {
     cmd_args <- c(cmd_args, "--ses", opt$ses)
+  }
+  
+  # Add model_status if provided
+  if (!is.null(opt$model_status)) {
+    cmd_args <- c(cmd_args, "--model_status", opt$model_status)
   }
   
   # Add --init flag if needed

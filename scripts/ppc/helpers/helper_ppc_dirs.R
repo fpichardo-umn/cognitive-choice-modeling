@@ -5,13 +5,14 @@
 #' @param task Task name
 #' @param cohort Cohort identifier
 #' @param session Optional session identifier
+#' @param status Analysis type
 #' @return List of directory paths
-ensure_ppc_dirs <- function(task, cohort, session = NULL) {
-  # Base PPC directory
-  ppc_dir <- file.path(here::here(), "Data", task, "ppc")
+ensure_ppc_dirs <- function(task, cohort, session = NULL, status = "working") {
+  # Use new validation/ppc structure
+  base_ppc_dir <- get_validation_output_dir(task, "ppc")
   
   # Cohort directory
-  cohort_dir <- file.path(ppc_dir, paste0("cohort-", cohort))
+  cohort_dir <- file.path(base_ppc_dir, paste0("cohort-", cohort))
   
   # Session directory if specified
   if (!is.null(session)) {
@@ -21,14 +22,16 @@ ensure_ppc_dirs <- function(task, cohort, session = NULL) {
   }
   
   # Subdirectories
-  sim_dir <- file.path(base_dir, "sim")
+  sim_dir <- file.path(base_dir, "simulations")
   stats_dir <- file.path(base_dir, "stats")
   loglik_dir <- file.path(base_dir, "loglik")
-  reports_dir <- file.path(base_dir, "reports")
   plots_dir <- file.path(base_dir, "plots")
   
+  # Reports go to Analysis/canonical
+  reports_dir <- get_analysis_output_dir(status)
+  
   # Create all directories if they don't exist
-  for (dir in c(ppc_dir, cohort_dir, base_dir, sim_dir, stats_dir, loglik_dir, reports_dir, plots_dir)) {
+  for (dir in c(base_ppc_dir, cohort_dir, base_dir, sim_dir, stats_dir, loglik_dir, plots_dir, reports_dir)) {
     if (!dir.exists(dir)) {
       dir.create(dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -36,7 +39,7 @@ ensure_ppc_dirs <- function(task, cohort, session = NULL) {
   
   # Return directory paths
   return(list(
-    ppc_dir = ppc_dir,
+    ppc_dir = base_ppc_dir,
     cohort_dir = cohort_dir,
     base_dir = base_dir,
     sim_dir = sim_dir,
@@ -182,8 +185,9 @@ get_ppc_loglik_file_path <- function(task, model, group, cohort, session = NULL)
 #' @param group Group name
 #' @param cohort Cohort identifier
 #' @param session Optional session identifier
+#' @param status Optional analysis status identifier
 #' @return Full path to report file
-get_ppc_report_file_path <- function(task, model, group, cohort, session = NULL) {
+get_ppc_report_file_path <- function(task, model, group, cohort, session = NULL, status = "working") {
   # Generate filename
   filename <- generate_bids_filename(
     prefix = "ppc_report",
@@ -196,7 +200,7 @@ get_ppc_report_file_path <- function(task, model, group, cohort, session = NULL)
   )
   
   # Return full path
-  return(file.path(get_ppc_reports_dir(task, cohort, session), filename))
+  return(file.path(get_ppc_reports_dir(task, cohort, session, status), filename))
 }
 
 #' Save PPC statistics summary to CSV file

@@ -1,9 +1,5 @@
 /Data/raw/*
-/Data/rds/*
-/Data/models/**/bin/*
-/Data/models/**/rds/*
-/Data/txt/subs/*
-/Data/sim/rds/*
+/Outputs/**/rds/*
 /log_files/*
 .DS_Store
 .Rproj.user/
@@ -17,3 +13,4 @@
 **/archived/
 **/bin/
 **/rds/
+/Outputs/**/fits/

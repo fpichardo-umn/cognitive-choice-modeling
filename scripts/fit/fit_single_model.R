@@ -18,6 +18,8 @@ option_list = list(
   make_option(c("-k", "--task"), type="character", default=NULL, help="Task name"),
   make_option(c("-s", "--source"), type="character", default=NULL, help="Data source"),
   make_option(c("--ses"), type="character", default=NULL, help="Session identifier (optional)"),
+  make_option(c("--model_status"), type="character", default=NULL,
+              help="Model status (canonical/experimental/working). Default: auto-detect"),
   make_option(c("-d", "--data"), type="character", default=NULL, 
               help="Comma-separated list of data to extract"),
   make_option(c("-p", "--params"), type="character", default=NULL, 
@@ -53,11 +55,7 @@ SCRIPT_DIR <- file.path(PROJ_DIR, "scripts")
 SAFE_DATA_DIR <- get_safe_data_dir()
 
 # Get task-specific directories
-if (!is.null(opt$task)) {
-  DATA_DIR <- get_data_dir(opt$task)
-  MODELS_DIR <- get_models_dir(opt$task)
-  MODELS_BIN_DIR <- get_bin_dir(opt$task)
-} else {
+if (is.null(opt$task)) {
   stop("Task name is required using the -k option.")
 }
 
@@ -152,7 +150,8 @@ fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt
                           adapt_delta = opt$adapt_delta, max_treedepth = opt$max_treedepth,
                           model_params = model_params, dry_run = opt$dry_run, checkpoint_interval = opt$check_iter,
                           output_dir = output_dir,
-                          subid = opt$subid, index = opt$index, init_params = model_init_vals)
+                          subid = opt$subid, index = opt$index, init_params = model_init_vals,
+                          model_status = opt$model_status)
 
 if (!opt$dry_run) {
   cat("Model fitted and saved successfully.\n")
