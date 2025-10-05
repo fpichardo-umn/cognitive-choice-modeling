@@ -1,15 +1,20 @@
+<<<<<<< Updated upstream
 opt_model = "ev"
+=======
+opt_model = "orl"
+>>>>>>> Stashed changes
 opt_task = "igt"
-opt_cohort = "adb"
-opt_session = "00"
-opt_nsubs = 100
+opt_cohort = "es"
+opt_session = "04"
+opt_nsubs = 682
 opt_group = "sing"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 
 # Fit
 opt <- list(
-  #subjects = "1-682",
+  subjects = "1-682",
+  subs_file = "subject_ids_all.txt",
   model = opt_model,
   type = "fit",
   task = opt_task,

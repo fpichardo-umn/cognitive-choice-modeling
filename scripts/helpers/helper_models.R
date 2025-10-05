@@ -579,6 +579,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_vse2"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_decay, param_sets$vse_base),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_vse_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_base), "con"),
