@@ -15,3 +15,4 @@
 **/rds/
 /Outputs/**/fits/
 /Outputs/**/stats/
+/scripts/simulation/**/working/
