@@ -5,7 +5,7 @@
 Please note that this pipeline and its documentation are currently under active development. The structure and functionality may change, and some sections of this README may be incomplete. Feedback and contributions are welcome!
 
 ### Description
-This repository provides a flexible and reproducible framework for the computational modeling of behavioral data from decision-making tasks, such as the Iowa Gambling Task (IGT). ***While originally developed specifically for the modified IGT (hence the repository's name), it has since been generalized to be more broadly applicable.*** The pipeline is built using R and Stan (via CmdStanR) and includes modules for model fitting, validation through parameter recovery, and posterior predictive checks.
+This repository provides a flexible and reproducible framework for the computational modeling of behavioral data from decision-making tasks, such as the Iowa Gambling Task (IGT). ***While originally developed specifically for the modified IGT (hence the repository's original name), it has since been generalized to be more broadly applicable.*** The pipeline is built using R and Stan (via CmdStanR) and includes modules for model fitting, validation through parameter recovery, and posterior predictive checks.
 
 ## Features
 
