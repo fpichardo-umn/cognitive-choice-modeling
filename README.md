@@ -22,11 +22,12 @@ The repository is organized to separate model code, scripts, and data outputs. H
 ```
 .
 ├── analysis/         # Output location for rendered reports (.Rmd, .html)
-├── data/             # Default output location for generated data from pipelines
+├── data/             # Raw task data not included in this repository but expected
+│   └── raw/
+├── outputs/             # Default output location for generated data from pipelines
 │   ├── igt/
-│   └── igt_mod/
-│   └── raw/                # Raw task data not included in this repository but expected
-├── models/                 # Stan model definitions
+│   └── igt_mod/             
+├── models/TASK/STATUS      # Stan model definitions organized by task and status of the model: canonical, experimental, working (not tracked)
 │   ├── bin/                # Compiled Stan models
 │   └── txt/                # Human-readable .stan model files
 └── scripts/                # All operational scripts (R and shell)
