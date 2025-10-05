@@ -60,7 +60,7 @@ if (!opt$group %in% c("sing", "hier")) {
 # Set up environment
 script_dir <- file.path(here::here(), "scripts")
 source(file.path(script_dir, "helpers", "helper_functions_cmdSR.R"))
-source(file.path(script_dir, "parameter_recovery", "helper_functions_PR.R"))
+source(file.path(script_dir, "simulation", "helper_functions_sim.R"))
 source(file.path(script_dir, "ppc", "simulation_functions.R"))
 source(file.path(script_dir, "ppc", "helpers", "helper_ppc_dirs.R"))
 source(file.path(script_dir, "ppc", "helpers", "task_config.R"))

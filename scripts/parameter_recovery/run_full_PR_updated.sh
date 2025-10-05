@@ -397,7 +397,7 @@ print_genparams_options() {
     echo "Output file: $PARAM_FILE"
     echo ""
     echo "Command that would be executed:"
-    echo "Rscript scripts/parameter_recovery/simulation/generate_parameters.R \\"
+    echo "Rscript scripts/simulation/generate_parameters.R \\"
     echo "    -m $MODEL \\"
     echo "    --task $TASK \\"
     echo "    --group $FIT_CONFIG \\"
@@ -437,7 +437,7 @@ print_simulate_options() {
     echo "Output file: $SIM_FILE"
     echo ""
     echo "Command that would be executed:"
-    echo "Rscript scripts/parameter_recovery/simulation/run_simulation.R \\"
+    echo "Rscript scripts/simulation/run_simulation.R \\"
     echo "    -m $MODEL \\"
     echo "    --task $TASK \\"
     echo "    --group $FIT_CONFIG \\"
@@ -594,7 +594,7 @@ run_pr_genparams() {
     mkdir -p "$(dirname "$PARAM_FILE")"
     
     # Run the command
-    Rscript "scripts/parameter_recovery/simulation/generate_parameters.R" ${CMD_ARGS[@]}
+    Rscript "scripts/simulation/generate_parameters.R" ${CMD_ARGS[@]}
     
     echo "Parameter generation completed."
     echo "Parameter file: $PARAM_FILE"
@@ -636,7 +636,7 @@ run_pr_simulate() {
     mkdir -p "$(dirname "$SIM_FILE")"
     
     # Run the command
-    Rscript "scripts/parameter_recovery/simulation/run_simulation.R" ${CMD_ARGS[@]}
+    Rscript "scripts/simulation/run_simulation.R" ${CMD_ARGS[@]}
     
     echo "Simulation completed."
     echo "Simulation file: $SIM_FILE"

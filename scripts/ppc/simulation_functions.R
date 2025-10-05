@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
 
 # Import core helper modules
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
-source(file.path(here::here(), "scripts", "parameter_recovery", "helper_functions_PR.R"))
+source(file.path(here::here(), "scripts", "simulation", "helper_functions_sim.R"))
 
 #' Sample from posterior distribution with density awareness
 #' @param posterior_draws Data frame of posterior draws

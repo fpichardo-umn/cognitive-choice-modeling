@@ -12,7 +12,7 @@ suppressPackageStartupMessages({
 
 # Import core helper modules
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
-source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_ppc_dirs.R"))
+source(file.path(here::here(), "scripts", "simulation", "helper_functions_sim.R"))
 
 #' Sample from posterior distribution with density awareness
 #' @param posterior_draws Data frame of posterior draws
@@ -345,57 +345,3 @@ save_simulation_results <- function(simulation_results, task_name, model_name, g
   return(file_path)
 }
 
-#' Source required task and model files
-#' @param pr_dir Parameter recovery directory path
-#' @param task Task name
-#' @return TRUE if successful
-source_required_files <- function(pr_dir, task = NULL) {
-  # Base files needed for all workflows
-  source(file.path(pr_dir, "tasks/base_task.R"))
-  source(file.path(pr_dir, "models/base_model.R"))
-  
-  # Task-specific files
-  if (!is.null(task)) {
-    task_source_path <- file.path(pr_dir, "tasks", task, paste0(task, "_task.R"))
-    if (file.exists(task_source_path)) {
-      source(task_source_path)
-    } else {
-      stop(paste("Task file not found:", task_source_path))
-    }
-  }
-  
-  # Return success
-  return(TRUE)
-}
-
-#' #' Initialize model object
-#' #' @param model_name Model name
-#' #' @param task_name Task name
-#' #' @param pr_dir Parameter recovery directory path
-#' #' @return Model object
-#' initialize_model <- function(model_name, task_name, pr_dir) {
-#'   # Source model file
-#'   source_path <- file.path(pr_dir, "models", task_name, paste0(task_name, "_", model_name, "_model.R"))
-#'   
-#'   # Check if model file exists
-#'   if (!file.exists(source_path)) {
-#'     stop(paste("Model source file not found:", source_path))
-#'   }
-#'   
-#'   # Load the model file
-#'   source(source_path)
-#'   
-#'   # Create class name from task and model
-#'   class_name <- paste0(task_name, model_name, "Model")
-#'   
-#'   # Check if class exists
-#'   if (!exists(class_name)) {
-#'     stop(paste("Model class not found:", class_name))
-#'   }
-#'   
-#'   # Create model instance with task parameter
-#'   task_obj <- initialize_task(task_name, pr_dir)
-#'   model <- get(class_name)$new(task_obj)
-#'   
-#'   return(model)
-#' }

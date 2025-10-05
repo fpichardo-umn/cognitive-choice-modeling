@@ -12,13 +12,16 @@ library(here)
 
 # Source necessary code files
 base_dir <- here::here("scripts", "parameter_recovery")
-source(file.path(base_dir, "tasks", "base_task.R"))
-source(file.path(base_dir, "tasks", "igt", "igt_task.R"))
-source(file.path(base_dir, "models", "base_model.R"))
-source(file.path(base_dir, "models", "igt", "igt_ev_model.R"))
-source(file.path(base_dir, "simulation", "simulator.R"))
-source(file.path(base_dir, "simulation", "param_gen.R"))
 source(file.path(base_dir, "helper_functions_PR.R"))
+
+# Simulation code
+sim_dir <- here::here("scripts", "simulation")
+source(file.path(sim_dir, "tasks", "base_task.R"))
+source(file.path(sim_dir, "tasks", "igt", "igt_task.R"))
+source(file.path(sim_dir, "models", "base_model.R"))
+source(file.path(sim_dir, "models", "igt", "igt_ev_model.R"))
+source(file.path(sim_dir, "simulator.R"))
+source(file.path(sim_dir, "param_gen.R"))
 
 # Define command-line options
 option_list <- list(
@@ -47,7 +50,7 @@ opts <- parse_args(opt_parser)
 task <- IGTTask$new()
 
 # Load model configuration
-model_config_path <- file.path(base_dir, "config", "tasks", opts$task, "models", paste0(opts$model, ".yaml"))
+model_config_path <- file.path(sim_dir, "config", "tasks", opts$task, "models", paste0(opts$model, ".yaml"))
 model_config <- yaml::read_yaml(model_config_path)
 
 # Create model instance
