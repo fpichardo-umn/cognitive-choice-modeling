@@ -95,7 +95,7 @@ Rscript scripts/fit/fit_single_model_single_subject.R \
   --model "vpp_reg" \
   --task "igt_mod" \
   --sub "1001" \
-  --wave "1" \
+  --ses "01" \
   --fit_path "data"
 ```
 For large-scale fitting on an HPC, use the corresponding SLURM submission script:
@@ -128,7 +128,7 @@ Rscript scripts/ppc/ppc_and_ll_single_model_single_subject.R \
   --model "vpp_reg" \
   --task "igt_mod" \
   --sub "1001" \
-  --wave "1" \
+  --ses "01" \
   --fit_path "data" \
   --ppc_path "data"
 ```
