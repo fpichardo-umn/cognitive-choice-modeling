@@ -43,7 +43,7 @@ option_list <- list(
               help="Adapt delta"),
   make_option(c("--max_treedepth"), type="integer", default=12, 
               help="Max tree depth"),
-  make_option(c("--check_iter"), type="integer", default=1000, 
+  make_option(c("--check_iter"), type="integer", default=5000, 
               help="Iteration interval for checkpoint runs"),
   make_option(c("--seed"), type="integer", default=29518, 
               help="Random seed"),
@@ -83,6 +83,7 @@ ensure_dir_exists(log_dir)
 # Create log file
 log_filename <- generate_bids_filename(
   prefix = "empbayes_batch",
+  group = "emp",
   cohort = opt$source,
   ses = opt$ses,
   task = opt$task,
@@ -130,10 +131,11 @@ if (is.null(opt$priors_file)) {
   priors_filename <- generate_bids_filename(
     prefix = NULL,
     task = opt$task,
+    group = "emp",
     cohort = opt$source,
     ses = opt$ses,
     model = opt$model,
-    additional_tags = list("priors" = ""),
+    additional_tags = list("desc" = "priors"),
     ext = "csv"
   )
   opt$priors_file <- file.path(priors_dir, priors_filename)
@@ -210,12 +212,8 @@ if (!opt$dry_run) {
 }
 
 # Function to fit single subject
-fit_single_subject <- function(subid, opt, priors_list) {
+fit_single_subject <- function(subid, subject_data, full_model_name, data_to_extract, model_params, opt, priors_list) {
   log_message(sprintf("Processing subject: %s", subid))
-  
-  # Load subject data
-  all_data <- load_data(opt$task, opt$source, opt$ses)
-  subject_data <- all_data[all_data$subjID == subid, ]
   
   if (nrow(subject_data) == 0) {
     log_message(sprintf("ERROR: No data for subject %s", subid))
@@ -223,11 +221,6 @@ fit_single_subject <- function(subid, opt, priors_list) {
   }
   
   # Extract data
-  model_defaults <- get_model_defaults(opt$task)
-  full_model_name <- paste(opt$task, "sing", opt$model, sep="_")
-  data_to_extract <- model_defaults[[full_model_name]]$data
-  model_params <- model_defaults[[full_model_name]]$params
-  
   data_list <- extract_sample_data(
     subject_data, 
     data_to_extract, 
@@ -303,6 +296,12 @@ fit_single_subject <- function(subid, opt, priors_list) {
 # Fit subjects
 start_time <- Sys.time()
 
+# Model info
+model_defaults <- get_model_defaults(opt$task)
+full_model_name <- paste(opt$task, "sing", opt$model, sep="_")
+data_to_extract <- model_defaults[[full_model_name]]$data
+model_params <- model_defaults[[full_model_name]]$params
+
 if (opt$dry_run) {
   log_message("Dry run: Would fit subjects with empirical Bayes priors")
   log_message(sprintf("Would fit %d subjects", length(subjects_to_fit)))
@@ -321,7 +320,8 @@ if (opt$dry_run) {
     })
     
     results <- parLapply(cl, subjects_to_fit, function(subid) {
-      fit_single_subject(subid, opt, priors_list)
+      subject_data <- all_data[all_data$subjID == subid, ]
+      fit_single_subject(subid, subject_data, full_model_name, data_to_extract, model_params, opt, priors_list)
     })
     
     stopCluster(cl)
@@ -338,7 +338,10 @@ if (opt$dry_run) {
       subid <- subjects_to_fit[i]
       log_message(sprintf("Subject %d of %d", i, length(subjects_to_fit)))
       
-      result <- fit_single_subject(subid, opt, priors_list)
+      # Extract subject data
+      subject_data <- all_data[all_data$subjID == subid, ]
+      
+      result <- fit_single_subject(subid, subject_data, full_model_name, data_to_extract, model_params, opt, priors_list)
       if (result) {
         successful <- successful + 1
       } else {

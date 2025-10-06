@@ -60,9 +60,11 @@ ensure_dir_exists(empbayes_subs_dir)
 output_filename <- generate_bids_filename(
   prefix = NULL,
   task = opt$task,
+  group = "emp",
   cohort = opt$source,
   ses = opt$ses,
-  additional_tags = list("desc" = "hier", "subs" = ""),
+  model = "gen",
+  additional_tags = list("desc" = "hier_subs"),
   ext = "txt"
 )
 output_file <- file.path(empbayes_subs_dir, output_filename)

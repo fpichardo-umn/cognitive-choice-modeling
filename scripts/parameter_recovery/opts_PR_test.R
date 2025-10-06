@@ -13,7 +13,7 @@ opt_group2 = "batch_001"
 # Fit
 opt <- list(
   subjects = "1-30",
-  subs_file = "subject_ids_all.txt",
+  subs_file = "subs_list_full_orig_sort.txt",
   model = opt_model,
   type = "fit",
   task = opt_task,

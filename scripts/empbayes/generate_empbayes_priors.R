@@ -91,9 +91,9 @@ generate_informative_priors <- function(fit, model_params) {
     pr_mu <- mean(param_draws)
     pr_sigma <- sd(param_draws)
     
-    priors_list[[param_pr]] <- c(pr_mu = pr_mu, pr_sigma = pr_sigma)
+    priors_list[[param]] <- c(pr_mu = pr_mu, pr_sigma = pr_sigma)
     
-    cat("  ", param_pr, ": μ =", round(pr_mu, 4), ", σ =", round(pr_sigma, 4), "\n")
+    cat("  ", param, ": μ =", round(pr_mu, 4), ", σ =", round(pr_sigma, 4), "\n")
   }
   
   return(priors_list)
@@ -106,10 +106,11 @@ ensure_dir_exists(priors_output_dir)
 priors_filename <- generate_bids_filename(
   prefix = NULL,
   task = opt$task,
+  group = "emp",
   cohort = opt$source,
   ses = opt$ses,
   model = opt$model,
-  additional_tags = list("priors" = ""),
+  additional_tags = list("desc" = "priors"),
   ext = "csv"
 )
 

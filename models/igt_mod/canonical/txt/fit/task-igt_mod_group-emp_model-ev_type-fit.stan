@@ -40,6 +40,8 @@ data {
   array[T] int<lower=0, upper=1> choice;  // Binary choices made at each trial
   array[T] int<lower=0, upper=4> shown;   // Deck shown at each trial
   array[T] real 		 outcome; // Outcome at each trial
+  vector[4] 	    	    	 pr_mu;    // Informative priors
+  vector[4] 	    	    	 pr_sigma; // Informative priors
 }
 
 
@@ -66,10 +68,10 @@ transformed parameters {
 
 model {
   // Individual parameters
-  con_pr     ~ normal(0, 1);
-  wgt_pun_pr ~ normal(0, 1);
-  wgt_rew_pr ~ normal(0, 1);
-  update_pr  ~ normal(0, 1);
+  con_pr     ~ normal(pr_mu[1], pr_sigma[1]);
+  wgt_pun_pr ~ normal(pr_mu[2], pr_sigma[2]);
+  wgt_rew_pr ~ normal(pr_mu[3], pr_sigma[3]);
+  update_pr  ~ normal(pr_mu[4], pr_sigma[4]);
 
   // Initial subject-level deck expectations
   vector[4] ev = rep_vector(0., 4);

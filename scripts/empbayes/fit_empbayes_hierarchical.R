@@ -45,7 +45,7 @@ option_list <- list(
               help="Max tree depth"),
   make_option(c("--seed"), type="integer", default=29518, 
               help="Set seed"),
-  make_option(c("--check_iter"), type="integer", default=1000, 
+  make_option(c("--check_iter"), type="integer", default=5000, 
               help="Iteration interval for checkpoint runs"),
   make_option(c("--hier_subs_file"), type="character", default=NULL, 
               help="Path to hierarchical subject list file"),
@@ -109,9 +109,11 @@ if (is.null(opt$hier_subs_file)) {
   hier_subs_filename <- generate_bids_filename(
     prefix = NULL,
     task = opt$task,
+    group = "emp",
     cohort = opt$source,
     ses = opt$ses,
-    additional_tags = list("desc" = "hier", "subs" = ""),
+    model = "gen",
+    additional_tags = list("desc" = "hier_subs"),
     ext = "txt"
   )
   opt$hier_subs_file <- file.path(empbayes_subs_dir, hier_subs_filename)
@@ -121,6 +123,9 @@ if (is.null(opt$hier_subs_file)) {
 if (!file.exists(opt$hier_subs_file)) {
   stop("Hierarchical subject list not found: ", opt$hier_subs_file, 
        "\nRun select_empbayes_subjects.R first.")
+} else {
+  cat("Using this file for subjects:\n")
+  cat(opt$hier_subs_file)
 }
 
 # Load subject list
