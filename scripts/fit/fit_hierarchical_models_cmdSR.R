@@ -118,7 +118,7 @@ if (!opt$dry_run) {
   
   # For hierarchical models, we typically sample subjects or use all available
   # Here we'll use the first n_subs subjects (could be randomized if needed)
-  selected_subjects <- unique_subjects[1:selected_n_subs]
+  selected_subjects <- as.character(unique_subjects[1:selected_n_subs])
   hierarchical_data <- all_data[all_data$subjID %in% selected_subjects, ]
   
   cat("Selected", selected_n_subs, "subjects for hierarchical modeling\n")
@@ -172,7 +172,7 @@ if (opt$init) {
 }
 
 # Set up output directory for hierarchical models
-output_dir <- file.path(get_rds_dir(task, opt$type), opt$source)
+output_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
 
 # Fit hierarchical model
 cat("Fitting hierarchical model:", full_model_name, "\n")
@@ -190,7 +190,8 @@ fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt
                           output_dir = output_dir,
                           init_params = model_init_vals,
                           cohort_sub_dir = FALSE,
-                          model_status = opt$model_status)  # Prevent double cohort directory
+                          model_status = opt$model_status,
+                          subject_list = selected_subjects)
 
 if (!opt$dry_run) {
   cat("Hierarchical model fitted and saved successfully.\n")

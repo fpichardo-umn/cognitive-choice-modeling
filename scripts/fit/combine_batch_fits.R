@@ -43,7 +43,7 @@ source(file.path(here::here(), "scripts", "helpers", "helper_dirs.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
 
 # Set up task-specific directories
-rds_dir <- file.path(get_rds_dir(opt$task, opt$type), opt$source)
+rds_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
 if (!dir.exists(rds_dir)) {
   dir.create(rds_dir, recursive = TRUE)
   cat("Created directory: ", rds_dir, "\n")

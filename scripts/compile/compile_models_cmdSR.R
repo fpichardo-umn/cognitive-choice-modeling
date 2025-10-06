@@ -17,6 +17,8 @@ option_list <- list(
               help="Model type(s) to compile: fit, postpc, prepc, or all [default= %default]"),
   make_option(c("-k", "--task"), type="character", default=NULL,
               help="Task for model [default= %default]"),
+  make_option(c("-o", "--model_status"), type="character", default=NULL,
+              help="Required: validation status of model [default= %default]"),
   make_option(c("-m", "--models"), type="character", default="all",
               help="Primary string to match model names, or 'all' [default= %default]"),
   make_option(c("-s", "--secondary"), type="character", default=NULL,
@@ -35,6 +37,11 @@ option_list <- list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+# Get task-specific directories
+if (is.null(opt$model_status)) {
+  stop("Validation status of model is required using the -o/--model_status option.")
+}
+
 # Load helper functions
 source(file.path(here::here(), "scripts", "helpers", "helper_dirs.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
@@ -47,8 +54,8 @@ if (is.null(opt$task)) {
 } else {
   # Task-specific directories
   MODELS_DIR <- file.path(PROJ_DIR, "models", opt$task)
-  MODELS_TXT_DIR <- file.path(MODELS_DIR, "txt")
-  MODELS_BIN_DIR <- file.path(MODELS_DIR, "bin")
+  MODELS_TXT_DIR <- file.path(MODELS_DIR, opt$model_status, "txt")
+  MODELS_BIN_DIR <- file.path(MODELS_DIR, opt$model_status, "bin")
 }
 
 # Function to compile Stan model

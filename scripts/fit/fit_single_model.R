@@ -133,7 +133,7 @@ if (opt$init) {
 }
 
 # Use output directory from helper functions
-output_dir <- file.path(get_rds_dir(task, opt$type), opt$source)
+output_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
 
 # Create BIDS-style naming for outputs
 additional_tags <- list()
@@ -151,7 +151,7 @@ fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt
                           model_params = model_params, dry_run = opt$dry_run, checkpoint_interval = opt$check_iter,
                           output_dir = output_dir,
                           subid = opt$subid, index = opt$index, init_params = model_init_vals,
-                          model_status = opt$model_status)
+                          model_status = opt$model_status, cohort_sub_dir = FALSE)
 
 if (!opt$dry_run) {
   cat("Model fitted and saved successfully.\n")

@@ -14,10 +14,6 @@ get_models_dir <- function(task) {
   file.path(here::here(), "models", task)
 }
 
-get_rds_dir <- function(task, model_type = "fit") {
-  file.path(get_data_dir(task), "rds", model_type)
-}
-
 ## Functions
 # Fit function
 fit_stan_model <- function(stanmodel_arg, data_list, n_warmup = 1000, n_iter = 10000, n_chains = 2, adapt_delta = 0.95, max_treedepth = 12, init_opt = "random", parallel = TRUE) {

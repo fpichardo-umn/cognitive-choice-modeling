@@ -86,7 +86,7 @@ if (!is.null(opt$exclude_file)) {
 # Construct fit file path if not provided
 if (is.null(opt$fit_file)) {
   # Get RDS directory for fits
-  rds_dir <- get_rds_dir(opt$task, "fit")
+  rds_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
   fit_dir <- if (!is.null(opt$cohort)) file.path(rds_dir, opt$cohort) else rds_dir
   ensure_dir_exists(fit_dir)
   

@@ -254,7 +254,7 @@ if (is.null(opt$task) || is.null(opt$model) || is.null(opt$source)) {
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
 
 if (is.null(opt$input_dir)) {
-  opt$input_dir <- file.path(get_rds_dir(opt$task, opt$model_type), opt$source)
+  opt$input_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
 }
 if (is.null(opt$output_dir)) {
   opt$output_dir <- opt$input_dir

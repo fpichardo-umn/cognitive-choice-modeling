@@ -46,8 +46,10 @@ standardize_task_data <- function(data, task) {
     std_data <- data %>%
       dplyr::mutate(
         subjID = as.factor(sid),
-        trial = as.integer(trial),
-        choice = as.integer(v_response - 1),  # Convert from 1/2 to 0/1 (0=pass, 1=play)
+        trial = as.integer(
+          ifelse("trial" %in% names(data), trial, v_cardoffered)
+        ),
+        choice = as.integer(v_response) - 1,  # Convert from 1/2 to 0/1 (0=pass, 1=play)
         deck = as.integer(v_targetdeck),
         outcome = as.numeric(v_netchange),
         RT = as.numeric(latency) / 1000      # Convert to seconds

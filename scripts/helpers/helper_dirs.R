@@ -67,10 +67,11 @@ get_task_output_dir <- function(task) {
 # ===== FITS =====
 #' Get fits output directory
 #' @param task Task name
+#' @param type Type of fit
 #' @param cohort Cohort/data source (optional)
 #' @param session Session (optional)
-get_fits_output_dir <- function(task, cohort = NULL, session = NULL) {
-  base_dir <- file.path(get_task_output_dir(task), "fits")
+get_fits_output_dir <- function(task, type, cohort = NULL, session = NULL) {
+  base_dir <- file.path(get_task_output_dir(task), "fits", type)
   
   if (!is.null(cohort)) {
     base_dir <- file.path(base_dir, cohort)
@@ -155,7 +156,6 @@ ensure_dir_exists <- function(path) {
     dir.create(path, recursive = TRUE)
     return(TRUE)  # Directory was created
   }
-  return(FALSE)   # Directory already existed
 }
 
 #' Get model file path with status directory support
@@ -165,10 +165,12 @@ ensure_dir_exists <- function(path) {
 #' @param model_type Model type (fit/postpc/prepc)
 #' @param status Model status (NULL for auto-detect, or specific status)
 #' @param search_order Order to search statuses (default: canonical first)
+#' @param model_stan Model as binary or text (bin, txt; default: bin)
 #' @return Full path to compiled model file
 get_model_file_path <- function(task, group_type, model_name, model_type,
                                 status = NULL,
-                                search_order = c("canonical", "experimental", "working")) {
+                                search_order = c("canonical", "experimental", "working"),
+                                model_stan = "bin") {
   
   # Generate the BIDS filename
   filename <- generate_bids_filename(
@@ -185,7 +187,7 @@ get_model_file_path <- function(task, group_type, model_name, model_type,
     model_path <- file.path(
       get_models_dir(task),
       status,
-      "bin",
+      model_stan,
       model_type,
       filename
     )

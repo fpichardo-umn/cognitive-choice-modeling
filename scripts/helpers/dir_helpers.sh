@@ -43,8 +43,8 @@ get_bin_dir() {
 get_rds_dir() {
   local task=$1
   local model_type=${2:-fit}
-  local data_dir=$(get_data_dir "$task")
-  echo "${data_dir}/rds/${model_type}"
+  local output_dir=$(get_output_dir "$task")
+  echo "${output_dir}/fits/${model_type}"
 }
 
 # Get the empirical Bayes directory for a specific task

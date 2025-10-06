@@ -6,6 +6,7 @@ suppressPackageStartupMessages({
 # ---- Common data requirements ----
 data_types <- list(
   basic_igt_mod = c("T", "choice", "shown", "outcome"),
+  basic_hier_igt_mod = c("N", "T", "choice", "shown", "outcome"),
   basic_igt = c("T", "choice", "wins", "losses"),
   basic_hier_igt = c("N", "T", "choice", "wins", "losses"),
   pattern = c("pattern_strength"),
@@ -210,6 +211,7 @@ get_model_defaults <- function(task = NULL) {
   )
 }
 
+# ---- IGT ----
 get_igt_defaults = function() {
   # Build the model configurations
   models <- list()
@@ -602,7 +604,8 @@ get_igt_defaults = function() {
   
   return(models)
 }
-  
+
+# ---- IGT MOD ----
 get_igt_mod_defaults = function() {
   
   # Build the model configurations
@@ -650,6 +653,13 @@ get_igt_mod_defaults = function() {
   # Expected Value models
   models[["igt_mod_sing_ev"]] <- list(
     data = data_types$basic_igt_mod,
+    params = param_sets$ev,
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_mod_hier_ev"]] <- list(
+    data = data_types$basic_hier_igt_mod,
     params = param_sets$ev,
     non_pr_params = NULL,
     exclude_params = NULL
