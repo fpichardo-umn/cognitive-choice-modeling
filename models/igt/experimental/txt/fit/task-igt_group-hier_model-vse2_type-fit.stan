@@ -46,6 +46,7 @@ functions {
 data {
   int<lower=1> N;                              // Number of subjects
   int<lower=1> T;                              // Maximum number of trials
+  array[N] int<lower=1> sid;      	       // Subject IDs
   array[N] int<lower=1> Tsubj;                 // Number of trials for each subject
   array[N, T] int<lower=1, upper=4> choice;   // Choices made at each trial (1-4)
   array[N, T] real<lower=0> wins;             // Win amount at each trial

@@ -1,6 +1,7 @@
 
 data {
-  int<lower=1> 		     T;   // Number of trials
+  int<lower=1> 		     sid;     // Subject ID
+  int<lower=1> 		     T;       // Number of trials
   int<lower=0>  	     Nplay;   // Number of play trials
   int<lower=0>  	     Npass;   // Number of pass trials
   real<lower=0> 	     minRT;   // Minimum RT + small value to restrict tau

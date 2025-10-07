@@ -42,6 +42,7 @@ functions {
 }
 
 data {
+  int<lower=1> 			 sid;     // Subject ID
   int<lower=1> 			 T; 	  // Number of trials
   real<lower=0> 		 minRT;   // Minimum RT + small value to restrict tau
   real 				 RTbound; // Lower bound or RT across all subjects (e.g., 0.1 second)

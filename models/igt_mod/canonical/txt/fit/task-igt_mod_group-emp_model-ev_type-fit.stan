@@ -35,11 +35,11 @@ functions {
 }
 
 data {
-  int<lower=1> sid;  // Subject ID
-  int<lower=1> 			 T; 	  // Number of trials
-  array[T] int<lower=0, upper=1> choice;  // Binary choices made at each trial
-  array[T] int<lower=0, upper=4> shown;   // Deck shown at each trial
-  array[T] real 		 outcome; // Outcome at each trial
+  int<lower=1> 			 sid;      // Subject ID
+  int<lower=1> 			 T; 	   // Number of trials
+  array[T] int<lower=0, upper=1> choice;   // Binary choices made at each trial
+  array[T] int<lower=0, upper=4> shown;    // Deck shown at each trial
+  array[T] real 		 outcome;  // Outcome at each trial
   vector[4] 	    	    	 pr_mu;    // Informative priors
   vector[4] 	    	    	 pr_sigma; // Informative priors
 }

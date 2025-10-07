@@ -45,6 +45,7 @@ functions {
 }
 
 data {
+  int<lower=1> sid;     		 // Subject ID
   int<lower=1> T;                        // Number of trials
   array[T] int<lower=1, upper=4> choice; // Choices made at each trial
   array[T] real<lower=0> wins;           // Win amount at each trial

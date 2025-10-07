@@ -43,6 +43,7 @@ functions {
 data {
   int<lower=1> 			    N;	      // Number of subjects
   int<lower=1> 			    T; 	      // Max overall number of trials
+  array[N] int<lower=1> 	    sid;      // Subject IDs
   array[N] int<lower=1> 	    Tsubj;    // Number of trials for a subject
   real<lower=0> 		    RTbound;  // Lower bound or RT across all (e.g., 0.1 second)
   array[N] real 		    minRT;    // Minimum RT for each sub

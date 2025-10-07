@@ -35,7 +35,7 @@ functions {
 }
 
 data {
-  int<lower=1> sid;  // Subject ID
+  int<lower=1> 			 sid;     // Subject ID
   int<lower=1> 			 T; 	  // Number of trials
   array[T] int<lower=0, upper=1> choice;  // Binary choices made at each trial
   array[T] int<lower=0, upper=4> shown;   // Deck shown at each trial

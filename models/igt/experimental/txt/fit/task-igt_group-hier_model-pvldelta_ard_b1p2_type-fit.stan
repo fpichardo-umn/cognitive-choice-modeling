@@ -118,6 +118,7 @@ data {
   // Group-level data
   int<lower=1> N;                          // Number of subjects
   int<lower=1> T;                          // Maximum number of trials
+  array[N] int<lower=1> sid;      	   // Subject IDs
   array[N] int<lower=1> Tsubj;             // Number of trials for each subject
 
   // Subject-level data (now indexed by subject)
