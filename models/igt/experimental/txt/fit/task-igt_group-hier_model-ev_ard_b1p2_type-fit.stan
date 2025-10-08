@@ -87,9 +87,11 @@ functions {
       drift_rates[11] = urgency + wd * (local_ev[4] - local_ev[2]) + ws * (local_ev[4] + local_ev[2]);
       drift_rates[12] = urgency + wd * (local_ev[4] - local_ev[3]) + ws * (local_ev[4] + local_ev[3]);
 
-      // Add likelihood for this trial's RT and choice
+      // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
       drift_rates = drift_rates * sensitivity;
-      log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      if (RT[t] != 999) {
+        log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      }
 
       // Compute utility and update expected value
       curUtil = wgt_rew * wins[t] - wgt_pun * abs(losses[t]);

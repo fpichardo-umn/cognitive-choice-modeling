@@ -31,7 +31,7 @@ option_list <- list(
               help="RT minimum bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=2500, 
               help="RT maximum bound in milliseconds"),
-  make_option(c("--rt_method"), type="character", default="remove", 
+  make_option(c("--rt_method"), type="character", default="mark", 
               help="RT method"),
   make_option(c("--n_warmup"), type="integer", default=3000, 
               help="Number of warmup iterations"),
@@ -47,6 +47,7 @@ option_list <- list(
               help="Iteration interval for checkpoint runs"),
   make_option(c("--seed"), type="integer", default=29518, 
               help="Random seed"),
+  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
   make_option(c("--priors_file"), type="character", default=NULL, 
               help="Path to priors CSV file (optional)"),
   make_option(c("-p", "--parallel"), action="store_true", default=FALSE, 
@@ -231,8 +232,19 @@ fit_single_subject <- function(subid, subject_data, full_model_name, data_to_ext
     RTbound_reject_min_ms = opt$RTbound_min_ms + 20,
     RTbound_reject_max_ms = opt$RTbound_max_ms, 
     rt_method = opt$rt_method,
+    minrt_ep_ms = 0, min_valid_rt_pct = opt$min_valid_rt_pct
+  )
+  
+  # Collect data filtering info
+  data_filt = c(
+    n_trials = opt$n_trials, 
+    RTbound_min_ms = opt$RTbound_min_ms, 
+    RTbound_max_ms = opt$RTbound_max_ms,
+    RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
+    RTbound_reject_max_ms = opt$RTbound_max_ms, 
+    rt_method = opt$rt_method, 
     minrt_ep_ms = 0,
-    SID = TRUE
+    min_valid_rt_pct = opt$min_valid_rt_pct
   )
   
   # Handle entropy data
@@ -277,11 +289,10 @@ fit_single_subject <- function(subid, subject_data, full_model_name, data_to_ext
       output_dir = output_dir,
       emp_bayes = TRUE,
       informative_priors = priors_list,
-      subid = subid,
-      index = NULL,
       init_params = NULL,
       model_status = opt$model_status,
-      cohort_sub_dir = FALSE
+      cohort_sub_dir = FALSE,
+      data_filt_list = data_filt
     )
     
     log_message(sprintf("Successfully fitted subject: %s", subid))

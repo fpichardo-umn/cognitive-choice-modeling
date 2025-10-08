@@ -22,13 +22,15 @@ functions {
       real curUtil = ((outcome[t] > 0 ? wgt_rew : wgt_pun)) * outcome[t] * choice[t];
       local_ev[curDeck] += (curUtil - local_ev[curDeck]) * update * choice[t];
       
-      // Store indices for play and pass
-      if (choice[t] == 1) {
-        play_count += 1;
-        play_indices[play_count] = t;
-      } else {
-        pass_count += 1;
-        pass_indices[pass_count] = t;
+      // Store indices for play and pass - ONLY for valid RTs
+      if (RT[t] != 999) {
+        if (choice[t] == 1) {
+          play_count += 1;
+          play_indices[play_count] = t;
+        } else {
+          pass_count += 1;
+          pass_indices[pass_count] = t;
+        }
       }
     }
     
@@ -51,6 +53,8 @@ data {
   array[N, T] int<lower=0, upper=1> choice;   // Binary choices made at each trial
   array[N, T] int<lower=0, upper=4> shown;    // Deck shown at each trial
   array[N, T] real 		    outcome;  // Outcome at each trial
+  vector[7] 	    	    	    pr_mu;    // Informative priors
+  vector[7] 	    	    	    pr_sigma; // Informative priors
 }
 
 transformed data{
@@ -60,10 +64,6 @@ transformed data{
 }
 
 parameters {
-  // Hyper-parameters
-  vector[7] 	     mu_pr;
-  vector<lower=0>[7] sigma;
-
   // Subject-level raw parameters
   vector[N] boundary_pr;  // Boundary separation (a)
   vector[N] tau_pr; 	  // Non-decision time (tau)
@@ -83,28 +83,24 @@ transformed parameters {
   vector<lower=0, upper=1>[N] 		wgt_rew;
   vector<lower=0, upper=1>[N] 		update;
 
-  boundary  = exp(inv_logit(mu_pr[1] + sigma[1]*boundary_pr) * 5 - 2); // Range: -2,3 -> 0.135,20.08
-  tau       = inv_logit(mu_pr[2] + sigma[2] * tau_pr) .* (minRTdiff - buffer) + RTbound;
-  beta      = inv_logit(to_vector(mu_pr[3] + sigma[3] * beta_pr));
-  drift_con = inv_logit(to_vector(mu_pr[4] + sigma[4] * drift_con_pr)) * 4 - 2;
-  wgt_pun   = inv_logit(to_vector(mu_pr[5] + sigma[5] * wgt_pun_pr));
-  wgt_rew   = inv_logit(to_vector(mu_pr[6] + sigma[6] * wgt_rew_pr));
-  update    = inv_logit(to_vector(mu_pr[7] + sigma[7] * update_pr));
+  boundary  = exp(inv_logit(boundary_pr) * 5 - 2); // Range: -2,3 -> 0.135,20.08
+  tau       = inv_logit(tau_pr) .* (minRTdiff - buffer) + RTbound;
+  beta      = inv_logit(to_vector(beta_pr));
+  drift_con = inv_logit(to_vector(drift_con_pr)) * 4 - 2;
+  wgt_pun   = inv_logit(to_vector(wgt_pun_pr));
+  wgt_rew   = inv_logit(to_vector(wgt_rew_pr));
+  update    = inv_logit(to_vector(update_pr));
 }
 
 model {
-  // Hyperparameters
-  to_vector(mu_pr) ~ normal(0, 2.5);
-  to_vector(sigma) ~ normal(0, 2);
-
   // Priors
-  to_vector(boundary_pr)  ~ normal(0, 2);
-  to_vector(tau_pr)       ~ normal(0, 2);
-  to_vector(beta_pr)      ~ normal(0, 2);
-  to_vector(drift_con_pr) ~ normal(0, 2);
-  to_vector(wgt_pun_pr)   ~ normal(0, 2);
-  to_vector(wgt_rew_pr)   ~ normal(0, 2);
-  to_vector(update_pr)    ~ normal(0, 2);
+  to_vector(boundary_pr)  ~ normal(pr_mu[1], pr_sigma[1]);
+  to_vector(tau_pr)       ~ normal(pr_mu[2], pr_sigma[2]);
+  to_vector(beta_pr)      ~ normal(pr_mu[3], pr_sigma[3]);
+  to_vector(drift_con_pr) ~ normal(pr_mu[4], pr_sigma[4]);
+  to_vector(wgt_pun_pr)   ~ normal(pr_mu[5], pr_sigma[5]);
+  to_vector(wgt_rew_pr)   ~ normal(pr_mu[6], pr_sigma[6]);
+  to_vector(update_pr)    ~ normal(pr_mu[7], pr_sigma[7]);
 
   // Initial subject-level deck expectations
   array[N] vector[4] ev;
@@ -125,32 +121,5 @@ model {
 			sensitivity, update[n], wgt_pun[n],
 			wgt_rew[n], boundary[n], tau[n], beta[n]
 			);
-  }
-}
-
-generated quantities {
-  // Init
-  real<lower=RTbound, upper=RTmax> mu_tau;
-  real<lower=1e-6>  		   mu_boundary;
-  real<lower=0, upper=1> 	   mu_beta;
-  real<lower=-2, upper=2> 	   mu_drift_con;
-  real<lower=0, upper=1> 	   mu_wgt_pun;
-  real<lower=0, upper=1> 	   mu_wgt_rew;
-  real<lower=0, upper=1> 	   mu_update;
-
-  {
-    real RTlowerbound = (mean(minRT) - RTbound) + RTbound;
-
-    // Pre-transformed mu
-    vector[7] mu_transformed = inv_logit(mu_pr);
-
-    // Compute interpretable group-level parameters
-    mu_boundary = exp(mu_transformed[1] * 10 - 5);
-    mu_tau 	 = mu_transformed[2] * RTlowerbound;
-    mu_beta	 = mu_transformed[3];
-    mu_drift_con = mu_transformed[4] * 4 - 2;
-    mu_wgt_pun   = mu_transformed[5];
-    mu_wgt_rew   = mu_transformed[6];
-    mu_update    = mu_transformed[7];
   }
 }

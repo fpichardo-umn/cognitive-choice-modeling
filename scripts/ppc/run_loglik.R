@@ -28,9 +28,9 @@ option_list = list(
               help="Information criterion method: loo or waic"),
   make_option(c("-r", "--rt_method"), type="character", default="remove", 
               help="RT handling method: all, remove, force, adaptive"),
-  make_option(c("--RTbound_min_ms"), type="numeric", default=100, 
+  make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
               help="RT lower bound in milliseconds"),
-  make_option(c("--RTbound_max_ms"), type="numeric", default=2500, 
+  make_option(c("--RTbound_max_ms"), type="numeric", default=3900, 
               help="RT upper bound in milliseconds")
 )
 

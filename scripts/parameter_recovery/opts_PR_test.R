@@ -1,4 +1,4 @@
-opt_model = "ev"
+opt_model = "ev_ddm"
 # =======
 #opt_model = "orl"
 
@@ -12,7 +12,7 @@ opt_group2 = "batch_001"
 
 # Fit
 opt <- list(
-  subjects = "1-30",
+  subjects = "1-3",
   subs_file = "subs_list_full_orig_sort.txt",
   model = opt_model,
   type = "fit",
@@ -27,7 +27,7 @@ opt <- list(
   n_trials = 100,
   RTbound_min_ms = 50,
   RTbound_max_ms = 25000,
-  rt_method = "remove",
+  rt_method = "mark",
   n_warmup = 3000,
   n_iter = 5000,
   n_chains = 4,
@@ -36,7 +36,8 @@ opt <- list(
   seed = 29518,
   dry_run = FALSE,
   check_iter = 20000,
-  init = FALSE
+  init = FALSE,
+  min_valid_rt_pct = 0.7
 )
 
 # Gen Params

@@ -31,7 +31,7 @@ option_list <- list(
               help="RT minimum bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=2500, 
               help="RT maximum bound in milliseconds"),
-  make_option(c("--rt_method"), type="character", default="remove", 
+  make_option(c("--rt_method"), type="character", default="mark", 
               help="RT method"),
   make_option(c("--n_warmup"), type="integer", default=3000, 
               help="Number of warmup iterations"),
@@ -45,6 +45,7 @@ option_list <- list(
               help="Max tree depth"),
   make_option(c("--seed"), type="integer", default=29518, 
               help="Set seed"),
+  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
   make_option(c("--check_iter"), type="integer", default=5000, 
               help="Iteration interval for checkpoint runs"),
   make_option(c("--hier_subs_file"), type="character", default=NULL, 
@@ -164,8 +165,19 @@ if (!opt$dry_run) {
     RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
     RTbound_reject_max_ms = opt$RTbound_max_ms, 
     rt_method = opt$rt_method, 
+    minrt_ep_ms = 0, min_valid_rt_pct = opt$min_valid_rt_pct
+  )
+  
+  # Collect data filtering info
+  data_filt = c(
+    n_trials = opt$n_trials, 
+    RTbound_min_ms = opt$RTbound_min_ms, 
+    RTbound_max_ms = opt$RTbound_max_ms,
+    RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
+    RTbound_reject_max_ms = opt$RTbound_max_ms, 
+    rt_method = opt$rt_method, 
     minrt_ep_ms = 0,
-    SID = FALSE
+    min_valid_rt_pct = opt$min_valid_rt_pct
   )
   
   # Handle entropy data if present
@@ -222,7 +234,7 @@ fit <- fit_and_save_model(
   init_params = NULL,
   cohort_sub_dir = FALSE,
   model_status = opt$model_status,
-  subject_list = found_subjects  # Save subject list in fit object
+  data_filt_list = data_filt
 )
 
 if (!opt$dry_run) {

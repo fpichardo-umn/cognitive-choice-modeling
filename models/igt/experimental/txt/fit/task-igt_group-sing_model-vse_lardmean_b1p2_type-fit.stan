@@ -58,25 +58,28 @@ functions {
       combined_means_others = (other_mask * combined_value) / 3.0;
       drift_rates = to_vector(log1p_exp(urgency + sensitivity * (combined_value - combined_means_others)));
       
-      // Compute PDF for chosen option
-      pdf = race_pdf_fast(rt_adjs[t], boundaries[t], drift_rates[chosen], sqrt_rts[t], inv_rts[t]);
-      
-      // Get survival probabilities for non-chosen options only
-      idx = 1;
-      for (ii in 1:4) {
-        if (ii != chosen){
-          non_chosen_indices[idx] = ii;
-          idx = idx + 1;
-        } 
-      }
-      non_chosen_drifts = drift_rates[non_chosen_indices];
-      
-      // Compute survival only for the 3 non-chosen options
-      survival_prob = race_survival_vectorized(rep_vector(rt_adjs[t], 3), boundaries[t], 
+      // Skip likelihood calculation for marked RTs
+      if (rt_adjs[t] != 999) {
+        // Compute PDF for chosen option
+        pdf = race_pdf_fast(rt_adjs[t], boundaries[t], drift_rates[chosen], sqrt_rts[t], inv_rts[t]);
+        
+        // Get survival probabilities for non-chosen options only
+        idx = 1;
+        for (ii in 1:4) {
+          if (ii != chosen){
+            non_chosen_indices[idx] = ii;
+            idx = idx + 1;
+          } 
+        }
+        non_chosen_drifts = drift_rates[non_chosen_indices];
+        
+        // Compute survival only for the 3 non-chosen options
+        survival_prob = race_survival_vectorized(rep_vector(rt_adjs[t], 3), boundaries[t], 
                                                non_chosen_drifts, rep_vector(inv_sqrt_rts[t], 3));
-      
-      // Sum log survival probabilities directly      
-      log_lik += log(fmax(pdf, 1e-10)) + sum(log1m(survival_prob));
+        
+        // Sum log survival probabilities directly      
+        log_lik += log(fmax(pdf, 1e-10)) + sum(log1m(survival_prob));
+      }
     
       // Update expected values with VSE learning
       // Calculate utility (using value sensitivity for wins and losses)
@@ -201,6 +204,16 @@ model {
   vector[T] sqrt_rts = sqrt(rt_adjs);
   vector[T] inv_sqrt_rts = inv(sqrt_rts);
   vector[T] inv_rts = inv(rt_adjs);
+
+  for (t in 1:T) {
+    if (RT[t] == 999) {
+      // Mark these as invalid so we skip them in likelihood
+      rt_adjs[t] = 999;
+      sqrt_rts[t] = 0;      // Doesn't matter, won't be used
+      inv_sqrt_rts[t] = 0;  // Doesn't matter, won't be used
+      inv_rts[t] = 0;       // Doesn't matter, won't be used
+    }
+  }
   
   // Combined model computation
   target += igt_race_model_lp(other_mask, choice, wins, abs(losses),

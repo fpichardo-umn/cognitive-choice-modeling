@@ -29,7 +29,7 @@ option_list = list(
   make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=2500, help="RT max bound in milliseconds"),
-  make_option(c("--rt_method"), type="character", default="remove", help="RT method"),
+  make_option(c("--rt_method"), type="character", default="mark", help="RT method"),
   make_option(c("--n_warmup"), type="integer", default=3000, help="Number of warmup iterations"),
   make_option(c("--n_iter"), type="integer", default=15000, help="Number of iterations"),
   make_option(c("--n_chains"), type="integer", default=4, help="Number of chains"),
@@ -38,7 +38,8 @@ option_list = list(
   make_option(c("--seed"), type="integer", default=29518, help="Set seed. Default: 29518"),
   make_option(c("--dry_run"), action="store_true", default=FALSE, help="Perform a dry run"),
   make_option(c("--check_iter"), type="integer", default=1000, help="Iteration interval for checkpoint runs. Default: 1000"),
-  make_option(c("--init"), action="store_true", default=FALSE, help="Initialize values to 0")
+  make_option(c("--init"), action="store_true", default=FALSE, help="Initialize values to 0"),
+  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -109,8 +110,20 @@ if (!opt$dry_run) {
                                    n_trials = opt$n_trials, 
                                    RTbound_min_ms = opt$RTbound_min_ms, RTbound_max_ms = opt$RTbound_max_ms,
                                    RTbound_reject_min_ms = opt$RTbound_min_ms + 20, RTbound_reject_max_ms = opt$RTbound_max_ms, 
-                                   rt_method = opt$rt_method, minrt_ep_ms = 0,
-                                   SID = TRUE)
+                                   rt_method = opt$rt_method, minrt_ep_ms = 0, 
+                                   min_valid_rt_pct = opt$min_valid_rt_pct)
+  
+  # Collect data filtering info
+  data_filt = c(
+    n_trials = opt$n_trials, 
+    RTbound_min_ms = opt$RTbound_min_ms, 
+    RTbound_max_ms = opt$RTbound_max_ms,
+    RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
+    RTbound_reject_max_ms = opt$RTbound_max_ms, 
+    rt_method = opt$rt_method, 
+    minrt_ep_ms = 0,
+    min_valid_rt_pct = opt$min_valid_rt_pct
+  )
   
   if (sum(grepl("entropy", names(data_list))) > 0){
     # Convert the matrices to vectors
@@ -149,9 +162,9 @@ fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt
                           n_warmup = opt$n_warmup, n_iter = opt$n_iter, n_chains = opt$n_chains,
                           adapt_delta = opt$adapt_delta, max_treedepth = opt$max_treedepth,
                           model_params = model_params, dry_run = opt$dry_run, checkpoint_interval = opt$check_iter,
-                          output_dir = output_dir,
-                          subid = opt$subid, index = opt$index, init_params = model_init_vals,
-                          model_status = opt$model_status, cohort_sub_dir = FALSE)
+                          output_dir = output_dir, index = opt$index, init_params = model_init_vals,
+                          model_status = opt$model_status, cohort_sub_dir = FALSE,
+                          data_filt_list = data_filt)
 
 if (!opt$dry_run) {
   cat("Model fitted and saved successfully.\n")

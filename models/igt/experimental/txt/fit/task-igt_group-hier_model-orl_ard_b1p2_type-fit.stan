@@ -117,8 +117,10 @@ functions {
       drift_rates[11] = urgency + wd * (util[4] - util[2]) + ws * (util[4] + util[2]);
       drift_rates[12] = urgency + wd * (util[4] - util[3]) + ws * (util[4] + util[3]);
       
-      // Add likelihood for this trial's RT and choice using Win-All rule
-      log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
+      if (RT[t] != 999) {
+        log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      }
       
       // ORL learning: Prediction errors for value and frequency
       PEval = wins[t] - losses[t] - local_ev[choice[t]];

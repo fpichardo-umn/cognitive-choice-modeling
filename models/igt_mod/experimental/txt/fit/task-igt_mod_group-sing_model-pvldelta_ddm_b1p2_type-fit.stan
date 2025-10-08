@@ -48,13 +48,15 @@ functions {
       // Update expected values
       local_ev[curDeck] += update * (curUtil - local_ev[curDeck]) * choice[t];
 
-      // Store indices for play and pass
-      if (choice[t] == 1) {
-        play_count += 1;
-        play_indices[play_count] = t;
-      } else {
-        pass_count += 1;
-        pass_indices[pass_count] = t;
+      // Store indices for play and pass - ONLY for valid RTs
+      if (RT[t] != 999) {
+        if (choice[t] == 1) {
+          play_count += 1;
+          play_indices[play_count] = t;
+        } else {
+          pass_count += 1;
+          pass_indices[pass_count] = t;
+        }
       }
     }
 

@@ -10,8 +10,7 @@ data_types <- list(
   basic_igt = c("T", "choice", "wins", "losses"),
   basic_hier_igt = c("N", "T", "choice", "wins", "losses"),
   pattern = c("pattern_strength"),
-  with_rt_migt = c("T", "RTbound", "minRT", "RT", "choice", "shown", "outcome"),
-  with_rt_igt = c("T", "RTbound", "minRT", "RT", "choice"),
+  with_rt_igt = c("T", "RTbound", "minRT", "RT"),
   ddm_specific = c("Nplay", "Npass", "T", "RTbound", "minRT", "RTpass", "RTplay")
 )
 
@@ -635,14 +634,14 @@ get_igt_mod_defaults = function() {
   )
   
   models[["igt_mod_sing_dualp_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = data_types$with_rt_igt,
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$dual), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_dualp_bbup_ddm_b1p2"]] <- list(
-    data = c(data_types$with_rt_migt, data_types$pattern),
+    data = c(data_types$with_rt_igt, data_types$pattern),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$dual_bbup), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -803,7 +802,15 @@ get_igt_mod_defaults = function() {
   
   # Expected Value models with DDM
   models[["igt_mod_sing_ev_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
+    params = setdiff(c(param_sets$ddm_drift, param_sets$ev), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  
+  models[["igt_mod_hier_ev_ddm"]] <- list(
+    data = c(data_types$basic_hier_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$ev), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -811,28 +818,28 @@ get_igt_mod_defaults = function() {
   
   # PVL models with DDM
   models[["igt_mod_sing_pvldelta_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvldecay_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvlboth_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvlbothsd_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -840,56 +847,56 @@ get_igt_mod_defaults = function() {
   
   # VPP models with DDM
   models[["igt_mod_sing_vppdeltag_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_delta, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppdeltagd_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_delta, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppdecayg_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_decay, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppdecaygd_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_decay, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppbothg_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppbothgd_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppbothsdg_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_vppbothsdgd_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both, param_sets$vpp_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -905,21 +912,21 @@ get_igt_mod_defaults = function() {
   
   # PUL models with DDM
   models[["igt_mod_sing_puldelta_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pul_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_puldecay_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pul_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pulboth_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pul_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -927,21 +934,21 @@ get_igt_mod_defaults = function() {
   
   # NNL models with DDM
   models[["igt_mod_sing_nnldelta_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$nnl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnldecay_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$nnl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnlboth_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$nnl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -949,21 +956,21 @@ get_igt_mod_defaults = function() {
   
   # NNL models with B1B DDM variant
   models[["igt_mod_sing_nnldelta_ddm_b1b"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1b, param_sets$nnl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnldecay_ddm_b1b"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1b, param_sets$nnl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnlboth_ddm_b1b"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1b, param_sets$nnl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -971,21 +978,21 @@ get_igt_mod_defaults = function() {
   
   # PVL models with B1B DDM variant
   models[["igt_mod_sing_pvldelta_ddm_b1b"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1b, param_sets$pvl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvldecay_ddm_b1b"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1b, param_sets$pvl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvlboth_ddm_b1b"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1b, param_sets$pvl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -993,21 +1000,21 @@ get_igt_mod_defaults = function() {
   
   # NNL models with B1P2 DDM
   models[["igt_mod_sing_nnldelta_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$nnl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnldecay_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$nnl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnlboth_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$nnl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -1015,21 +1022,21 @@ get_igt_mod_defaults = function() {
   
   # pul models with B1P2 DDM
   models[["igt_mod_sing_puldelta_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$pul_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_puldecay_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$pul_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pulboth_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$pul_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -1037,21 +1044,21 @@ get_igt_mod_defaults = function() {
   
   # pvl models with B1P2 DDM
   models[["igt_mod_sing_pvldelta_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$pvl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvldecay_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$pvl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvlboth_ddm_b1p2"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$pvl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -1121,21 +1128,21 @@ get_igt_mod_defaults = function() {
   
   # Add NNL tic DDM variants
   models[["igt_mod_sing_nnlboth_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$nnl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnldecay_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$nnl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_nnldelta_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$nnl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -1143,14 +1150,14 @@ get_igt_mod_defaults = function() {
   
   # Add PUL tic DDM variants
   models[["igt_mod_sing_pulboth_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pul_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_puldecay_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pul_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
@@ -1158,28 +1165,28 @@ get_igt_mod_defaults = function() {
   
   # Add PVL tic DDM variants
   models[["igt_mod_sing_pvlboth_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_both), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvldecay_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_decay), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_pvldelta_tic_ddm"]] <- list(
-    data = data_types$with_rt_migt,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_mod_sing_dualp_bbu_ddm"]] <- list(
-    data = data_types$basic_igt_mod,
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$pvl_delta), "con"),
     non_pr_params = NULL,
     exclude_params = NULL

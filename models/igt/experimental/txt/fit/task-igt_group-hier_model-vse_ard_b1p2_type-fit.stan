@@ -107,8 +107,10 @@ functions {
       drift_rates[11] = urgency + wd * (combined_value[4] - combined_value[2]) + ws * (combined_value[4] + combined_value[2]);
       drift_rates[12] = urgency + wd * (combined_value[4] - combined_value[3]) + ws * (combined_value[4] + combined_value[3]);
       
-      // Add likelihood for this trial's RT and choice using Win-All rule
-      log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
+      if (RT[t] != 999) {
+        log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      }
       
       // VSE utility function with power transformation and loss aversion
       curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);

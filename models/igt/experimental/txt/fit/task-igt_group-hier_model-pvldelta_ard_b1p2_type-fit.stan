@@ -100,8 +100,10 @@ functions {
       drift_rates[12] = urgency - wd * diff34 + ws * sum34; // Uses -diff34
       // --- OPTIMIZATION END ---
       
-      // Add likelihood for this trial's RT and choice using Win-All rule
-      log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
+      if (RT[t] != 999) {
+        log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      }
       
       // PVL utility function with power transformation and loss aversion
       curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);

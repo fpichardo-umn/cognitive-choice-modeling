@@ -32,7 +32,7 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                ))
                              },
                              
-                             simulate_choices = function(trials, parameters) {
+                             simulate_choices = function(trials, parameters, task_params) {
                                if (is.data.frame(trials)) {
                                  n_trials <- nrow(trials)
                                  deck_sequence <- trials$deck_shown
@@ -47,6 +47,9 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                RTs <- vector("numeric", n_trials)
                                ev_history <- matrix(0, nrow = n_trials, ncol = 4)
                                outcomes <- vector("numeric", n_trials)
+                               
+                               # Task info
+                               RTbound_max = task_params$RTbound_max
                                
                                for(t in 1:n_trials) {
                                  shown_deck <- as.numeric(deck_sequence[t])
@@ -84,15 +87,23 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                                         z = parameters$beta * parameters$boundary, # Starting point
                                                         v = drift_rate)
                                    
-                                   # Determine choice based on which boundary was hit
-                                   if (ddm_result$response == "upper") {
-                                     choices[t] <- 1  # Play decision
-                                   } else {
-                                     choices[t] <- 0  # Pass decision
-                                   }
-                                   
                                    # Record the RT
                                    RTs[t] <- ddm_result$rt
+                                   
+                                   # Apply timeout constraint
+                                   if(RTs[t] > RTbound_max) {
+                                     # Timeout - force pass decision
+                                     choices[t] <- 0
+                                     RTs[t] <- RTbound_max  # Record the timeout value
+                                   } else {
+                                     # Determine choice based on which boundary was hit
+                                     if (ddm_result$response == "upper") {
+                                       choices[t] <- 1  # Play decision
+                                     } else {
+                                       choices[t] <- 0  # Pass decision
+                                     }
+                                   }
+                                   
                                  }
                                  
                                  # Update EV if deck was played
@@ -137,11 +148,16 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                self$ev <- rep(0, 4)
                                
                              },
-                             calculate_loglik = function(trials, choices, RTs, outcomes, parameters) {
+                             calculate_loglik = function(trials, choices, RTs, outcomes, parameters, 
+                                                         task_params) {
                                n_trials <- length(choices)
                                trial_loglik <- numeric(n_trials)
                                
-                               # Reset model state at the beginning of likelihood calculation
+                               # Task parameters
+                               RTbound_min = task_params$RTbound_min
+                               RTbound_max = task_params$RTbound_max
+                               
+                               # Reset model state
                                self$ev <- rep(0, 4)
                                
                                # Define minimum log-likelihood value
@@ -154,66 +170,74 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                  sensitivity <- as.numeric((t/10)^parameters$drift_con)
                                  drift_rate <- sensitivity * self$ev[shown_deck]
                                  
-                                 # Set boundary values
-                                 boundary <- parameters$boundary
-                                 tau <- parameters$tau
-                                 beta <- parameters$beta
+                                 # Check if RT is valid (within bounds)
+                                 rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
                                  
-                                 # Add parameter sanity checks
-                                 if(boundary <= 0 || tau < 0 || tau >= 1 || beta < 0 || beta > 1) {
-                                   trial_loglik[t] <- min_loglik
-                                   next
-                                 }
-                                 
-                                 # Check if RT is compatible with non-decision time
-                                 if(RTs[t] <= tau) {
-                                   trial_loglik[t] <- min_loglik
-                                   next
-                                 }
-                                 
-                                 # Calculate log-likelihood of observed choice and RT
-                                 tryCatch({
-                                   if(choices[t] == 1) {
-                                     # Play decision - upper boundary
-                                     density <- ddiffusion(
-                                       rt = RTs[t],
-                                       response = "upper",
-                                       a = boundary,
-                                       t0 = tau,
-                                       z = beta * boundary,
-                                       v = drift_rate
-                                     )
-                                   } else {
-                                     # Pass decision - lower boundary
-                                     density <- ddiffusion(
-                                       rt = RTs[t],
-                                       response = "lower",
-                                       a = boundary,
-                                       t0 = tau,
-                                       z = beta * boundary,
-                                       v = drift_rate
-                                     )
-                                   }
+                                 # Only calculate RT likelihood for valid RTs
+                                 if(rt_is_valid) {
+                                   # Set boundary values
+                                   boundary <- parameters$boundary
+                                   tau <- parameters$tau
+                                   beta <- parameters$beta
                                    
-                                   # Ensure density is positive
-                                   if(density <= 0) {
-                                     density <- .Machine$double.xmin
-                                   }
-                                   
-                                   trial_loglik[t] <- log(density)
-                                   
-                                   # Cap extremely low log-likelihoods to avoid -Inf
-                                   if(is.infinite(trial_loglik[t]) || is.na(trial_loglik[t])) {
+                                   # Add parameter sanity checks
+                                   if(boundary <= 0 || tau < 0 || tau >= 1 || beta < 0 || beta > 1) {
                                      trial_loglik[t] <- min_loglik
+                                     next
                                    }
                                    
-                                 }, error = function(e) {
-                                   # Handle any errors in the calculation
-                                   trial_loglik[t] <<- min_loglik
-                                   warning(paste("Error in trial", t, ":", e$message))
-                                 })
+                                   # Check if RT is compatible with non-decision time
+                                   if(RTs[t] <= tau) {
+                                     trial_loglik[t] <- min_loglik
+                                     next
+                                   }
+                                   
+                                   # Calculate log-likelihood of observed choice and RT
+                                   tryCatch({
+                                     if(choices[t] == 1) {
+                                       # Play decision - upper boundary
+                                       density <- ddiffusion(
+                                         rt = RTs[t],
+                                         response = "upper",
+                                         a = boundary,
+                                         t0 = tau,
+                                         z = beta * boundary,
+                                         v = drift_rate
+                                       )
+                                     } else {
+                                       # Pass decision - lower boundary
+                                       density <- ddiffusion(
+                                         rt = RTs[t],
+                                         response = "lower",
+                                         a = boundary,
+                                         t0 = tau,
+                                         z = beta * boundary,
+                                         v = drift_rate
+                                       )
+                                     }
+                                     
+                                     # Ensure density is positive
+                                     if(density <= 0) {
+                                       density <- .Machine$double.xmin
+                                     }
+                                     
+                                     trial_loglik[t] <- log(density)
+                                     
+                                     # Cap extremely low log-likelihoods
+                                     if(is.infinite(trial_loglik[t]) || is.na(trial_loglik[t])) {
+                                       trial_loglik[t] <- min_loglik
+                                     }
+                                     
+                                   }, error = function(e) {
+                                     trial_loglik[t] <<- min_loglik
+                                     warning(paste("Error in trial", t, ":", e$message))
+                                   })
+                                 } else {
+                                   # Invalid RT - contribute 0 to log-likelihood
+                                   trial_loglik[t] <- 0
+                                 }
                                  
-                                 # Update EV if deck was played
+                                 # Learning: Only update if choice was play
                                  if(choices[t] == 1) {
                                    outcome <- outcomes[t]
                                    

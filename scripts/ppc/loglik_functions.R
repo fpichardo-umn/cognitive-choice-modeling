@@ -43,10 +43,10 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name) 
     
     # Calculate log-likelihood using model's method
     if (model$model_type == "SSM") {
-      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$RT, parameters)
+      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$RT, RTbound_min, RTbound_max, parameters)
     }
     else if (grepl("SSM", model$model_type)){
-      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$RT, subject_data$outcome, parameters)
+      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$RT, RTbound_min, RTbound_max, subject_data$outcome, parameters)
     } else {
       loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$outcome, parameters) 
     }
@@ -62,6 +62,8 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name) 
     # Add RT if available for SSM models
     if ("RT" %in% names(subject_data)) {
       data$RT <- subject_data$RT
+      data$RTbound_min = RTbound_min
+      data$RTbound_max = RTbound_max
     }
     
     # Use new format: calculate_loglik(data, parameters)

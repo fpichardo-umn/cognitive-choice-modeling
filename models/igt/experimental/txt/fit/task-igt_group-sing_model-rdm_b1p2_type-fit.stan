@@ -34,26 +34,33 @@ functions {
     for (t in 1:T) {
       chosen = choice[t];
       
-      if (rt_adjs[t] <= 0) {
-        log_lik += log(1e-10);
-      } else {
-        // Compute PDF for chosen option
-        pdf = race_pdf(rt_adjs[t], boundaries[t], drift_rates[chosen], 
-                       sqrt_rts[t], inv_rts[t]);
-
-        // Compute survival probabilities (CDF)
-        log_survival_prod = 0.0;
-        survival_prob = race_survival_vectorized(rep_vector(rt_adjs[t], 4), boundaries[t], 
-                                                 drift_rates, rep_vector(inv_sqrt_rts[t], 4));
-        for (j in 1:4) {
-          if (j != chosen) {
-            log_survival_prod += log1m(survival_prob[j]);
-          }
-        }
+      // Skip likelihood calculation for marked RTs
+      if (rt_adjs[t] != 999) {
+        if (rt_adjs[t] <= 0) {
+          log_lik += log(1e-10);
+        } else {
+          // Calculate combined value
+          V = w * local_ev + (1-w) * local_pers;
         
-        log_lik += log(fmax(pdf, 1e-10)) + log_survival_prod;
+          // Apply softplus transformation to handle negative values
+          drift_rates = log(1 + exp(urgency + sensitivity * V));
+      
+          // Compute PDF for chosen option
+          pdf = race_pdf_fast(rt_adjs[t], boundaries[t], drift_rates[chosen], sqrt_rts[t], inv_rts[t]);
+      
+          // Compute survival probabilities
+          log_survival_prod = 0.0;
+          survival_prob = race_survival_vectorized(rep_vector(rt_adjs[t], 4), boundaries[t], 
+                                                 drift_rates, rep_vector(inv_sqrt_rts[t], 4));
+          for (j in 1:4) {
+            if (j != chosen) {
+              log_survival_prod += log1m(survival_prob[j]);
+            }
+          }
+      
+          log_lik += log(fmax(pdf, 1e-10)) + log_survival_prod;
+        }
       }
-    }
     
     return log_lik;
   }
@@ -127,6 +134,16 @@ model {
   vector[T] sqrt_rts = sqrt(rt_adjs);
   vector[T] inv_sqrt_rts = inv(sqrt_rts);
   vector[T] inv_rts = inv(rt_adjs);
+
+  for (t in 1:T) {
+    if (RT[t] == 999) {
+      // Mark these as invalid so we skip them in likelihood
+      rt_adjs[t] = 999;
+      sqrt_rts[t] = 0;      // Doesn't matter, won't be used
+      inv_sqrt_rts[t] = 0;  // Doesn't matter, won't be used
+      inv_rts[t] = 0;       // Doesn't matter, won't be used
+    }
+  }
   
   // Combined model computation
   target += igt_race_model_lp(choice, rt_adjs, 

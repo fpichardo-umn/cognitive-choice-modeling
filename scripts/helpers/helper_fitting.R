@@ -50,16 +50,14 @@ fix_duplicate_cohort_path <- function(file_path, cohort) {
 #' @param output_dir Optional character string with output directory path
 #' @param emp_bayes Boolean indicating whether this is an empirical Bayes model
 #' @param informative_priors Optional list of informative priors
-#' @param subid Optional character string with subject ID
-#' @param index Optional integer subject index
 #' @param init_params Optional list of parameter initializations
 #' @return List with fitted model results or NULL for dry run
 fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_type, data_list, 
                               n_subs, n_trials, n_warmup, n_iter, n_chains, adapt_delta, max_treedepth, 
                               model_params, dry_run = FALSE, checkpoint_interval = 1000, 
                               output_dir = NULL, emp_bayes = FALSE, informative_priors = NULL,
-                              subid = NULL, subject_list = NULL, index = NULL, init_params = NULL, 
-                              cohort_sub_dir = TRUE, model_status = NULL, is_simulation = FALSE) {
+                              init_params = NULL, cohort_sub_dir = TRUE, model_status = NULL,
+                              is_simulation = FALSE, index = NULL, data_filt_list = NULL) {
   
   # Create the model string and get the model path
   model_str <- paste(task, group_type, model_name, sep="_")
@@ -111,7 +109,8 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   
   # Generate output and checkpoint file paths
   output_file <- get_output_file_path(task, cohort, group_type, model_name, model_type, 
-                                     emp_bayes, subid, index, ses = ses, 
+                                     emp_bayes, if (length(data_list$sid) == 1) data_list$sid else NULL,
+                                     index, ses = ses, 
                                      output_dir = output_dir, cohort_sub_dir)
   output_file <- fix_duplicate_cohort_path(output_file, cohort)
   checkpoint_file <- paste0(tools::file_path_sans_ext(output_file), "_checkpoint.rds")
@@ -218,10 +217,19 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   # Add additional metadata
   fit_result$cmdstan_version <- cmdstan_version()
   
-  # Add subid and index to the fit object if provided
-  if (!is.null(subid)) fit_result$subid <- subid
-  if (!is.null(index)) fit_result$index <- index
-  if (!is.null(subject_list)) fit_result$subject_list <- subject_list
+  # Extract and store subject IDs (REQUIRED)
+  if (is.null(data_list$sid)) {
+    stop("data_list$sid is required but missing. All models now require subject IDs to be passed.")
+  }
+  fit_result$subject_list <- data_list$sid
+  
+  # Store data parameters
+  fit_result$data_filt_info = data_filt_list
+  
+  # Store data quality metrics if available
+  if (!is.null(data_list$data_quality)) {
+    fit_result$data_quality <- data_list$data_quality
+  }
   
   # Save fitted model
   cat("Saving fitted model to:", output_file, "\n")

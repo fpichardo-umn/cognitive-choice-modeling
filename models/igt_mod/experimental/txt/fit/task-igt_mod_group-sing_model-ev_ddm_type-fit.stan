@@ -25,10 +25,12 @@ functions {
       curDrift = EV2update * sensitivity[t]; // Drift scaling
 
       // Model both RT and choice
-      if (choice[t] == 1) {
-        target += wiener_lpdf(RT[t] | boundary, tau, beta, curDrift);
-      } else {
-        target += wiener_lpdf(RT[t] | boundary, tau, 1-beta, -curDrift);
+      if (RT[t] != 999) {
+        if (choice[t] == 1) {
+          target += wiener_lpdf(RT[t] | boundary, tau, beta, curDrift);
+        } else {
+          target += wiener_lpdf(RT[t] | boundary, tau, 1-beta, -curDrift);
+        }
       }
 
       // Compute utility

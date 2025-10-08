@@ -189,7 +189,17 @@ model {
   vector[T] sqrt_rts = sqrt(rt_adjs);
   vector[T] inv_sqrt_rts = inv(sqrt_rts);
   vector[T] inv_rts = inv(rt_adjs);
-  
+
+  for (t in 1:T) {
+    if (RT[t] == 999) {
+      // Mark these as invalid so we skip them in likelihood
+      rt_adjs[t] = 999;
+      sqrt_rts[t] = 0;      // Doesn't matter, won't be used
+      inv_sqrt_rts[t] = 0;  // Doesn't matter, won't be used
+      inv_rts[t] = 0;       // Doesn't matter, won't be used
+    }
+  }
+
   // Combined model computation
   target += igt_race_model_lp(choice, wins, abs(losses), rt_adjs,
                               sqrt_rts, inv_sqrt_rts, inv_rts, ev, pers, T, 
