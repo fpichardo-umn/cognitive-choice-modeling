@@ -31,7 +31,7 @@ igtVPPDELTAModel <- R6::R6Class("igtVPPDELTAModel",
       ))
     },
     
-    simulate_choices = function(trials, parameters) {
+    simulate_choices = function(trials, parameters, task_params) {
       # Number of trials
       n_trials <- nrow(trials)
       
@@ -109,7 +109,7 @@ igtVPPDELTAModel <- R6::R6Class("igtVPPDELTAModel",
       self$pers <- rep(0, 4)
     },
     
-    calculate_loglik = function(data, parameters) {
+    calculate_loglik = function(data, parameters, task_params) {
       # Extract parameters
       con <- parameters$con
       update <- parameters$update

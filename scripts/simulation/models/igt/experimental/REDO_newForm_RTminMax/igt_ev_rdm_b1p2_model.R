@@ -39,7 +39,7 @@ igtEVRDMB1P2Model <- R6::R6Class("igtEVRDMB1P2Model",
                                      ))
                                    },
                                    
-                                   simulate_choices = function(trials, parameters) {
+                                   simulate_choices = function(trials, parameters, task_params) {
                                      if (is.data.frame(trials)) {
                                        n_trials <- nrow(trials)
                                        forced_choices <- trials$forced_choice
@@ -129,9 +129,19 @@ igtEVRDMB1P2Model <- R6::R6Class("igtEVRDMB1P2Model",
                                      ))
                                    },
                                    
-                                   calculate_loglik = function(trials, choices, RTs, wins, losses, parameters) {
-                                     n_trials <- length(choices)
+                                   calculate_loglik = function(data, parameters, task_params) {
+                                     # Extract data
+                                     n_trials <- nrow(data)
+                                     choices <- data$choice
+                                     RTs <- data$RT
+                                     gains <- data$gain
+                                     losses <- data$loss
+                                     
                                      trial_loglik <- numeric(n_trials)
+                                     
+                                     # Extract RT bounds from task_params
+                                     RTbound_min <- task_params$RTbound_min
+                                     RTbound_max <- task_params$RTbound_max
                                      
                                      # Reset expected values for likelihood calculation
                                      self$ev <- rep(0, 4)
@@ -141,9 +151,9 @@ igtEVRDMB1P2Model <- R6::R6Class("igtEVRDMB1P2Model",
                                      
                                      for(t in 1:n_trials) {
                                        # Get current choice and outcome
-                                       choice <- data$choice[t]
-                                       gain <- data$gain[t]
-                                       loss <- abs(data$loss[t])
+                                       choice <- choices[t]
+                                       gain <- gains[t]
+                                       loss <- abs(losses[t])
                                        
                                        # Determine boundary and tau based on trial number
                                        if(t <= 20) {
@@ -157,32 +167,40 @@ igtEVRDMB1P2Model <- R6::R6Class("igtEVRDMB1P2Model",
                                        # Calculate dynamic drift rates
                                        drift_rates <- log(1 + exp(parameters$urgency + sensitivity * self$ev))
                                        
-                                       # Adjusted RT (subtract non-decision time)
-                                       rt_adj <- RTs[t] - current_tau
+                                       # Check RT validity
+                                       rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
                                        
-                                       tryCatch({
-                                         if(rt_adj <= 0) {
-                                           trial_loglik[t] <- -1000  # Invalid RT
-                                         } else {
-                                           chosen_drift <- drift_rates[choice]
-                                           
-                                           if(chosen_drift <= 0) {
-                                             trial_loglik[t] <- -1000  # Invalid drift
+                                       if(rt_is_valid) {
+                                         # Adjusted RT (subtract non-decision time)
+                                         rt_adj <- RTs[t] - current_tau
+                                         
+                                         tryCatch({
+                                           if(rt_adj <= 0) {
+                                             trial_loglik[t] <- -1000  # Invalid RT
                                            } else {
-                                             # Calculate race likelihood
-                                             log_lik <- self$calculate_race_likelihood(
-                                               rt_adj, current_boundary, drift_rates, choice
-                                             )
-                                             trial_loglik[t] <- log_lik
+                                             chosen_drift <- drift_rates[choice]
+                                             
+                                             if(chosen_drift <= 0) {
+                                               trial_loglik[t] <- -1000  # Invalid drift
+                                             } else {
+                                               # Calculate race likelihood
+                                               log_lik <- self$calculate_race_likelihood(
+                                                 rt_adj, current_boundary, drift_rates, choice
+                                               )
+                                               trial_loglik[t] <- log_lik
+                                             }
                                            }
-                                         }
-                                       }, error = function(e) {
-                                         trial_loglik[t] <<- -1000
-                                       })
+                                         }, error = function(e) {
+                                           trial_loglik[t] <<- -1000
+                                         })
+                                       } else {
+                                         # Invalid RT - don't contribute to likelihood
+                                         trial_loglik[t] <- 0
+                                       }
                                        
                                        # Update expected value (same as in simulation)
                                        utility <- parameters$wgt_rew * gain - parameters$wgt_pun * loss
-                                       current_ev <- self$ev[choices[t]]
+                                       current_ev <- self$ev[choice]
                                        self$ev[choice] <- current_ev + parameters$update * (utility - current_ev)
                                      }
                                      

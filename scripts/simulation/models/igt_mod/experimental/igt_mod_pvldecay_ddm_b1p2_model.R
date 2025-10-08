@@ -34,7 +34,7 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
       ))
     },
     
-    simulate_choices = function(trials, parameters) {
+    simulate_choices = function(trials, parameters, task_params) {
       if (is.data.frame(trials)) {
         n_trials <- nrow(trials)
         deck_sequence <- trials$deck_shown
@@ -49,6 +49,9 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
       RTs <- vector("numeric", n_trials)
       ev_history <- matrix(0, nrow = n_trials, ncol = 4)
       outcomes <- vector("numeric", n_trials)
+      
+      # Extract RT bound from task_params
+      RTbound_max <- task_params$RTbound_max
       
       for(t in 1:n_trials) {
         shown_deck <- as.numeric(deck_sequence[t])
@@ -106,6 +109,12 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
           RTs[t] <- ddm_result$rt
         }
         
+        # Handle timeout
+        if(RTs[t] > RTbound_max) {
+          choices[t] <- 0  # Force pass
+          RTs[t] <- RTbound_max
+        }
+        
         # Apply decay to all decks first
         self$ev <- self$ev * (1 - parameters$decay)
         
@@ -147,12 +156,22 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
       self$ev <- rep(0, 4)
     },
     
-    calculate_loglik = function(trials, choices, RTs, outcomes, parameters) {
-      n_trials <- length(choices)
-      trial_loglik <- numeric(n_trials)
+    calculate_loglik = function(data, parameters, task_params) {
+               # Extract data
+               n_trials <- nrow(data)
+               choices <- data$choice
+               RTs <- data$RT
+               outcomes <- data$outcome
+               deck_shown <- data$deck_shown
+               
+               trial_loglik <- numeric(n_trials)
+               
+               # Extract RT bounds from task_params
+               RTbound_min <- task_params$RTbound_min
+               RTbound_max <- task_params$RTbound_max
       
       for(t in 1:n_trials) {
-        shown_deck <- as.numeric(trials$deck_shown[t])
+        shown_deck <- as.numeric(deck_shown[t])
         
         # Calculate drift rate based on expected value
         sensitivity <- as.numeric((t/10)^parameters$drift_con)
@@ -167,32 +186,40 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
           current_tau <- parameters$tau
         }
         
-        # Calculate log-likelihood of observed choice and RT
-        tryCatch({
-          if(choices[t] == 1) {
-            # Play decision - upper boundary
-            trial_loglik[t] <- log(ddiffusion(
-              rt = RTs[t],
-              response = "upper",
-              a = current_boundary,
-              t0 = current_tau,
-              z = parameters$beta * current_boundary,
-              v = drift_rate
-            ))
-          } else {
-            # Pass decision - lower boundary
-            trial_loglik[t] <- log(ddiffusion(
-              rt = RTs[t],
-              response = "lower",
-              a = current_boundary,
-              t0 = current_tau,
-              z = parameters$beta * current_boundary,
-              v = drift_rate
-            ))
-          }
-        }, error = function(e) {
-          trial_loglik[t] <<- -1000
-        })
+        # Check RT validity
+        rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
+        
+        if(rt_is_valid) {
+          # Calculate log-likelihood of observed choice and RT
+          tryCatch({
+            if(choices[t] == 1) {
+              # Play decision - upper boundary
+              trial_loglik[t] <- log(ddiffusion(
+                rt = RTs[t],
+                response = "upper",
+                a = current_boundary,
+                t0 = current_tau,
+                z = parameters$beta * current_boundary,
+                v = drift_rate
+              ))
+            } else {
+              # Pass decision - lower boundary
+              trial_loglik[t] <- log(ddiffusion(
+                rt = RTs[t],
+                response = "lower",
+                a = current_boundary,
+                t0 = current_tau,
+                z = parameters$beta * current_boundary,
+                v = drift_rate
+              ))
+            }
+          }, error = function(e) {
+            trial_loglik[t] <<- -1000
+          })
+        } else {
+          # Invalid RT - don't contribute to likelihood
+          trial_loglik[t] <- 0
+        }
         
         # Apply decay to all decks first
         self$ev <- self$ev * (1 - parameters$decay)

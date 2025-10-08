@@ -35,7 +35,7 @@ igtRDMB1P2Model <- R6::R6Class("igtRDMB1P2Model",
                                       ))
                                     },
                                     
-                                    simulate_choices = function(trials, parameters) {
+                                    simulate_choices = function(trials, parameters, task_params) {
                                       if (is.data.frame(trials)) {
                                         n_trials <- nrow(trials)
                                         forced_choices <- trials$forced_choice
@@ -109,9 +109,17 @@ igtRDMB1P2Model <- R6::R6Class("igtRDMB1P2Model",
                                       ))
                                     },
                                     
-                                    calculate_loglik = function(trials, choices, RTs, parameters) {
-                                      n_trials <- length(choices)
+                                    calculate_loglik = function(data, parameters, task_params) {
+                                      # Extract data
+                                      n_trials <- nrow(data)
+                                      choices <- data$choice
+                                      RTs <- data$RT
+                                      
                                       trial_loglik <- numeric(n_trials)
+                                      
+                                      # Extract RT bounds from task_params
+                                      RTbound_min <- task_params$RTbound_min
+                                      RTbound_max <- task_params$RTbound_max
                                       
                                       # Drift rates for each deck
                                       drift_rates <- c(parameters$drift_A, parameters$drift_B, 
@@ -127,29 +135,37 @@ igtRDMB1P2Model <- R6::R6Class("igtRDMB1P2Model",
                                           current_tau <- parameters$tau
                                         }
                                         
-                                        # Adjusted RT (subtract non-decision time)
-                                        rt_adj <- RTs[t] - current_tau
+                                        # Check RT validity
+                                        rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
                                         
-                                        tryCatch({
-                                          if(rt_adj <= 0) {
-                                            trial_loglik[t] <- -1000  # Invalid RT
-                                          } else {
-                                            chosen_deck <- choices[t]
-                                            chosen_drift <- drift_rates[chosen_deck]
-                                            
-                                            if(chosen_drift <= 0) {
-                                              trial_loglik[t] <- -1000  # Invalid drift
+                                        if(rt_is_valid) {
+                                          # Adjusted RT (subtract non-decision time)
+                                          rt_adj <- RTs[t] - current_tau
+                                          
+                                          tryCatch({
+                                            if(rt_adj <= 0) {
+                                              trial_loglik[t] <- -1000  # Invalid RT
                                             } else {
-                                              # Calculate race likelihood
-                                              log_lik <- self$calculate_race_likelihood(
-                                                rt_adj, current_boundary, drift_rates, chosen_deck
-                                              )
-                                              trial_loglik[t] <- log_lik
+                                              chosen_deck <- choices[t]
+                                              chosen_drift <- drift_rates[chosen_deck]
+                                              
+                                              if(chosen_drift <= 0) {
+                                                trial_loglik[t] <- -1000  # Invalid drift
+                                              } else {
+                                                # Calculate race likelihood
+                                                log_lik <- self$calculate_race_likelihood(
+                                                  rt_adj, current_boundary, drift_rates, chosen_deck
+                                                )
+                                                trial_loglik[t] <- log_lik
+                                              }
                                             }
-                                          }
-                                        }, error = function(e) {
-                                          trial_loglik[t] <<- -1000
-                                        })
+                                          }, error = function(e) {
+                                            trial_loglik[t] <<- -1000
+                                          })
+                                        } else {
+                                          # Invalid RT - don't contribute to likelihood
+                                          trial_loglik[t] <- 0
+                                        }
                                       }
                                       
                                       return(list(

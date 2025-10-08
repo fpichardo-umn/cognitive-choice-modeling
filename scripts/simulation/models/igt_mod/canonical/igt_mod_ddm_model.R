@@ -30,7 +30,7 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                ))
                              },
                              
-                             simulate_choices = function(trials, parameters) {
+                             simulate_choices = function(trials, parameters, task_params) {
                                if (is.data.frame(trials)) {
                                  n_trials <- nrow(trials)
                                  deck_sequence <- trials$deck_shown
@@ -44,6 +44,9 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                choices <- vector("numeric", n_trials)
                                RTs <- vector("numeric", n_trials)
                                outcomes <- vector("numeric", n_trials)
+                               
+                               # Extract RT bound from task_params
+                               RTbound_max <- task_params$RTbound_max
                                
                                for(t in 1:n_trials) {
                                  shown_deck <- as.numeric(deck_sequence[t])
@@ -87,6 +90,12 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                    RTs[t] <- ddm_result$rt
                                  }
                                  
+                                 # Handle timeout
+                                 if(RTs[t] > RTbound_max) {
+                                   choices[t] <- 0  # Force pass
+                                   RTs[t] <- RTbound_max
+                                 }
+                                 
                                  # Obtain outcomes if deck was played
                                  if(choices[t] == 1) {
                                    # Generate outcome
@@ -108,36 +117,52 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                  outcomes = formatted_outcomes
                                ))
                              },
-                             calculate_loglik = function(trials, choices, RTs, parameters) {
-                               n_trials <- length(choices)
+                             calculate_loglik = function(data, parameters, task_params) {
+                               # Extract data
+                               n_trials <- nrow(data)
+                               choices <- data$choice
+                               RTs <- data$RT
+                               
                                trial_loglik <- numeric(n_trials)
                                
+                               # Extract RT bounds from task_params
+                               RTbound_min <- task_params$RTbound_min
+                               RTbound_max <- task_params$RTbound_max
+                               
                                for(t in 1:n_trials) {
-                                 tryCatch({
-                                   if(choices[t] == 1) {
-                                     # Play decision - upper boundary
-                                     trial_loglik[t] <- log(ddiffusion(
-                                       rt = RTs[t],
-                                       response = "upper",
-                                       a = parameters$boundary,
-                                       t0 = parameters$tau,
-                                       z = parameters$beta * parameters$boundary,
-                                       v = parameters$drift
-                                     ))
-                                   } else {
-                                     # Pass decision - lower boundary
-                                     trial_loglik[t] <- log(ddiffusion(
-                                       rt = RTs[t],
-                                       response = "lower",
-                                       a = parameters$boundary,
-                                       t0 = parameters$tau,
-                                       z = parameters$beta * parameters$boundary,
-                                       v = -parameters$drift
-                                     ))
-                                   }
-                                 }, error = function(e) {
-                                   trial_loglik[t] <<- -1000
-                                 })
+                                 # Check RT validity
+                                 rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
+                                 
+                                 if(rt_is_valid) {
+                                   tryCatch({
+                                     if(choices[t] == 1) {
+                                       # Play decision - upper boundary
+                                       trial_loglik[t] <- log(ddiffusion(
+                                         rt = RTs[t],
+                                         response = "upper",
+                                         a = parameters$boundary,
+                                         t0 = parameters$tau,
+                                         z = parameters$beta * parameters$boundary,
+                                         v = parameters$drift
+                                       ))
+                                     } else {
+                                       # Pass decision - lower boundary
+                                       trial_loglik[t] <- log(ddiffusion(
+                                         rt = RTs[t],
+                                         response = "lower",
+                                         a = parameters$boundary,
+                                         t0 = parameters$tau,
+                                         z = parameters$beta * parameters$boundary,
+                                         v = -parameters$drift
+                                       ))
+                                     }
+                                   }, error = function(e) {
+                                     trial_loglik[t] <<- -1000
+                                   })
+                                 } else {
+                                   # Invalid RT - don't contribute to likelihood
+                                   trial_loglik[t] <- 0
+                                 }
                                }
                                
                                return(list(

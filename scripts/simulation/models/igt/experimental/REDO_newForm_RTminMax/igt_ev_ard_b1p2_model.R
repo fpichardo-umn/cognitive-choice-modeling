@@ -41,7 +41,7 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                      ))
                                    },
                                    
-                                   simulate_choices = function(trials, parameters) {
+                                   simulate_choices = function(trials, parameters, task_params) {
                                      n_trials <- nrow(trials)
                                      choices <- numeric(n_trials)
                                      RTs <- numeric(n_trials)
@@ -120,9 +120,19 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                      ))
                                    },
                                    
-                                   calculate_loglik = function(data, parameters) {
+                                   calculate_loglik = function(data, parameters, task_params) {
+                                     # Extract data
                                      n_trials <- nrow(data)
+                                     choices <- data$choice
+                                     RTs <- data$RT
+                                     wins <- data$wins
+                                     losses <- data$losses
+                                     
                                      trial_loglik <- numeric(n_trials)
+                                     
+                                     # Extract RT bounds from task_params
+                                     RTbound_min <- task_params$RTbound_min
+                                     RTbound_max <- task_params$RTbound_max
                                      
                                      self$ev <- rep(0, 4)
                                      sensitivity <- (3^parameters$drift_con) - 1
@@ -167,10 +177,10 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                      }
                                      
                                      for(t in 1:n_trials) {
-                                       choice <- data$choice[t]
-                                       rt <- data$RT[t]
-                                       win <- data$wins[t]
-                                       loss <- abs(data$losses[t])
+                                       choice <- choices[t]
+                                       rt <- RTs[t]
+                                       win <- wins[t]
+                                       loss <- abs(losses[t])
                                        
                                        if(t <= 20) {
                                          current_boundary <- parameters$boundary1
@@ -180,9 +190,13 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                          current_tau <- parameters$tau
                                        }
                                        
-                                       rt_adj <- rt - current_tau
+                                       # Check RT validity
+                                       rt_is_valid <- (rt >= RTbound_min && rt <= RTbound_max)
                                        
-                                       drift_rates <- numeric(12)
+                                       if(rt_is_valid) {
+                                         rt_adj <- rt - current_tau
+                                         
+                                         drift_rates <- numeric(12)
                                        drift_rates[1] = parameters$urgency + parameters$wd * (self$ev[1] - self$ev[2]) + parameters$ws * (self$ev[1] + self$ev[2])
                                        drift_rates[2] = parameters$urgency + parameters$wd * (self$ev[1] - self$ev[3]) + parameters$ws * (self$ev[1] + self$ev[3])
                                        drift_rates[3] = parameters$urgency + parameters$wd * (self$ev[1] - self$ev[4]) + parameters$ws * (self$ev[1] + self$ev[4])
@@ -196,10 +210,14 @@ igtEVARDB1P2Model <- R6::R6Class("igtEVARDB1P2Model",
                                        drift_rates[11] = parameters$urgency + parameters$wd * (self$ev[4] - self$ev[2]) + parameters$ws * (self$ev[4] + self$ev[2])
                                        drift_rates[12] = parameters$urgency + parameters$wd * (self$ev[4] - self$ev[3]) + parameters$ws * (self$ev[4] + self$ev[3])
                                        
-                                       drift_rates = sensitivity * drift_rates
-                                       drift_rates <- pmax(drift_rates, 1e-6) 
-                                       
-                                       trial_loglik[t] <- calculate_ard_loglik(rt_adj, current_boundary, drift_rates, choice)
+                                         drift_rates = sensitivity * drift_rates
+                                         drift_rates <- pmax(drift_rates, 1e-6) 
+                                         
+                                         trial_loglik[t] <- calculate_ard_loglik(rt_adj, current_boundary, drift_rates, choice)
+                                       } else {
+                                         # Invalid RT - don't contribute to likelihood
+                                         trial_loglik[t] <- 0
+                                       }
                                        
                                        utility <- parameters$wgt_rew * win - parameters$wgt_pun * loss
                                        current_ev <- self$ev[choice]

@@ -148,9 +148,14 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                self$ev <- rep(0, 4)
                                
                              },
-                             calculate_loglik = function(trials, choices, RTs, outcomes, parameters, 
-                                                         task_params) {
-                               n_trials <- length(choices)
+                             calculate_loglik = function(data, parameters, task_params) {
+                               # Extract data
+                               n_trials <- nrow(data)
+                               choices <- data$choice
+                               RTs <- data$RT
+                               outcomes <- data$outcome
+                               deck_shown <- data$deck_shown
+                               
                                trial_loglik <- numeric(n_trials)
                                
                                # Task parameters
@@ -164,7 +169,7 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMModel",
                                min_loglik <- -1000
                                
                                for(t in 1:n_trials) {
-                                 shown_deck <- as.numeric(trials$deck_shown[t])
+                                 shown_deck <- as.numeric(deck_shown[t])
                                  
                                  # Calculate drift rate based on expected value
                                  sensitivity <- as.numeric((t/10)^parameters$drift_con)

@@ -23,7 +23,7 @@ igt_modEVModel <- R6::R6Class("igt_modEVModel",
                                ))
                              },
                              
-                             simulate_choices = function(trials, parameters) {
+                             simulate_choices = function(trials, parameters, task_params) {
                                if (is.data.frame(trials)) {
                                  n_trials <- nrow(trials)
                                  deck_sequence <- trials$deck_shown
@@ -96,12 +96,17 @@ igt_modEVModel <- R6::R6Class("igt_modEVModel",
                                self$ev <- rep(0, 4)
                                
                              },
-                             calculate_loglik = function(trials, choices, outcomes, parameters) {
-                               n_trials <- length(choices)
+                             calculate_loglik = function(data, parameters, task_params) {
+                               # Extract data
+                               n_trials <- nrow(data)
+                               choices <- data$choice
+                               outcomes <- data$outcome
+                               deck_shown <- data$deck_shown
+                               
                                trial_loglik <- numeric(n_trials)
                                
                                for(t in 1:n_trials) {
-                                 shown_deck <- as.numeric(trials$deck_shown[t])
+                                 shown_deck <- as.numeric(deck_shown[t])
                                  
                                  # Calculate choice probability
                                  sensitivity <- as.numeric((t/10)^parameters$con)
