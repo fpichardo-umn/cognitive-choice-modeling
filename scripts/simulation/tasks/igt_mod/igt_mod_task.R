@@ -3,6 +3,7 @@ igt_modTask <- R6::R6Class("igt_modTask",
                            lock_objects = FALSE,
                            
                            public = list(
+                             name = "igt_mod",
                              deck_properties = NULL,
                              deck_counts = NULL,  # New field to track trials per deck
                              

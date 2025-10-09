@@ -22,10 +22,15 @@ source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_ppc_dirs.R")
 #' @param parameters Parameter set (single draw from posterior)
 #' @param task_name Task name (igt or igt_mod)
 #' @return List with total and trial-level log-likelihood values
-calculate_single_loglik <- function(model, subject_data, parameters, task_name) {
+calculate_single_loglik <- function(model, subject_data, parameters, task_name, task_params = NULL) {
   # Reset model state
   if ("reset" %in% names(model)){
     model$reset() 
+  }
+  
+  # Get task params if not provided
+  if (is.null(task_params)) {
+    task_params <- get_task_params(task_name)
   }
   
   # Get task configuration
@@ -41,15 +46,25 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name) 
       forced_choice = NA_real_  # No forced choices for PPC
     )
     
+    # Build data object
+    data <- list(
+      choice = subject_data$choice,
+      outcome = subject_data$outcome,
+      deck_shown = subject_data$shown
+    )
+    
+    # Add RT if available
+    if ("RT" %in% names(subject_data)) {
+      data$RT <- subject_data$RT
+    }
+    
     # Calculate log-likelihood using model's method
-    if (model$model_type == "SSM") {
-      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$RT, RTbound_min, RTbound_max, parameters)
-    }
-    else if (grepl("SSM", model$model_type)){
-      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$RT, RTbound_min, RTbound_max, subject_data$outcome, parameters)
-    } else {
-      loglik_result <- model$calculate_loglik(trials, subject_data$choice, subject_data$outcome, parameters) 
-    }
+    # Call model with new signature
+    loglik_result <- model$calculate_loglik(
+      data = as.data.frame(data),
+      parameters = parameters,
+      task_params = task_params
+    )
     
   } else if (task_config$type == "deck_selection") {
     # IGT: Use new data object format
@@ -66,8 +81,12 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name) 
       data$RTbound_max = RTbound_max
     }
     
-    # Use new format: calculate_loglik(data, parameters)
-    loglik_result <- model$calculate_loglik(data.frame(data), parameters)
+    # Use new format
+    loglik_result <- model$calculate_loglik(
+      data = data.frame(data),
+      parameters = parameters,
+      task_params = task_params
+    )
   }
   
   # Ensure result includes both total and trial-level log-likelihood
@@ -87,12 +106,16 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name) 
 #' @param param_sets Parameter sets from posterior distribution
 #' @param task_name Task name (igt or igt_mod)
 #' @return Matrix of log-likelihood values (rows = parameter sets, cols = trials)
-calculate_model_loglik <- function(model, subject_data, param_sets, task_name) {
+calculate_model_loglik <- function(model, subject_data, param_sets, task_name, task_params = NULL) {
   # Initialize storage for results
   n_trials <- length(subject_data$choice)
   n_param_sets <- nrow(param_sets)
   loglik_matrix <- matrix(NA, nrow = n_param_sets, ncol = n_trials)
   total_loglik <- numeric(n_param_sets)
+  
+  if (is.null(task_params)) {
+    task_params <- get_task_params(task_name)
+  }
   
   # Calculate log-likelihood for each parameter set
   for (i in 1:n_param_sets) {
@@ -100,7 +123,7 @@ calculate_model_loglik <- function(model, subject_data, param_sets, task_name) {
     parameters <- as.list(param_sets[i, ])
     
     # Calculate log-likelihood
-    loglik_result <- calculate_single_loglik(model, subject_data, parameters, task_name)
+    loglik_result <- calculate_single_loglik(model, subject_data, parameters, task_name, task_params)
     
     # Store results
     loglik_matrix[i, ] <- loglik_result$trial_loglik
@@ -123,9 +146,13 @@ calculate_model_loglik <- function(model, subject_data, param_sets, task_name) {
 #' @param parameter_sets_by_subject Parameter sets for each subject
 #' @return List of log-likelihood results by subject
 calculate_loglik_multiple_subjects <- function(task_name, model, subject_data_list, 
-                                               parameter_sets_by_subject) {
+                                               parameter_sets_by_subject, task_params = NULL) {
   # Initialize results
   loglik_results <- list()
+  
+  if (is.null(task_params)) {
+    task_params <- get_task_params(task_name)
+  }
   
   # Process each subject
   for (subject_id in names(parameter_sets_by_subject)) {
@@ -137,7 +164,7 @@ calculate_loglik_multiple_subjects <- function(task_name, model, subject_data_li
       param_sets <- parameter_sets_by_subject[[subject_id]]
       
       # Calculate log-likelihood
-      subject_loglik <- calculate_model_loglik(model, subject_data, param_sets, task_name)
+      subject_loglik <- calculate_model_loglik(model, subject_data, param_sets, task_name, task_params)
       
       # Add subject ID
       subject_loglik$subject_id <- subject_id

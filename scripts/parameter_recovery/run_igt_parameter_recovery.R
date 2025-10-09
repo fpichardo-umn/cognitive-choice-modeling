@@ -40,7 +40,11 @@ option_list <- list(
   make_option(c("-o", "--output_dir"), type = "character", default = "results",
               help = "Output directory [default: %default]"),
   make_option(c("-s", "--seed"), type = "integer", default = 42,
-              help = "Random seed [default: %default]")
+              help = "Random seed [default: %default]"),
+  make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
+              help="RT lower bound in milliseconds [default: %default]"),
+  make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
+              help="RT upper bound in milliseconds [default: %default]")
 )
 
 opt_parser <- OptionParser(option_list = option_list)
@@ -70,6 +74,15 @@ params <- generate_random_parameters(
 # Add simulation index
 params$idx <- "sim_params"
 
+# Build task_params from command line RT bounds
+task_params <- list(
+  RTbound_min = opts$RTbound_min_ms / 1000,  # Convert ms to seconds
+  RTbound_max = opts$RTbound_max_ms / 1000
+)
+
+cat("Using RT bounds: [", task_params$RTbound_min, ", ", 
+    task_params$RTbound_max, "] seconds\n")
+
 # Simulate data
 sim_data <- simulate_data(
   task = task,
@@ -79,6 +92,7 @@ sim_data <- simulate_data(
   n_blocks = opts$n_blocks,
   trials_per_block = opts$trials_per_block,
   seed = opts$seed,
+  task_params = task_params,
   return_format = "data.table"
 )
 

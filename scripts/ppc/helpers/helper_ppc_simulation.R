@@ -253,13 +253,18 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
 }
 
 #' Run simulations using model and parameter sets
+#' @param task Task name
 #' @param model Initialized model object
 #' @param subject_data Subject data containing deck sequence
 #' @param param_sets Parameter sets from posterior distribution
 #' @return List of simulation results
-run_simulations <- function(task, model, subject_data, param_sets) {
+run_simulations <- function(task, model, subject_data, param_sets, task_params = NULL) {
   # Extract deck sequence from subject data
   deck_sequence <- subject_data$shown
+  
+  if (is.null(task_params)) {
+    task_params <- get_task_params(task)
+  }
   
   # Create trials data frame
   trials <- data.frame(
@@ -280,7 +285,7 @@ run_simulations <- function(task, model, subject_data, param_sets) {
     }
     
     # Run simulation using the model's simulate_choices method
-    sim_result <- model$simulate_choices(trials, parameters)
+    sim_result <- model$simulate_choices(trials, parameters, task_params)
     
     # Add parameter values and index to result
     sim_result$parameters <- parameters
@@ -300,9 +305,14 @@ run_simulations <- function(task, model, subject_data, param_sets) {
 #' @param subject_data_list List of subject data
 #' @param parameter_sets_by_subject Parameter sets for each subject
 #' @return List of simulation results by subject
-generate_simulation_data <- function(task, task_obj, model, subject_data_list, parameter_sets_by_subject) {
+generate_simulation_data <- function(task, task_obj, model, subject_data_list, 
+                                     parameter_sets_by_subject, task_params = NULL) {
   # Initialize results
   simulation_results <- list()
+  
+  if (is.null(task_params)) {
+    task_params <- get_task_params(task)
+  }
   
   # Process each subject
   for (subject_id in names(parameter_sets_by_subject)) {
@@ -314,7 +324,7 @@ generate_simulation_data <- function(task, task_obj, model, subject_data_list, p
       param_sets <- parameter_sets_by_subject[[subject_id]]
       
       # Run simulations
-      subject_simulations <- run_simulations(task, model, subject_data, param_sets)
+      subject_simulations <- run_simulations(task, model, subject_data, param_sets, task_params)
       
       # Store results
       simulation_results[[subject_id]] <- list(

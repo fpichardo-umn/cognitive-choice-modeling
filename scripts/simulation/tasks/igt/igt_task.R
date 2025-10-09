@@ -8,6 +8,7 @@ igtTask <- R6::R6Class("igtTask",
                         lock_objects = FALSE,
                         
                         public = list(
+                          name = "igt",
                           deck_properties = NULL,
                           
                           initialize = function() {

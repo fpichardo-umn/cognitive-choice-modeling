@@ -117,6 +117,7 @@ convert_to_data_table <- function(sim_data) {
 #' @return Simulated data in specified format
 simulate_data <- function(task, model, parameters, n_trials, n_blocks, trials_per_block,
                           n_subjects = NULL, seed = NULL,
+                          task_params = NULL,
                           return_format = "data.table") {
   # Set seed if provided
   if (!is.null(seed)) set.seed(seed)
@@ -124,6 +125,17 @@ simulate_data <- function(task, model, parameters, n_trials, n_blocks, trials_pe
   # Determine number of subjects from parameters if not specified
   if (is.null(n_subjects)) {
     n_subjects <- if(is.data.frame(parameters)) nrow(parameters) else length(parameters)
+  }
+  
+  # Extract task_params - use defaults if not provided
+  if (is.null(task_params)) {
+    # Try to get from task object if it has them
+    if (!is.null(task$task_params)) {
+      task_params <- task$task_params
+    } else {
+      # Use sensible defaults
+      task_params <- get_task_params(task$name)
+    }
   }
   
   # Validate inputs
@@ -149,7 +161,8 @@ simulate_data <- function(task, model, parameters, n_trials, n_blocks, trials_pe
     model$reset()
     sim_task_perf <- model$simulate_choices(
       trials = sub_trial_str, 
-      parameters = subject_params
+      parameters = subject_params,
+      task_params = task_params
     )
     
     # Extract Info

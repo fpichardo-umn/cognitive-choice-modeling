@@ -36,9 +36,9 @@ option_list = list(
               help="Width control parameter for width sampling method (0-1)"),
   make_option(c("--rt_method"), type="character", default="remove", 
               help="RT handling method: all, remove, force, or adaptive"),
-  make_option(c("--RTbound_min_ms"), type="numeric", default=100, 
+  make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
               help="RT lower bound in milliseconds"),
-  make_option(c("--RTbound_max_ms"), type="numeric", default=2500, 
+  make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
               help="RT upper bound in milliseconds"),
   make_option(c("--exclude_file"), type="character", default=NULL, 
               help="Path to file with subject IDs to exclude")
@@ -173,13 +173,22 @@ message("Using data for ", length(unique(subject_data$subjID)), " subjects with 
 
 message("Running simulations for ", length(parameter_sets_by_subject), " subjects")
 
+# Build task_params from command line RT bounds
+task_params <- list(
+  RTbound_min = opt$RTbound_min_ms / 1000,  # Convert ms to seconds
+  RTbound_max = opt$RTbound_max_ms / 1000
+)
+
+message("Using RT bounds: [", task_params$RTbound_min, ", ", 
+        task_params$RTbound_max, "] seconds")
 
 # Generate simulation data
 simulation_results <- generate_simulation_data(
   task_name = opt$task,
   model_name = opt$model,
   subject_data = subject_data,
-  parameter_sets_by_subject = parameter_sets_by_subject
+  parameter_sets_by_subject = parameter_sets_by_subject,
+  task_params = task_params
 )
 
 # Save results

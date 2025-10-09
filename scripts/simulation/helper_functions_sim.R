@@ -158,3 +158,28 @@ source_required_files <- function(SIM_DIR, task = NULL) {
   # Return visibility confirmation
   return(TRUE)
 }
+
+#' Get task parameters for model simulation/fitting
+#' @param task_name Name of the task
+#' @return List of task parameters
+get_task_params <- function(task_name) {
+  if (tolower(task_name) == "igt") {
+    return(list(
+      RTbound_min = 0.05,
+      RTbound_max = Inf
+    ))
+  } else if (tolower(task_name) == "igt_mod") {
+    return(list(
+      RTbound_min = 0.05,
+      RTbound_max = 4.0
+    ))
+  } else {
+    # Default for unknown tasks
+    warning(paste("Unknown task:", task_name, "- using default task_params"))
+    return(list(
+      RTbound_min = 0.05,
+      RTbound_max = Inf
+    ))
+  }
+}
+

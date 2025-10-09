@@ -289,19 +289,25 @@ extract_posterior_draws <- function(fit_file, model_key, model_params, n_samples
 #' @param subject_data Filtered subject data (data frame)
 #' @param parameter_sets_by_subject Parameter sets by subject
 #' @return Simulation results by subject
-generate_simulation_data <- function(task_name, model_name, subject_data, parameter_sets_by_subject) {
+generate_simulation_data <- function(task_name, model_name, subject_data,
+                                     parameter_sets_by_subject, task_params = NULL) {
   # Get task config
   task_config <- get_task_config(task_name)
   
+  # Get task params if not provided
+  if (is.null(task_params)) {
+    task_params <- get_task_params(task_name)
+  }
+  
   # Initialize task and model
-  PR_DIR <- file.path(here::here(), "scripts", "parameter_recovery")
+  SIM_DIR <- file.path(here::here(), "scripts", "simulation")
   
   # Source required base files first
-  source_required_files(PR_DIR)
+  source_required_files(SIM_DIR)
   
   # Initialize task and model
-  task <- initialize_task(task_name, PR_DIR)
-  model <- initialize_model(toupper(model_name), tolower(task_name), task, PR_DIR)
+  task <- initialize_task(task_name, SIM_DIR)
+  model <- initialize_model(toupper(model_name), tolower(task_name), task, SIM_DIR)
   
   # Initialize results
   simulation_results <- list()
@@ -343,7 +349,7 @@ generate_simulation_data <- function(task_name, model_name, subject_data, parame
         )
         
         # Run simulation
-        sim_result <- model$simulate_choices(trials, parameters)
+        sim_result <- model$simulate_choices(trials, parameters, task_params)
         
         # Format result
         sim_data <- list(
@@ -367,7 +373,7 @@ generate_simulation_data <- function(task_name, model_name, subject_data, parame
         )
         
         # Run simulation
-        sim_result <- model$simulate_choices(trials, parameters)
+        sim_result <- model$simulate_choices(trials, parameters, task_params)
         
         # Extract net outcome from the outcomes structure
         outcomes <- if ("outcomes" %in% names(sim_result)) {

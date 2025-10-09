@@ -24,7 +24,11 @@ option_list = list(
   make_option(c("-o", "--output_dir"), type="character", default=NULL, help="./Data/sim/txt/"),
   make_option(c("-b", "--n_blocks"), type="integer", default=6),
   make_option(c("-k", "--trials_per_block"), type="integer", default=20),
-  make_option(c("-s", "--seed"), type="integer", default=12345)
+  make_option(c("-s", "--seed"), type="integer", default=12345),
+  make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
+              help="RT lower bound in milliseconds [default: %default]"),
+  make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
+              help="RT upper bound in milliseconds [default: %default]")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -52,6 +56,15 @@ params <- readRDS(opt$param_file)
 task <- initialize_task(task_name, dirs$PR_DIR)
 model <- initialize_model(model_name, task_name, task, dirs$PR_DIR)
 
+# Build task_params from command line RT bounds
+task_params <- list(
+  RTbound_min = opt$RTbound_min_ms / 1000,  # Convert ms to seconds
+  RTbound_max = opt$RTbound_max_ms / 1000
+)
+
+cat("Using RT bounds: [", task_params$RTbound_min, ", ", 
+    task_params$RTbound_max, "] seconds\n")
+
 # Run simulation
 sim_data <- simulate_data(
   task = task,
@@ -60,7 +73,8 @@ sim_data <- simulate_data(
   n_trials = opt$n_blocks * opt$trials_per_block,
   n_blocks = opt$n_blocks,
   trials_per_block = opt$trials_per_block,
-  seed = opt$seed
+  seed = opt$seed,
+  task_params = task_params
 )
 
 # Save simulated data as CSV
