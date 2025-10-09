@@ -38,7 +38,7 @@ option_list = list(
               help="Number of cores to use for parallel processing (default: 4)"),
   make_option(c("--n_trials"), type = "integer", default = 120, help = "Number of trials"),
   make_option(c("--RTbound_min_ms"), type = "integer", default = 50, help = "Min RT bound in ms"),
-  make_option(c("--RTbound_max_ms"), type = "integer", default = 2500, help = "Max RT bound in ms"),
+  make_option(c("--RTbound_max_ms"), type = "integer", default = 4000, help = "Max RT bound in ms"),
   make_option(c("--rt_method"), type = "character", default = "raw", help = "RT preprocessing method"),
   make_option(c("--n_warmup"), type = "integer", default = 3000, help = "Number of warmup iterations"),
   make_option(c("--n_iter"), type = "integer", default = 15000, help = "Total number of iterations"),

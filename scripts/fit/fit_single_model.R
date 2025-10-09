@@ -28,7 +28,7 @@ option_list = list(
   make_option(c("--index"), type="integer", default=NULL, help="Optional index for filename"),
   make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
-  make_option(c("--RTbound_max_ms"), type="integer", default=2500, help="RT max bound in milliseconds"),
+  make_option(c("--RTbound_max_ms"), type="integer", default=4000, help="RT max bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="mark", help="RT method"),
   make_option(c("--n_warmup"), type="integer", default=3000, help="Number of warmup iterations"),
   make_option(c("--n_iter"), type="integer", default=15000, help="Number of iterations"),
