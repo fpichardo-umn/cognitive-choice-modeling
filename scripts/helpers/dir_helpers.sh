@@ -67,11 +67,7 @@ get_subs_dir() {
   local session=$2
   local safe_dir=$(get_safe_data_dir)
   
-  if [ -z "$session" ]; then
-    echo "${safe_dir}/${source}/subs"
-  else
-    echo "${safe_dir}/${source}/subs/ses-${session}"
-  fi
+  echo "${safe_dir}/${source}/ses-${session}"
 }
 
 # Get the output directory for a specific task
