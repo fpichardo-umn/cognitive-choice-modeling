@@ -4,7 +4,7 @@ functions {
 			array[] int choice, array[] int shown, array[] real outcome,
 			array[] real RT, vector ev, int Tsub, 
 			vector sensitivity, real update, real wgt_pun,
-			real wgt_rew, real boundary1, real boundary, real tau1,, real tau, real beta
+			real wgt_rew, real boundary1, real boundary, real tau1, real tau, real beta
 			) {
     // Define values
     real         curUtil;      // Current utility
