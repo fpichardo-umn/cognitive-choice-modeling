@@ -16,4 +16,5 @@
 **/rds/
 /Outputs/**/fits/
 /Outputs/**/stats/
+/Outputs/**/diagnostics/
 /scripts/simulation/**/working/

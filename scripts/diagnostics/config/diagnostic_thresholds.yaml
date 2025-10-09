@@ -1,0 +1,54 @@
+# Diagnostic Thresholds Configuration
+# Defines thresholds for classifying diagnostic metrics
+
+thresholds:
+  rhat:
+    excellent: 1.01      # Values <= this are excellent
+    acceptable: 1.05     # Values <= this are acceptable
+    problematic: 1.1     # Values > this are problematic
+  
+  ess_ratio:
+    good: 0.7            # ESS/N >= this is good
+    acceptable: 0.5      # ESS/N >= this is acceptable
+    problematic: 0.3     # ESS/N < this is problematic
+  
+  divergence_rate:
+    acceptable: 0.001    # Rate <= this is acceptable (0.1%)
+    borderline: 0.01     # Rate <= this is borderline (1%)
+    problematic: 0.05    # Rate > this is problematic (5%)
+  
+  mcse_ratio:
+    acceptable: 0.05     # MCSE/SD <= this is acceptable (5%)
+    borderline: 0.1      # MCSE/SD <= this is borderline (10%)
+    problematic: 0.15    # MCSE/SD > this is problematic (15%)
+  
+  ebfmi:
+    acceptable: 0.3      # EBFMI >= this is acceptable
+    problematic: 0.2     # EBFMI < this is problematic
+
+# Weights for calculating problem scores
+# Higher weights = more important for overall assessment
+problem_weights:
+  high_rhat: 5         # Non-convergence is critical
+  divergences: 3       # Divergences indicate sampling problems
+  low_ess: 2           # Low ESS means inefficient sampling
+  high_mcse: 1         # High MCSE means uncertain estimates
+  low_ebfmi: 2         # Low EBFMI suggests geometry problems
+
+# CSV export settings
+csv_export:
+  subject_threshold: 100   # Export to CSV if N subjects > this
+  include_columns:
+    - subject_id
+    - problem_score
+    - status
+    - worst_rhat
+    - median_rhat
+    - divergence_rate
+    - divergence_count
+    - min_ess_ratio
+    - median_ess_ratio
+    - worst_mcse_ratio
+    - median_mcse_ratio
+    - ebfmi
+    - problematic_params

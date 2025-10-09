@@ -1,0 +1,147 @@
+# Report Configuration
+# Defines settings for diagnostic report generation
+
+report:
+  n_worst_subjects: 10         # Number of worst subjects to highlight in detail
+  table_threshold: 50          # Show full table in HTML if N <= this
+                               # If N > this: show top N worst + export all to CSV
+  
+  plots:
+    traceplots:
+      n_params_sample: 10      # Number of parameters to show in traceplots
+      n_iterations_show: 1000  # Number of iterations to display
+      warmup_color: "#ff9999"  # Color for warmup iterations
+      sampling_color: "#3366cc" # Color for sampling iterations
+    
+    density_plots:
+      plots_per_page: 10       # Number of density plots per page
+      show_by_chain: true      # Show separate densities by chain
+      bandwidth: "nrd0"        # Kernel density bandwidth method
+    
+    batch_heatmap:
+      max_subjects_show: 50    # Maximum subjects to show in heatmap
+      color_scheme: "RdYlGn"   # Color scheme (Red-Yellow-Green)
+      show_dendro: false       # Show dendrogram clustering
+    
+    energy_plot:
+      n_bins: 30              # Number of bins for energy histogram
+      show_normal_ref: true   # Show reference normal distribution
+  
+  sections:
+    include:
+      - executive_summary
+      - diagnostic_explanations
+      - convergence_diagnostics
+      - visual_diagnostics
+      - problematic_subjects
+      - technical_details
+    
+    optional:
+      - hierarchical_params    # Only included if --real_hier flag
+      - parameter_pairs        # Only if explicitly requested
+      - comparison_to_hier     # For empirical Bayes validation
+  
+  hierarchical:
+    fit_based:                 # Default behavior (--real_hier not set)
+      check_hyperparameters: true
+      detailed_group_diagnostics: false
+      shrinkage_assessment: true
+      focus: "subject_estimates"
+      sections:
+        - subject_diagnostics
+        - basic_hier_checks
+        - shrinkage_quality
+    
+    real_hier:                 # Behavior when --real_hier set
+      check_hyperparameters: true
+      detailed_group_diagnostics: true
+      shrinkage_assessment: true
+      focus: "both_levels"
+      sections:
+        - subject_diagnostics
+        - group_diagnostics
+        - full_shrinkage_analysis
+        - hierarchical_structure
+  
+  output:
+    save_rds: true             # Save RDS diagnostic summary
+    save_html: true            # Render HTML report
+    # CSV saved automatically if N > table_threshold
+    
+    html_options:
+      theme: "flatly"          # Bootstrap theme
+      highlight: "tango"       # Code highlighting style
+      toc: true                # Include table of contents
+      toc_float: true          # Floating TOC
+      toc_depth: 3            # TOC depth
+      code_folding: "hide"    # Code folding behavior
+      self_contained: true    # Self-contained HTML
+  
+  formatting:
+    decimal_places:
+      rhat: 4                 # Number of decimals for R-hat
+      ess: 0                  # Number of decimals for ESS
+      mcse: 4                 # Number of decimals for MCSE
+      rate: 4                 # Number of decimals for rates
+      score: 2                # Number of decimals for scores
+    
+    table_style:
+      striped: true           # Striped rows
+      hover: true             # Hover highlighting
+      bordered: true          # Bordered cells
+      compact: false          # Compact spacing
+
+# Explanation text settings
+explanations:
+  level: "detailed"           # "brief", "standard", or "detailed"
+  include_references: true    # Include references to Stan documentation
+  include_examples: true      # Include example interpretations
+  
+  sections:
+    divergences:
+      title: "Divergent Transitions"
+      include: true
+    
+    rhat:
+      title: "R-hat Convergence Diagnostic"
+      include: true
+    
+    ess:
+      title: "Effective Sample Size"
+      include: true
+    
+    mcse:
+      title: "Monte Carlo Standard Error"
+      include: true
+    
+    ebfmi:
+      title: "Energy Bayesian Fraction of Missing Information"
+      include: true
+    
+    treedepth:
+      title: "Maximum Tree Depth"
+      include: true
+
+# Alert settings
+alerts:
+  show_pass_alerts: false     # Show green alerts for passing diagnostics
+  show_warn_alerts: true      # Show yellow alerts for warnings
+  show_fail_alerts: true      # Show red alerts for failures
+  
+  icon_style: "emoji"         # "emoji" or "fontawesome"
+  
+  icons:
+    pass: "✓"
+    warn: "⚠"
+    fail: "✗"
+
+# Performance settings
+performance:
+  parallel_plots: false       # Generate plots in parallel (if many subjects)
+  max_cores: 4               # Maximum cores for parallel processing
+  cache_diagnostics: true    # Cache diagnostic calculations
+  
+  large_batch_threshold: 200  # Special handling for batches > this size
+  large_batch_options:
+    subsample_plots: true     # Only show subset of subjects in plots
+    summary_only: false       # Skip individual subject details

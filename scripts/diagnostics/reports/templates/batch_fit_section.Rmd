@@ -1,0 +1,189 @@
+# Diagnostic Results: Batch Fit (`r diagnostic_results$n_subjects` Subjects)
+
+## Overall Status
+
+```{r echo=FALSE, results='asis'}
+cat(format_status_badge(diagnostic_results$overall_status))
+```
+
+---
+
+## Aggregate Summary
+
+### Status Distribution
+
+```{r status-pie, echo=FALSE, fig.width=8, fig.height=6}
+create_status_piechart(diagnostic_results$aggregate)
+```
+
+```{r echo=FALSE}
+agg <- diagnostic_results$aggregate
+cat(sprintf("- **PASS**: %d subjects (%.1f%%)\n", agg$status$pass, agg$status$pct_pass))
+cat(sprintf("- **WARN**: %d subjects (%.1f%%)\n", agg$status$warn, agg$status$pct_warn))
+cat(sprintf("- **FAIL**: %d subjects (%.1f%%)\n\n", agg$status$fail, agg$status$pct_fail))
+```
+
+### Problem Type Breakdown
+
+```{r problem-bar, echo=FALSE, fig.width=10, fig.height=6}
+if (!is.null(diagnostic_results$problematic_subjects$summary$problem_categories)) {
+  create_problem_barchart(diagnostic_results$problematic_subjects$summary$problem_categories)
+}
+```
+
+---
+
+## Distribution of Diagnostics
+
+### R-hat Distribution
+
+```{r rhat-dist, echo=FALSE, fig.width=10, fig.height=5}
+subject_data <- diagnostic_results$problematic_subjects$all
+create_metric_distribution(subject_data$worst_rhat, "Worst R-hat", thresholds, "rhat")
+```
+
+```{r echo=FALSE}
+agg <- diagnostic_results$aggregate
+cat(sprintf("- **Median**: %.4f\n", agg$rhat$median))
+cat(sprintf("- **90th percentile**: %.4f\n", agg$rhat$q90))
+cat(sprintf("- **Maximum**: %.4f\n", agg$rhat$max))
+cat(sprintf("- **Subjects with R-hat > %.2f**: %d (%.1f%%)\n\n", 
+            thresholds$thresholds$rhat$problematic,
+            agg$rhat$n_problematic, agg$rhat$pct_problematic))
+```
+
+### ESS Distribution
+
+```{r ess-dist, echo=FALSE, fig.width=10, fig.height=5}
+create_metric_distribution(subject_data$min_ess_ratio, "Min ESS Ratio", thresholds, "ess_ratio")
+```
+
+```{r echo=FALSE}
+cat(sprintf("- **Median**: %.3f\n", agg$ess$median))
+cat(sprintf("- **10th percentile**: %.3f\n", agg$ess$q10))
+cat(sprintf("- **Minimum**: %.3f\n", agg$ess$min))
+cat(sprintf("- **Subjects with ESS ratio < %.2f**: %d (%.1f%%)\n\n", 
+            thresholds$thresholds$ess_ratio$problematic,
+            agg$ess$n_problematic, agg$ess$pct_problematic))
+```
+
+### Divergence Rate Distribution
+
+```{r div-dist, echo=FALSE, fig.width=10, fig.height=5}
+if (!is.null(subject_data$divergence_rate)) {
+  create_metric_distribution(subject_data$divergence_rate, "Divergence Rate", thresholds, "divergence_rate")
+}
+```
+
+```{r echo=FALSE}
+if (!is.null(agg$divergences)) {
+  cat(sprintf("- **Median rate**: %.4f%%\n", agg$divergences$median_rate * 100))
+  cat(sprintf("- **Maximum rate**: %.4f%%\n", agg$divergences$max_rate * 100))
+  cat(sprintf("- **Subjects with divergences**: %d (%.1f%%)\n", 
+              agg$divergences$n_with_divergences, agg$divergences$pct_with_divergences))
+  cat(sprintf("- **Subjects with high divergence rate**: %d (%.1f%%)\n\n", 
+              agg$divergences$n_problematic, agg$divergences$pct_problematic))
+}
+```
+
+---
+
+## Parameter-Specific Issues
+
+```{r param-problems, echo=FALSE, fig.width=10, fig.height=6}
+if (!is.null(diagnostic_results$parameter_summary)) {
+  create_parameter_problem_plot(diagnostic_results$parameter_summary, top_n = 15)
+}
+```
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$parameter_summary) && 
+    diagnostic_results$parameter_summary$n_problematic_params > 0) {
+  cat(sprintf("\n**%d parameters** are consistently problematic across subjects:\n\n", 
+              diagnostic_results$parameter_summary$n_problematic_params))
+  
+  problematic_params <- head(diagnostic_results$parameter_summary$problematic_params, 10)
+  for (param in problematic_params) {
+    cat(sprintf("- %s\n", param))
+  }
+  cat("\n")
+}
+```
+
+---
+
+## Problematic Subjects
+
+```{r echo=FALSE}
+prob_subj <- diagnostic_results$problematic_subjects
+n_total <- prob_subj$summary$n_total_subjects
+n_prob <- prob_subj$summary$n_problematic
+table_threshold <- config$report$table_threshold
+
+cat(sprintf("**%d of %d subjects** (%.1f%%) have diagnostic issues.\n\n", 
+            n_prob, n_total, prob_subj$summary$pct_problematic))
+```
+
+```{r worst-subjects-table, echo=FALSE, results='asis'}
+worst_subjects <- diagnostic_results$problematic_subjects$worst_subjects
+
+if (n_total <= table_threshold) {
+  cat("### All Subjects\n\n")
+  all_subjects <- diagnostic_results$problematic_subjects$all %>%
+    arrange(desc(problem_score)) %>%
+    select(subject_id, status, worst_rhat, min_ess_ratio, divergence_rate, problem_score) %>%
+    mutate(
+      worst_rhat = round(worst_rhat, 4),
+      min_ess_ratio = round(min_ess_ratio, 3),
+      divergence_rate = sprintf("%.2e", divergence_rate),
+      problem_score = round(problem_score, 2)
+    )
+  
+  knitr::kable(all_subjects,
+              col.names = c("Subject", "Status", "Worst R-hat", "Min ESS", "Div Rate", "Problem Score"),
+              caption = "All Subjects Ranked by Problem Score")
+} else {
+  cat(sprintf("### Top %d Worst Subjects\n\n", nrow(worst_subjects)))
+  
+  display_worst <- worst_subjects %>%
+    select(subject_id, status, worst_rhat, min_ess_ratio, divergence_rate, problem_score) %>%
+    mutate(
+      worst_rhat = round(worst_rhat, 4),
+      min_ess_ratio = round(min_ess_ratio, 3),
+      divergence_rate = sprintf("%.2e", divergence_rate),
+      problem_score = round(problem_score, 2)
+    )
+  
+  knitr::kable(display_worst,
+              col.names = c("Subject", "Status", "Worst R-hat", "Min ESS", "Div Rate", "Problem Score"),
+              caption = sprintf("Top %d Subjects by Problem Score", nrow(worst_subjects)))
+  
+  # Export CSV
+  csv_file <- get_diagnostics_table_path(task, cohort, session, group, model)
+  write.csv(diagnostic_results$problematic_subjects$all, csv_file, row.names = FALSE)
+  
+  cat(sprintf("\n\n**Full subject table** (%d subjects) exported to:\n\n", n_total))
+  cat(sprintf("`%s`\n\n", basename(csv_file)))
+  cat(sprintf("[Download CSV](%s)\n\n", basename(csv_file)))
+}
+```
+
+### Subject Ranking
+
+```{r subject-ranking, echo=FALSE, fig.width=10, fig.height=8}
+create_subject_ranking_plot(diagnostic_results$problematic_subjects$all, n_show = 20)
+```
+
+### Problem Score Distribution
+
+```{r problem-score-dist, echo=FALSE, fig.width=10, fig.height=6}
+create_problem_score_distribution(diagnostic_results$problematic_subjects$all, highlight_threshold = 5)
+```
+
+---
+
+## Diagnostic Summary Grid
+
+```{r summary-grid, echo=FALSE, fig.width=12, fig.height=10}
+create_diagnostic_summary_grid(diagnostic_results, thresholds)
+```
