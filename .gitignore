@@ -1,5 +1,5 @@
 /Data/raw/*
-/Outputs/**/rds/*
+/Outputs/*
 /log_files/*
 .DS_Store
 .Rproj.user/
