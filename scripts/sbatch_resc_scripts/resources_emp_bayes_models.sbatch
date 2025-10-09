@@ -61,7 +61,8 @@ if should_run_step 1; then
     -m ${MODEL_NAME} \
     -k ${TASK} \
     --n_trials ${n_trials} \
-    --RTbound_ms ${RTbound_ms} \
+    --RTbound_min_ms ${RTbound_min_ms} \
+    --RTbound_max_ms ${RTbound_max_ms} \
     --rt_method ${rt_method} \
     --n_warmup ${n_warmup} \
     --n_iter ${n_iter} \
@@ -94,7 +95,8 @@ if should_run_step 3; then
     -m ${MODEL_NAME} \
     -k ${TASK} \
     --n_trials ${n_trials} \
-    --RTbound_ms ${RTbound_ms} \
+    --RTbound_min_ms ${RTbound_min_ms} \
+    --RTbound_max_ms ${RTbound_max_ms} \
     --rt_method ${rt_method} \
     --n_warmup ${n_warmup} \
     --n_iter ${n_iter} \

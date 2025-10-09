@@ -29,7 +29,7 @@ option_list <- list(
               help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, 
               help="RT minimum bound in milliseconds"),
-  make_option(c("--RTbound_max_ms"), type="integer", default=2500, 
+  make_option(c("--RTbound_max_ms"), type="integer", default=4000, 
               help="RT maximum bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="mark", 
               help="RT method"),
