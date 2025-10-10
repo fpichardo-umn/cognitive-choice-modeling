@@ -161,8 +161,6 @@ create_report_content <- function(diagnostic_results, task, cohort, session,
 #' @param thresholds Threshold configuration
 #' @return Character vector with section content
 create_executive_summary <- function(diagnostic_results, fit_type, thresholds) {
-  source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_helpers.R"))
-  
   status <- diagnostic_results$overall_status
   status_badge <- format_status_badge(status)
   

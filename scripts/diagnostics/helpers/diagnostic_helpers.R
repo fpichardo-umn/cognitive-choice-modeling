@@ -9,6 +9,9 @@ suppressPackageStartupMessages({
   library(rlang)
 })
 
+# Define null-coalescing operator
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 #' Load diagnostic thresholds from config
 #' @param config_file Path to config file (optional)
 #' @return List with threshold values
