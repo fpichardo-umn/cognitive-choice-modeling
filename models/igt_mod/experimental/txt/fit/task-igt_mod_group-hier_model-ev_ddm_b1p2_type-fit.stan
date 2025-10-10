@@ -84,8 +84,8 @@ parameters {
   array[9] real<lower=0> sigma;       // Group standard deviations
 
   // Subject-level raw parameters
-  array[N] real boundary1_pr;  // Boundary separation (T1 a)
-  array[N] real boundary_pr;   // Boundary separation (a)
+  array[N]<lower=-5, upper=5> real boundary1_pr;  // Boundary separation (T1 a)
+  array[N]<lower=-5, upper=5> real boundary_pr;   // Boundary separation (a)
   array[N] real tau1_pr;       // Non-decision time (T1 tau)
   array[N] real tau_pr;        // Non-decision time (tau)
   array[N] real beta_pr;       // Starting point
