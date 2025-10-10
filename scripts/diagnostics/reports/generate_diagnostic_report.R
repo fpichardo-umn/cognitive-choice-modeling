@@ -24,7 +24,7 @@ source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_
 #' @return List with report file paths
 generate_diagnostic_report <- function(diagnostic_results, task, cohort, session = NULL,
                                       group, model, output_dir = NULL, render_html = TRUE,
-                                      template_file = NULL) {
+                                      template_file = NULL, summary_file = NULL, fit_file = NULL) {
   
   # Set output directory
   if (is.null(output_dir)) {
@@ -63,27 +63,45 @@ generate_diagnostic_report <- function(diagnostic_results, task, cohort, session
   # Select template based on fit type
   if (is.null(template_file)) {
     template_dir <- file.path(here::here(), "scripts", "diagnostics", "reports", "templates")
-    template_file <- file.path(template_dir, "main_diagnostic_template.Rmd")
+    if (fit_type == "single") {
+      template_file <- file.path(template_dir, "single_fit_report.Rmd")
+    } else if (fit_type == "batch") {
+      template_file <- file.path(template_dir, "batch_fit_report.Rmd")
+    } else {
+      template_file <- file.path(template_dir, "hierarchical_report.Rmd")
+    }
   }
   
-  # Create RMD content
-  rmd_content <- create_report_content(diagnostic_results, task, cohort, session, 
-                                      group, model, fit_type, template_file)
-  
-  # Write RMD file
-  writeLines(rmd_content, rmd_file)
-  cat("Created Rmd file:", rmd_file, "\n")
+  # Copy template to output location
+  if (file.exists(template_file)) {
+    file.copy(template_file, rmd_file, overwrite = TRUE)
+    cat("Copied template to:", rmd_file, "\n")
+  } else {
+    stop("Template file not found: ", template_file)
+  }
   
   # Render to HTML if requested
   if (render_html) {
     cat("Rendering HTML report...\n")
     
+    # Prepare params for template
+    render_params <- list(
+      diagnostic_file = summary_file,
+      fit_file = fit_file %||% "",
+      task = task,
+      cohort = cohort,
+      model = model,
+      subject_id = if (!is.null(diagnostic_results$metadata$subject_id)) {
+        diagnostic_results$metadata$subject_id
+      } else "Unknown"
+    )
+    
     tryCatch({
       rmarkdown::render(
         input = rmd_file,
         output_file = html_file,
-        quiet = FALSE,
-        envir = new.env()
+        params = render_params,
+        quiet = FALSE
       )
       cat("HTML report generated:", html_file, "\n")
     }, error = function(e) {

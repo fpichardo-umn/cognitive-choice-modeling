@@ -237,17 +237,21 @@ tryCatch({
   stop(e)
 })
 
-# Save RDS summary
-if (opt$save_rds) {
+# Save RDS summary (always save for report generation, even if not requested)
+summary_file <- get_diagnostics_summary_path(opt$task, opt$cohort, opt$session, opt$group, opt$model)
+
+if (opt$save_rds || opt$render_html) {
   cat("Saving diagnostic summary...\n")
-  summary_file <- get_diagnostics_summary_path(opt$task, opt$cohort, opt$session, opt$group, opt$model)
   
   tryCatch({
     saveRDS(diagnostic_results, summary_file)
-    cat("  ✓ Summary saved:", summary_file, "\n\n")
+    if (opt$save_rds) {
+      cat("  ✓ Summary saved:", summary_file, "\n\n")
+    }
     writeLines(paste("Summary saved:", summary_file), log_conn)
   }, error = function(e) {
     warning("Failed to save summary: ", e$message)
+    summary_file <- NULL
   })
 }
 
@@ -302,7 +306,9 @@ if (opt$render_html || !is.null(opt$output_dir)) {
       group = opt$group,
       model = opt$model,
       output_dir = opt$output_dir,
-      render_html = opt$render_html
+      render_html = opt$render_html,
+      summary_file = summary_file,
+      fit_file = fit_file
     )
     
     cat("  ✓ Report generated\n")
