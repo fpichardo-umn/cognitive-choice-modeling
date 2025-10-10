@@ -74,7 +74,7 @@ get_subs_dir() {
 get_output_dir() {
   local task=$1
   local proj_dir=$(get_proj_dir)
-  echo "${proj_dir}/outputs/${task}"
+  echo "${proj_dir}/Outputs/${task}"
 }
 
 # Get the log directory for a specific task

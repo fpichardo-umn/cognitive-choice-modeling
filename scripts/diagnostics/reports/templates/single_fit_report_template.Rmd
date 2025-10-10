@@ -1,6 +1,6 @@
 ---
 title: "MCMC Diagnostics Report"
-subtitle: "`r sprintf('%s - %s - Subject %s', params$model, params$task, params$subject_id)`"
+subtitle: "{{MODEL}} - {{TASK}} - Subject {{SUBJECT_ID}}"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
   html_document:
@@ -11,13 +11,6 @@ output:
     toc_depth: 3
     code_folding: hide
     self_contained: true
-params:
-  diagnostic_file: ""
-  fit_file: ""
-  task: ""
-  cohort: ""
-  model: ""
-  subject_id: ""
 ---
 
 ```{r setup, include=FALSE}
@@ -39,20 +32,22 @@ suppressPackageStartupMessages({
   library(here)
 })
 
-# Source helper functions FIRST
+# Source helper functions
 source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_helpers.R"))
 source(file.path(here::here(), "scripts", "diagnostics", "visualization", "convergence_plots.R"))
 
-# NOW load thresholds and data
-thresholds <- load_diagnostic_thresholds()
-diagnostic_results <- readRDS(params$diagnostic_file)
+# Load diagnostic results
+diagnostic_results <- readRDS("{{DIAGNOSTIC_FILE}}")
 
 # Load fit object if available for plotting
-fit <- if (file.exists(params$fit_file) && params$fit_file != "") {
-  readRDS(params$fit_file)
+fit <- if (file.exists("{{FIT_FILE}}")) {
+  readRDS("{{FIT_FILE}}")
 } else {
   NULL
 }
+
+# Load thresholds
+thresholds <- load_diagnostic_thresholds()
 ```
 
 ---
@@ -74,10 +69,10 @@ meta <- diagnostic_results$metadata
 info_df <- data.frame(
   Item = c("Task", "Cohort", "Model", "Subject", "Chains", "Iterations", "Parameters"),
   Value = c(
-    params$task,
-    params$cohort,
-    params$model,
-    params$subject_id,
+    "{{TASK}}",
+    "{{COHORT}}",
+    "{{MODEL}}",
+    "{{SUBJECT_ID}}",
     as.character(meta$n_chains),
     sprintf("%d warmup + %d sampling", meta$n_warmup, 
             (meta$n_iter - meta$n_warmup)),
