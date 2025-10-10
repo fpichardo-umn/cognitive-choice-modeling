@@ -22,7 +22,7 @@ print_usage() {
 
 # Parse command line arguments
 DRY_RUN=false
-while getopts ":m:f:d:e:k:g:s:n" opt; do
+while getopts ":m:f:d:e:k:g:s:n:l:c" opt; do
   case $opt in
     m) MODEL_NAMES=$OPTARG ;;
     f) FIT_CONFIG=$OPTARG ;;
@@ -32,6 +32,8 @@ while getopts ":m:f:d:e:k:g:s:n" opt; do
     e) USER_EMAIL=$OPTARG ;;
     s) STEPS=$OPTARG ;;
     n) DRY_RUN=true ;;
+    l) SUBS_FILE=$OPTARG;;
+    c) CHECK_ITER=$OPTARG;;
     \?) echo "Invalid option -$OPTARG" >&2; print_usage ;;
   esac
 done
@@ -180,7 +182,9 @@ for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
     JOB_NAME="${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}"
     job_id=$(sbatch --parsable \
       --job-name=$JOB_NAME \
-      --export=ALL,JOB_NAME=$JOB_NAME,MODEL_NAME=$MODEL_NAME,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,USER_EMAIL=$USER_EMAIL,MODEL_TYPE=$MODEL_TYPE,TASK=$TASK,GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS \
+      --export=ALL,JOB_NAME=$JOB_NAME,MODEL_NAME=$MODEL_NAME,FIT_CONFIG=$FIT_CONFIG,\
+      DATA_CONFIG=$DATA_CONFIG,USER_EMAIL=$USER_EMAIL,MODEL_TYPE=$MODEL_TYPE,TASK=$TASK,\
+      GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS,CHECK_ITER=${CHECK_ITER},SUBS_FILE=${SUBS_FILE} \
       $SBATCH_SCRIPT)
     if [ $? -eq 0 ]; then
       echo "Submitted job for model $MODEL_NAME with ID: $job_id"
