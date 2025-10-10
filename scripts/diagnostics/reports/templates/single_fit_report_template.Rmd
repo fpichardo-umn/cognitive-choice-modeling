@@ -245,9 +245,9 @@ kable(ess_interp)
 ```{r ess-summary}
 ess_info <- diagnostic_results$convergence$ess_bulk
 
-cat(sprintf("- **Minimum ESS**: %d (%.1f%% of %d total samples)\n", 
+cat(sprintf("- **Minimum ESS**: %.0f (%.1f%% of %.0f total samples)\n", 
             ess_info$min, ess_info$min_ratio * 100, diagnostic_results$metadata$total_samples))
-cat(sprintf("- **Median ESS**: %d (%.1f%%)\n", 
+cat(sprintf("- **Median ESS**: %.0f (%.1f%%)\n", 
             ess_info$median, ess_info$median_ratio * 100))
 cat(sprintf("- **Status**: %s\n\n", ess_info$status))
 
@@ -330,15 +330,15 @@ kable(div_interp)
 ```{r div-summary}
 div_info <- diagnostic_results$sampling$divergences
 
-cat(sprintf("- **Divergence count**: %d\n", div_info$count))
-cat(sprintf("- **Total transitions**: %d\n", div_info$total_transitions))
+cat(sprintf("- **Divergence count**: %.0f\n", div_info$count))
+cat(sprintf("- **Total transitions**: %.0f\n", div_info$total_transitions))
 cat(sprintf("- **Divergence rate**: %.4f%% \n", div_info$rate * 100))
 cat(sprintf("- **Status**: %s\n\n", div_info$status))
 
 if (!is.null(div_info$by_chain)) {
   cat("**By chain:**\n")
   for (i in seq_along(div_info$by_chain)) {
-    cat(sprintf("  - Chain %d: %d divergences\n", i, div_info$by_chain[i]))
+    cat(sprintf("  - Chain %d: %.0f divergences\n", i, div_info$by_chain[i]))
   }
   cat("\n")
 }
@@ -433,8 +433,8 @@ if (mcse_info$n_problematic > 0) {
 if (!is.null(diagnostic_results$sampling$treedepth)) {
   td_info <- diagnostic_results$sampling$treedepth
   
-  cat(sprintf("- **Maximum allowed**: %d\n", td_info$max_allowed))
-  cat(sprintf("- **Hits**: %d (%.2f%% of transitions)\n", td_info$hits, td_info$rate * 100))
+  cat(sprintf("- **Maximum allowed**: %.0f\n", td_info$max_allowed))
+  cat(sprintf("- **Hits**: %.0f (%.2f%% of transitions)\n", td_info$hits, td_info$rate * 100))
   cat(sprintf("- **Status**: %s\n\n", td_info$status))
   
   if (td_info$status != "PASS") {

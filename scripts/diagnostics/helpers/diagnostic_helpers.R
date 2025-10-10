@@ -12,6 +12,21 @@ suppressPackageStartupMessages({
 # Define null-coalescing operator
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+#' Format status badge for HTML output
+#' @param status Status string ("PASS", "WARN", or "FAIL")
+#' @return HTML string for badge
+format_status_badge <- function(status) {
+  color <- switch(status,
+    "PASS" = "#28a745",
+    "WARN" = "#ffc107",
+    "FAIL" = "#dc3545",
+    "#6c757d"  # default gray
+  )
+  
+  sprintf('<span style="display:inline-block;padding:4px 8px;border-radius:4px;background-color:%s;color:white;font-weight:bold;">%s</span>',
+          color, status)
+}
+
 #' Load diagnostic thresholds from config
 #' @param config_file Path to config file (optional)
 #' @return List with threshold values
