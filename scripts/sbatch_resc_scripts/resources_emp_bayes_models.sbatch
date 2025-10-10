@@ -57,7 +57,7 @@ check_status() {
 # Step 1: Run initial hierarchical model
 if should_run_step 1; then
   echo "Starting initial hierarchical model fit..."
-  Rscript ./scripts/empbayes/fit_emp_bayes_hierarchical_models.R \
+  Rscript ./scripts/empbayes/fit_empbayes_hierarchical.R \
     -m ${MODEL_NAME} \
     -k ${TASK} \
     --n_trials ${n_trials} \
@@ -77,7 +77,7 @@ fi
 # Step 2: Generate informative priors
 if should_run_step 2; then
   echo "Generating informative priors..."
-  Rscript ./scripts/empbayes/generate_informative_priors.R \
+  Rscript ./scripts/empbayes/generate_empbayes_priors.R \
     -m ${MODEL_NAME} \
     -k ${TASK} \
     --seed ${SLURM_JOB_ID} \
@@ -91,7 +91,7 @@ if should_run_step 3; then
   # Source the config files
   source ./scripts/configs/fit_params_emp_indiv_${FIT_CONFIG}.conf
   
-  Rscript ./scripts/empbayes/fit_emp_bayes_group_models.R \
+  Rscript ./scripts/empbayes/fit_emp_bayes_batch.R \
     -m ${MODEL_NAME} \
     -k ${TASK} \
     --n_trials ${n_trials} \
