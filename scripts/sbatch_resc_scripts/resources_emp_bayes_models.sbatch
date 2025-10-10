@@ -60,6 +60,7 @@ if should_run_step 1; then
   Rscript ./scripts/empbayes/fit_empbayes_hierarchical.R \
     -m ${MODEL_NAME} \
     -s ${SOURCE} \
+    --ses ${SES} \
     -k ${TASK} \
     --n_trials ${n_trials} \
     --RTbound_min_ms ${RTbound_min_ms} \
@@ -94,6 +95,8 @@ if should_run_step 3; then
   
   Rscript ./scripts/empbayes/fit_emp_bayes_batch.R \
     -m ${MODEL_NAME} \
+    -s ${SOURCE} \
+    --ses ${SES} \
     -k ${TASK} \
     --n_trials ${n_trials} \
     --RTbound_min_ms ${RTbound_min_ms} \
