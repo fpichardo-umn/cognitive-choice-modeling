@@ -7,6 +7,7 @@ suppressPackageStartupMessages({
   library(optparse)
   library(here)
   library(dplyr)
+  library(rlang)
 })
 
 # Parse command line arguments

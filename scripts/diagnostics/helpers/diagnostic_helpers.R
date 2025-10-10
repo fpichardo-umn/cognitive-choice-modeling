@@ -6,6 +6,7 @@ suppressPackageStartupMessages({
   library(posterior)
   library(yaml)
   library(here)
+  library(rlang)
 })
 
 #' Load diagnostic thresholds from config
