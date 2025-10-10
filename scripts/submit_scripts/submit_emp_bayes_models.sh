@@ -22,18 +22,17 @@ print_usage() {
 
 # Parse command line arguments
 DRY_RUN=false
-while getopts ":m:f:d:e:k:g:s:n:l:c" opt; do
+while getopts ":m:f:d:k:c:l:s:e:n" opt; do
   case $opt in
     m) MODEL_NAMES=$OPTARG ;;
     f) FIT_CONFIG=$OPTARG ;;
     d) DATA_CONFIG=$OPTARG ;;
     k) TASK=$OPTARG ;;
     c) CHECK_ITER=$OPTARG ;;
-    e) USER_EMAIL=$OPTARG ;;
-    s) STEPS=$OPTARG ;;
-    n) DRY_RUN=true ;;
     l) SUBS_FILE=$OPTARG;;
-    c) CHECK_ITER=$OPTARG;;
+    s) STEPS=$OPTARG ;;
+    e) USER_EMAIL=$OPTARG ;;
+    n) DRY_RUN=true ;;
     \?) echo "Invalid option -$OPTARG" >&2; print_usage ;;
   esac
 done
@@ -51,6 +50,7 @@ DATA_CONFIG=${DATA_CONFIG:-default}
 MODEL_TYPE=${MODEL_TYPE:-fit}
 CHECK_ITER=${CHECK_ITER:-10000}
 STEPS=${STEPS:-"1,2,3"}
+SUBS_FILE=${SUBS_FILE:-"subject_ids_complete_valid.txt"}
 
 if ! [[ $STEPS =~ ^[1-3](,[1-3]){0,2}$ ]]; then
   echo "Error: Invalid steps specified. Use a comma-separated list of 1, 2, and/or 3."
@@ -142,7 +142,7 @@ generate_r2_call() {
 generate_r3_call() {
   local model=$1
   local dry_run_flag=$2
-  echo "Rscript $R_SCRIPT3 -m $model -k $TASK --n_trials \${n_trials} --RTbound_ms \${RTbound_ms} --rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} $dry_run_flag"
+  echo "Rscript $R_SCRIPT3 -m $model -k $TASK --n_trials \${n_trials} --RTbound_ms \${RTbound_ms} --rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} --subs_file ${SUBS_FILE} $dry_run_flag"
 }
 
 # Check model files and submit jobs
@@ -166,6 +166,7 @@ for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
     echo "    TASK=$TASK"
     echo "    GROUP_TYPE=$GROUP_TYPE"
     echo "    CHECK_ITER=$CHECK_ITER"
+    echo "    SUBS_FILE=$SUBS_FILE"
     echo "  R script call would be:"
     generate_r_call $MODEL_NAME "--dry_run"
     generate_r2_call $MODEL_NAME "--dry_run"
@@ -184,7 +185,7 @@ for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
       --job-name=$JOB_NAME \
       --export=ALL,JOB_NAME=$JOB_NAME,MODEL_NAME=$MODEL_NAME,FIT_CONFIG=$FIT_CONFIG,\
       DATA_CONFIG=$DATA_CONFIG,USER_EMAIL=$USER_EMAIL,MODEL_TYPE=$MODEL_TYPE,TASK=$TASK,\
-      GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS,CHECK_ITER=${CHECK_ITER},SUBS_FILE=${SUBS_FILE} \
+      GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS,SUBS_FILE=${SUBS_FILE} \
       $SBATCH_SCRIPT)
     if [ $? -eq 0 ]; then
       echo "Submitted job for model $MODEL_NAME with ID: $job_id"
