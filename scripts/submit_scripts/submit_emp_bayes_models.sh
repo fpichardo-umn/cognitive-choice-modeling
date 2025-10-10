@@ -9,6 +9,8 @@ print_usage() {
   echo "Example: $0 -m \"ev,pvl\" -f default -d full -e your@email.edu -k igt_mod"
   echo "Options:"
   echo "  -m    Comma-separated list of model names"
+  echo "  -u    Data source (cohort)"
+  echo "  -S    Session identifier"
   echo "  -f    Fit parameters config name for empirical bayes (default: simple) [complex]"
   echo "  -d    Data parameters config name (default: default)"
   echo "  -k    Task name (e.g., igt_mod)"
@@ -22,15 +24,17 @@ print_usage() {
 
 # Parse command line arguments
 DRY_RUN=false
-while getopts ":m:f:d:k:c:l:s:e:n" opt; do
+while getopts ":m:s:S:f:d:k:c:l:t:e:n" opt; do
   case $opt in
     m) MODEL_NAMES=$OPTARG ;;
+    s) SOURCE=$OPTARG ;;
+    S) SES=$OPTARG ;;
     f) FIT_CONFIG=$OPTARG ;;
     d) DATA_CONFIG=$OPTARG ;;
     k) TASK=$OPTARG ;;
     c) CHECK_ITER=$OPTARG ;;
     l) SUBS_FILE=$OPTARG;;
-    s) STEPS=$OPTARG ;;
+    t) STEPS=$OPTARG ;;
     e) USER_EMAIL=$OPTARG ;;
     n) DRY_RUN=true ;;
     \?) echo "Invalid option -$OPTARG" >&2; print_usage ;;
@@ -137,7 +141,7 @@ for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
     JOB_NAME="${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}"
     job_id=$(sbatch --parsable \
       --job-name=$JOB_NAME \
-      --export=JOB_NAME=$JOB_NAME,MODEL_NAME=$MODEL_NAME,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,USER_EMAIL=$USER_EMAIL,MODEL_TYPE=$MODEL_TYPE,TASK=$TASK,GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS,SUBS_FILE=${SUBS_FILE} \
+      --export=JOB_NAME=$JOB_NAME,MODEL_NAME=$MODEL_NAME,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,USER_EMAIL=$USER_EMAIL,MODEL_TYPE=$MODEL_TYPE,TASK=$TASK,GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS,SUBS_FILE=${SUBS_FILE},SOURCE=${SOURCE},SES=${SES}\
       $SBATCH_SCRIPT)
     if [ $? -eq 0 ]; then
       echo "Submitted job for model $MODEL_NAME with ID: $job_id"

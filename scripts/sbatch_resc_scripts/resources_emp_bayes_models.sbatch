@@ -59,6 +59,7 @@ if should_run_step 1; then
   echo "Starting initial hierarchical model fit..."
   Rscript ./scripts/empbayes/fit_empbayes_hierarchical.R \
     -m ${MODEL_NAME} \
+    -s ${SOURCE} \
     -k ${TASK} \
     --n_trials ${n_trials} \
     --RTbound_min_ms ${RTbound_min_ms} \
