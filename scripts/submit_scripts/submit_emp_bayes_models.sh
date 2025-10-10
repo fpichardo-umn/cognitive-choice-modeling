@@ -9,14 +9,14 @@ print_usage() {
   echo "Example: $0 -m \"ev,pvl\" -f default -d full -e your@email.edu -k igt_mod"
   echo "Options:"
   echo "  -m    Comma-separated list of model names"
-  echo "  -u    Data source (cohort)"
+  echo "  -s    Data source (cohort)"
   echo "  -S    Session identifier"
   echo "  -f    Fit parameters config name for empirical bayes (default: simple) [complex]"
   echo "  -d    Data parameters config name (default: default)"
   echo "  -k    Task name (e.g., igt_mod)"
   echo "  -c    Number of iterations for checkpoint runs (default: 10000)"
   echo "  -l    Subs list file [Data/raw/COHORT/ses-SES/] (default: subject_ids_complete_valid.txt)"
-  echo "  -s    Steps to run (default: "1,2,3", options: "1", "2", "3", "1,2", "2,3", or any combination)"
+  echo "  -t    Steps to run (default: "1,2,3", options: "1", "2", "3", "1,2", "2,3", or any combination)"
   echo "  -e    Your email address (required)"
   echo "  -n    Dry run (optional)"
   exit 1
@@ -43,8 +43,8 @@ done
 
 # Check if required arguments are provided
 GROUP_TYPE="group_hier" # It's always hier and then emp (which is generated in the scripts)
-if [ -z "$MODEL_NAMES" ] || [ -z "$USER_EMAIL" ] || [ -z "$TASK" ]; then
-  echo "Error: Model names, email address, and task are required."
+if [ -z "$MODEL_NAMES" ] || [ -z "SOURCE" ] ||  [ -z "SES" ] ||  [ -z "$USER_EMAIL" ] || [ -z "$TASK" ]; then
+  echo "Error: Model names, cohort/source, session nubmer, email address, and task are required."
   print_usage
 fi
 
