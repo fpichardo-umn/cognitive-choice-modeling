@@ -24,7 +24,7 @@ transformed parameters {
 
 
   boundary = exp(inv_logit(boundary_pr) * 10 - 5);
-  tau 	   = inv_logit(tau_pr) * (minRT - RTbound) * 0.99 + RTbound; // Ensures tau will always be at least 1% less than minRT
+  tau 	   = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound; // Ensures tau will always be at least 1% less than minRT
   beta     = inv_logit(beta_pr);
 }
 

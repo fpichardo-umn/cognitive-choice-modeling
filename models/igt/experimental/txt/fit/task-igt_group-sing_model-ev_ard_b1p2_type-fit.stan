@@ -157,8 +157,8 @@ transformed parameters {
   
   boundary1 = exp(boundary1_pr);
   boundary = exp(boundary_pr);
-  tau1 = inv_logit(tau1_pr) * (minRT - RTbound) * 0.99 + RTbound;
-  tau = inv_logit(tau_pr) * (minRT - RTbound) * 0.99 + RTbound;
+  tau1 = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  tau = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   urgency = exp(urgency_pr);
   wd = exp(wd_pr);
   ws = exp(ws_pr);

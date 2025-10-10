@@ -101,8 +101,8 @@ transformed parameters {
   // Ensures tau will always be at least 1% less than minRT
   boundary1 = exp(boundary1_pr);
   boundary  = exp(boundary_pr);
-  tau1      = inv_logit(tau1_pr) * (minRT - RTbound) * 0.99 + RTbound;
-  tau       = inv_logit(tau_pr) * (minRT - RTbound) * 0.99 + RTbound;
+  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  tau       = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   drift_A    = exp(drift_A_pr);
   drift_B    = exp(drift_B_pr);
   drift_C    = exp(drift_C_pr);

@@ -14,7 +14,7 @@ data {
 }
 
 transformed data{
-  vector[N] minRTdiff    = minRT - RTbound;
+  vector[N] minRTdiff    = (((((minRT - RTbound - 1e-6)))));
   real      RTmax        = max(minRT);
 } 
 

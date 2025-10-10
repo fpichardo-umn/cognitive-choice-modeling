@@ -25,8 +25,8 @@ transformed parameters {
 
   boundary1 = inv_logit(boundary1_pr) * 5 + 0.01;
   boundary  = inv_logit(boundary_pr) * 5 + 0.01;
-  tau1      = inv_logit(tau1_pr) * (minRT - RTbound) * 0.99 + RTbound;
-  tau       = inv_logit(tau_pr) * (minRT - RTbound) * 0.99 + RTbound;
+  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  tau       = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   beta      = inv_logit(beta_pr);
 }
 
