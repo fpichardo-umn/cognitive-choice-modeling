@@ -110,7 +110,7 @@ find_available_fits <- function(task, cohort, session, models, groups) {
 cat("\n=== Batch Diagnostic Processing ===\n")
 cat("Task:", opt$task, "\n")
 cat("Cohort:", opt$cohort, "\n")
-cat("Session:", opt$session %||% "none", "\n")
+cat("Session:", if (is.null(opt$session)) "none" else opt$session, "\n")
 cat("Models:", opt$models, "\n")
 cat("Groups:", opt$groups, "\n")
 cat("===================================\n\n")

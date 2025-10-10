@@ -6,6 +6,7 @@
 suppressPackageStartupMessages({
   library(optparse)
   library(here)
+  library(dplyr)
 })
 
 # Parse command line arguments
@@ -68,7 +69,7 @@ if (opt$verbose) {
   cat("=== MCMC Diagnostics Analysis ===\n")
   cat("Task:", opt$task, "\n")
   cat("Cohort:", opt$cohort, "\n")
-  cat("Session:", opt$session %||% "none", "\n")
+  cat("Session:", if (is.null(opt$session)) "none" else opt$session, "\n")
   cat("Model:", opt$model, "\n")
   cat("Group:", opt$group, "\n")
   if (!is.null(opt$subid)) cat("Subject:", opt$subid, "\n")
@@ -270,7 +271,10 @@ if (fit_type %in% c("batch", "hierarchical")) {
           subject_id = sapply(diagnostic_results$subject_analysis$subject_summaries, function(x) x$subject_id),
           status = sapply(diagnostic_results$subject_analysis$subject_summaries, function(x) x$status),
           worst_rhat = sapply(diagnostic_results$subject_analysis$subject_summaries, function(x) x$worst_rhat),
-          min_ess_ratio = sapply(diagnostic_results$subject_analysis$subject_summaries, function(x) x$min_ess_ratio %||% NA),
+          min_ess_ratio <- sapply(
+            diagnostic_results$subject_analysis$subject_summaries,
+            function(x) if (!is.null(x$min_ess_ratio)) x$min_ess_ratio else NA
+          ),
           problem_score = sapply(diagnostic_results$subject_analysis$subject_summaries, function(x) x$problem_score),
           stringsAsFactors = FALSE
         )
@@ -307,7 +311,13 @@ if (opt$render_html || !is.null(opt$output_dir)) {
     }
     cat("\n")
     
-    writeLines(paste("Report generated:", report_result$html_file %||% report_result$rmd_file), log_conn)
+    writeLines(
+      paste(
+        "Report generated:",
+        if (!is.null(report_result$html_file)) report_result$html_file else report_result$rmd_file
+      ),
+      log_conn
+    )
     
   }, error = function(e) {
     error_msg <- paste("Error generating report:", e$message)
