@@ -21,12 +21,14 @@ option_list <- list(
               help="Minimum number of trials required"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, 
               help="RT minimum bound in milliseconds"),
-  make_option(c("--RTbound_max_ms"), type="integer", default=2500, 
+  make_option(c("--RTbound_max_ms"), type="integer", default=4000, 
               help="RT maximum bound in milliseconds"),
-  make_option(c("--rt_method"), type="character", default="remove", 
+  make_option(c("--rt_method"), type="character", default="mark", 
               help="RT preprocessing method"),
   make_option(c("--seed"), type="integer", default=29518, 
               help="Random seed for sampling"),
+  make_option(c("-l", "--subs_file"), type="character", default="subject_ids_complete_valid.txt", 
+              help="Subs list file [Data/raw/COHORT/ses-SES/] (default: subject_ids_complete_valid.txt)"),
   make_option(c("--hier_subs_file"), type="character", default=NULL, 
               help="Pre-specified subject list file (skips random sampling)"),
   make_option(c("--dry_run"), action="store_true", default=FALSE, 
@@ -69,6 +71,24 @@ output_filename <- generate_bids_filename(
 )
 output_file <- file.path(empbayes_subs_dir, output_filename)
 
+# Get task-specific directories
+if (!is.null(opt$task)) {
+  # Get subjects directory with source
+  SUBS_DIR <- file.path(SAFE_DIR, opt$source)
+  if (!is.null(opt$ses)) {
+    SUBS_DIR <- file.path(SUBS_DIR, paste0("ses-", opt$ses))
+  }
+  SUBS_LIST_FILE <- file.path(SUBS_DIR, opt$subs_file)
+} else {
+  stop("Task name is required using the -k option.")
+}
+
+# Check subjects list file
+if (!file.exists(SUBS_LIST_FILE)) {
+  stop(sprintf("Subjects list file not found: %s", SUBS_LIST_FILE))
+}
+subject_ids <- readLines(SUBS_LIST_FILE)
+
 cat("Empirical Bayes Subject Selection\n")
 cat("==================================\n\n")
 
@@ -97,6 +117,9 @@ cat("Loading data...\n")
 if (!opt$dry_run) {
   # Load data
   all_data <- load_data(opt$task, opt$source, opt$ses)
+  
+  # Filter based on main subs file
+  all_data = all_data[all_data$subjID %in% subject_ids,]
   
   # Get unique subjects
   all_subjects <- unique(all_data$subjID)

@@ -12,7 +12,8 @@ print_usage() {
   echo "  -f    Fit parameters config name for empirical bayes (default: simple) [complex]"
   echo "  -d    Data parameters config name (default: default)"
   echo "  -k    Task name (e.g., igt_mod)"
-  echo "  -c    Number of iterations for checkpoint runs (default: 1000)"
+  echo "  -c    Number of iterations for checkpoint runs (default: 10000)"
+  echo "  -l    Subs list file [Data/raw/COHORT/ses-SES/] (default: subject_ids_complete_valid.txt)"
   echo "  -s    Steps to run (default: "1,2,3", options: "1", "2", "3", "1,2", "2,3", or any combination)"
   echo "  -e    Your email address (required)"
   echo "  -n    Dry run (optional)"
@@ -46,7 +47,7 @@ fi
 FIT_CONFIG=${FIT_CONFIG:-simple}
 DATA_CONFIG=${DATA_CONFIG:-default}
 MODEL_TYPE=${MODEL_TYPE:-fit}
-CHECK_ITER=${CHECK_ITER:-1000}
+CHECK_ITER=${CHECK_ITER:-10000}
 STEPS=${STEPS:-"1,2,3"}
 
 if ! [[ $STEPS =~ ^[1-3](,[1-3]){0,2}$ ]]; then

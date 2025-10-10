@@ -103,6 +103,7 @@ if should_run_step 3; then
     --n_chains ${n_chains} \
     --adapt_delta ${adapt_delta} \
     --max_treedepth ${max_treedepth} \
+    --subs_file ${SUBS_FILE}\
     --check_iter ${CHECK_ITER} \
     --seed ${SLURM_JOB_ID}
   check_status $? "Full empirical Bayes model fit"

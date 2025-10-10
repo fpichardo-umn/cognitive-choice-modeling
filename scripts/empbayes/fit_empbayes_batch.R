@@ -50,6 +50,8 @@ option_list <- list(
   make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
   make_option(c("--priors_file"), type="character", default=NULL, 
               help="Path to priors CSV file (optional)"),
+  make_option(c("-l", "--subs_file"), type="character", default="subject_ids_complete_valid.txt", 
+              help="Subs list file [Data/txt/subs/] (default: subject_ids_complete_valid.txt)"),
   make_option(c("-p", "--parallel"), action="store_true", default=FALSE, 
               help="Run subjects in parallel"),
   make_option(c("-c", "--cores"), type="integer", default=4, 
@@ -165,44 +167,50 @@ if (!opt$dry_run) {
   priors_list <- NULL
 }
 
+# Get task-specific directories
+if (!is.null(opt$task)) {
+  # Get subjects directory with source
+  SUBS_DIR <- file.path(SAFE_DIR, opt$source)
+  if (!is.null(opt$ses)) {
+    SUBS_DIR <- file.path(SUBS_DIR, paste0("ses-", opt$ses))
+  }
+  SUBS_LIST_FILE <- file.path(SUBS_DIR, opt$subs_file)
+} else {
+  stop("Task name is required using the -k option.")
+}
+
+# Check subjects list file
+if (!file.exists(SUBS_LIST_FILE)) {
+  stop(sprintf("Subjects list file not found: %s", SUBS_LIST_FILE))
+}
+subject_ids <- readLines(SUBS_LIST_FILE)
+
 # Load data and determine subjects to fit
 if (!opt$dry_run) {
   log_message("Loading data...")
   all_data <- load_data(opt$task, opt$source, opt$ses)
+  
+  # Filter based on main subs file
+  all_data = all_data[all_data$subjID %in% subject_ids,]
   all_subjects <- unique(all_data$subjID)
   
   # Apply same data quality filters as subject selection
   log_message("Applying data quality filters...")
-  eligible_subjects <- c()
   
-  for (subj in all_subjects) {
-    subj_data <- all_data[all_data$subjID == subj, ]
-    
-    if (nrow(subj_data) < opt$n_trials) next
-    
-    if (opt$rt_method == "remove") {
-      valid_trials <- subj_data$RT >= (opt$RTbound_min_ms / 1000) & 
-                      subj_data$RT <= (opt$RTbound_max_ms / 1000)
-      if (sum(valid_trials) < opt$n_trials) next
-    }
-    
-    eligible_subjects <- c(eligible_subjects, subj)
-  }
-  
-  log_message(sprintf("Eligible subjects: %d", length(eligible_subjects)))
+  log_message(sprintf("Eligible subjects: %d", length(all_subjects)))
   
   # Determine which subjects to fit
   if (!is.null(opt$subjects)) {
     subjects_spec <- expand_array_spec(opt$subjects)
     if (is.character(subjects_spec) && subjects_spec == "all") {
-      subjects_to_fit <- eligible_subjects
+      subjects_to_fit <- all_subjects
     } else {
-      subjects_to_fit <- eligible_subjects[subjects_spec]
+      subjects_to_fit <- all_subjects[subjects_spec]
       subjects_to_fit <- subjects_to_fit[!is.na(subjects_to_fit)]
     }
   } else {
     # Use first n_subs eligible subjects
-    subjects_to_fit <- eligible_subjects[1:min(opt$n_subs, length(eligible_subjects))]
+    subjects_to_fit <- all_subjects[1:min(opt$n_subs, length(all_subjects))]
   }
   
   log_message(sprintf("Subjects to fit: %d", length(subjects_to_fit)))
@@ -246,22 +254,6 @@ fit_single_subject <- function(subid, subject_data, full_model_name, data_to_ext
     minrt_ep_ms = 0,
     min_valid_rt_pct = opt$min_valid_rt_pct
   )
-  
-  # Handle entropy data
-  if (sum(grepl("entropy", names(data_list))) > 0) {
-    if ("shannon_entropy" %in% names(data_list)) {
-      data_list$shannon_entropy <- as.vector(data_list$shannon_entropy)
-    }
-    if ("transition_entropy" %in% names(data_list)) {
-      data_list$transition_entropy <- as.vector(data_list$transition_entropy)
-    }
-    if ("ngram_entropy" %in% names(data_list)) {
-      data_list$ngram_entropy <- as.vector(data_list$ngram_entropy)
-    }
-    if ("conditional_entropy" %in% names(data_list)) {
-      data_list$conditional_entropy <- as.vector(data_list$conditional_entropy)
-    }
-  }
   
   # Set output directory to empbayes/individual
   output_dir <- get_empbayes_output_dir(opt$task, "individual", opt$source)
