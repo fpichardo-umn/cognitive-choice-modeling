@@ -169,6 +169,7 @@ if (!opt$dry_run) {
 
 # Get task-specific directories
 if (!is.null(opt$task)) {
+  SAFE_DIR <- get_safe_data_dir()
   # Get subjects directory with source
   SUBS_DIR <- file.path(SAFE_DIR, opt$source)
   if (!is.null(opt$ses)) {
