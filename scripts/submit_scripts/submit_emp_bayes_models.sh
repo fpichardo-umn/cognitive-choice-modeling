@@ -117,7 +117,7 @@ IFS=',' read -ra MODEL_ARRAY <<< "$MODEL_NAMES"
 generate_r_call() {
   local model=$1
   local dry_run_flag=$2
-  echo "Rscript $R_SCRIPT -m $model -k $TASK --n_trials \${n_trials} --RTbound_ms \${RTbound_ms} --rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} $dry_run_flag"
+  echo "Rscript $R_SCRIPT -m $model -k $TASK --n_trials \${n_trials}--rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} $dry_run_flag"
 }
 
 generate_r2_call() {
@@ -129,7 +129,7 @@ generate_r2_call() {
 generate_r3_call() {
   local model=$1
   local dry_run_flag=$2
-  echo "Rscript $R_SCRIPT3 -m $model -k $TASK --n_trials \${n_trials} --RTbound_ms \${RTbound_ms} --rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} --subs_file ${SUBS_FILE} $dry_run_flag"
+  echo "Rscript $R_SCRIPT3 -m $model -k $TASK --n_trials \${n_trials} --rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} --subs_file ${SUBS_FILE} $dry_run_flag"
 }
 
 # Check model files and submit jobs
