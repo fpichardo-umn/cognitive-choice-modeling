@@ -64,7 +64,7 @@ functions {
     target += wiener_lpdf(
 	RT[play_indices[:play_count]] | boundaries[play_indices[:play_count]], nondt[play_indices[:play_count]], beta, drift_rates[play_indices[:play_count]]);
     target += wiener_lpdf(
-	RT[pass_indices[:pass_count]] | boundaries[pass_indices[:play_count]], nondt[pass_indices[:pass_count]], 1-beta, -drift_rates[pass_indices[:pass_count]]);
+	RT[pass_indices[:pass_count]] | boundaries[pass_indices[:pass_count]], nondt[pass_indices[:pass_count]], 1-beta, -drift_rates[pass_indices[:pass_count]]);
 
     return local_ev;
   }
@@ -84,8 +84,8 @@ data {
 }
 
 parameters {
-  real<lower=-3, upper=3> boundary1_pr;  // Boundary separation (T1 a)
-  real<lower=-3, upper=3> boundary_pr;   // Boundary separation (a)
+  real<lower=-5, upper=5> boundary1_pr;  // Boundary separation (T1 a)
+  real<lower=-5, upper=5> boundary_pr;   // Boundary separation (a)
   real<lower=-3, upper=3> tau1_pr;       // Non-decision time (T1 tau)
   real<lower=-3, upper=3> tau_pr;        // Non-decision time (tau)
   real<lower=-3, upper=3> beta_pr;       // Starting point
@@ -96,8 +96,8 @@ parameters {
 }
 
 transformed parameters {
-  real<lower=0> 		   boundary1;
-  real<lower=0> 		   boundary;
+  real<lower=0, upper=6> 	   boundary1;
+  real<lower=0, upper=6> 	   boundary;
   real<lower=RTbound, upper=minRT> tau;
   real<lower=RTbound, upper=minRT> tau1;
   real<lower=0, upper=1> 	   beta;
@@ -106,8 +106,8 @@ transformed parameters {
   real<lower=0, upper=10> 	   loss;
   real<lower=0, upper=1> 	   update;
 
-  boundary1 = exp(boundary1_pr);
-  boundary  = exp(boundary_pr);
+  boundary1 = inv_logit(boundary1_pr) * 5 + 0.01;
+  boundary  = inv_logit(boundary_pr) * 5 + 0.01;
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound) * 0.99 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound) * 0.99 + RTbound;
   beta      = inv_logit(beta_pr);

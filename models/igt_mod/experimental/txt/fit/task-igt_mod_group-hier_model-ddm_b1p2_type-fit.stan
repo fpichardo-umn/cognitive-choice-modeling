@@ -15,8 +15,8 @@ parameters {
   array[6] real<lower=0> sigma;       // Group standard deviations
 
   // Subject-level raw parameters
-  array[N] real boundary1_pr;  // Boundary separation (T1 a)
-  array[N] real boundary_pr;   // Boundary separation (a)
+  array[N] real<lower=-5, upper=5> boundary1_pr;  // Boundary separation (T1 a)
+  array[N] real<lower=-5, upper=5> boundary_pr;   // Boundary separation (a)
   array[N] real tau1_pr;       // Non-decision time (T1 tau)
   array[N] real tau_pr;        // Non-decision time (tau)
   array[N] real beta_pr;       // Starting point
@@ -24,16 +24,16 @@ parameters {
 }
 
 transformed parameters {
-  array[N] real<lower=0> 		      boundary1;
-  array[N] real<lower=0> 		      boundary;
+  array[N] real<lower=0, upper=6> 		      boundary1;
+  array[N] real<lower=0, upper=6> 		      boundary;
   array[N] real<lower=RTbound, upper=max(minRT)> tau1;
   array[N] real<lower=RTbound, upper=max(minRT)> tau;
   array[N] real<lower=0, upper=1> 	      beta;
 
   // Hierarchical transformation - explicit loops
   for (n in 1:N) {
-    boundary1[n] = exp(mu_pr[1] + sigma[1] * boundary1_pr[n]);
-    boundary[n]  = exp(mu_pr[2] + sigma[2] * boundary_pr[n]);
+    boundary1[n] = inv_logit(mu_pr[1] + sigma[1] * boundary1_pr[n]) * 5 + 0.01;
+    boundary[n]  = inv_logit(mu_pr[2] + sigma[2] * boundary_pr[n]) * 5 + 0.01;
     tau1[n]      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr[n]) * (minRT[n] - RTbound) * 0.99 + RTbound;
     tau[n]       = inv_logit(mu_pr[4] + sigma[4] * tau_pr[n]) * (minRT[n] - RTbound) * 0.99 + RTbound;
     beta[n]      = inv_logit(mu_pr[5] + sigma[5] * beta_pr[n]);
@@ -99,15 +99,15 @@ model {
 
 generated quantities {
   // Group-level parameters in interpretable scale
-  real<lower=0>          mu_boundary1;
-  real<lower=0>          mu_boundary;
-  real<lower=0>          mu_tau1;
-  real<lower=0>          mu_tau;
-  real<lower=0, upper=1> mu_beta;
-  real                   mu_drift;
+  real<lower=0, upper=6>     mu_boundary1;
+  real<lower=0, upper=6>     mu_boundary;
+  real<lower=0>              mu_tau1;
+  real<lower=0>              mu_tau;
+  real<lower=0, upper=1>     mu_beta;
+  real                       mu_drift;
   
-  mu_boundary1 = exp(mu_pr[1]);
-  mu_boundary  = exp(mu_pr[2]);
+  mu_boundary1 = inv_logit(mu_pr[1]) * 5 + 0.01;
+  mu_boundary  = inv_logit(mu_pr[2]) * 5 + 0.01;
   mu_tau1      = inv_logit(mu_pr[3]) * (mean(minRT) - RTbound) * 0.99 + RTbound;
   mu_tau       = inv_logit(mu_pr[4]) * (mean(minRT) - RTbound) * 0.99 + RTbound;
   mu_beta      = inv_logit(mu_pr[5]);
