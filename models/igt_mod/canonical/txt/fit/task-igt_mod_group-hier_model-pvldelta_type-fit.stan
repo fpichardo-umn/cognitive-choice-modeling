@@ -76,7 +76,7 @@ model {
   // Hyperpriors - loop instead of vectorized
   for (i in 1:4) {
     mu_pr[i] ~ normal(0, 1);
-    sigma[i] ~ cauchy(0, 2.5);
+    sigma[i] ~ normal(0, 2);
   }
 
   // Subject-level priors - explicit loops

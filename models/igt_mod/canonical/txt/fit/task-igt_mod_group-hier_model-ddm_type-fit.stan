@@ -45,7 +45,7 @@ transformed parameters {
 model {
   // Hyperparameters
   mu_pr ~ normal(0, 5);
-  sigma ~ cauchy(0, 2.5);
+  sigma ~ normal(0, 2);
 
   // Priors
   to_vector(boundary_pr) ~ normal(0, 5);

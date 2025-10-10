@@ -181,7 +181,7 @@ transformed parameters {
 model {
   // Priors on group-level hyperparameters
   mu_pr ~ normal(0, 1);
-  sigma ~ cauchy(0, 2.5); // A weakly informative prior
+  sigma ~ normal(0, 2); // A weakly informative prior
 
   // Priors on subject-level raw parameters (standard normal)
   // This is efficient as Stan can vectorize these

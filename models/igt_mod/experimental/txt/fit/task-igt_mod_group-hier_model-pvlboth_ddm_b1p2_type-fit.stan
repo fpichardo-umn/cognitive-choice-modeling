@@ -138,7 +138,7 @@ model {
   // Hyperpriors
   for (i in 1:10) {
     mu_pr[i] ~ normal(0, 1);
-    sigma[i] ~ cauchy(0, 2.5);
+    sigma[i] ~ normal(0, 2);
   }
 
   // Subject-level priors
