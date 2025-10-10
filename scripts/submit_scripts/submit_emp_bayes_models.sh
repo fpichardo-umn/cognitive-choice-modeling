@@ -113,25 +113,6 @@ check_and_print "Required R packages installed"
 # Convert comma-separated model names to array
 IFS=',' read -ra MODEL_ARRAY <<< "$MODEL_NAMES"
 
-# Function to generate R script call
-generate_r_call() {
-  local model=$1
-  local dry_run_flag=$2
-  echo "Rscript $R_SCRIPT -m $model -k $TASK --n_trials \${n_trials}--rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} $dry_run_flag"
-}
-
-generate_r2_call() {
-  local model=$1
-  local dry_run_flag=$2
-  echo "Rscript $R_SCRIPT2 -m $model -k $TASK $dry_run_flag"
-}
-
-generate_r3_call() {
-  local model=$1
-  local dry_run_flag=$2
-  echo "Rscript $R_SCRIPT3 -m $model -k $TASK --n_trials \${n_trials} --rt_method \${rt_method} --n_warmup \${n_warmup} --n_iter \${n_iter} --n_chains \${n_chains} --adapt_delta \${adapt_delta} --max_treedepth \${max_treedepth} --check_iter ${CHECK_ITER} --subs_file ${SUBS_FILE} $dry_run_flag"
-}
-
 # Check model files and submit jobs
 for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
 
@@ -147,18 +128,11 @@ for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
     echo "    GROUP_TYPE=$GROUP_TYPE"
     echo "    CHECK_ITER=$CHECK_ITER"
     echo "    SUBS_FILE=$SUBS_FILE"
-    echo "  R script call would be:"
-    generate_r_call $MODEL_NAME "--dry_run"
-    generate_r2_call $MODEL_NAME "--dry_run"
-    generate_r3_call $MODEL_NAME "--dry_run"
     
     # Actually run the R script in dry-run mode
     source "${CONFIG_DIR}/fit_params_emp_hier_${FIT_CONFIG}.conf"
     source "${CONFIG_DIR}/data_params_${DATA_CONFIG}.conf"
-    eval $(generate_r_call $MODEL_NAME "--dry_run")
-    eval $(generate_r2_call $MODEL_NAME "--dry_run")
     source "${CONFIG_DIR}/fit_params_emp_indiv_${FIT_CONFIG}.conf"
-    eval $(generate_r3_call $MODEL_NAME "--dry_run")
   else
     JOB_NAME="${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}"
     job_id=$(sbatch --parsable \
