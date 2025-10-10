@@ -61,16 +61,11 @@ fi
 SUBMIT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 SCRIPT_DIR="${SUBMIT_DIR}/.."
 CONFIG_DIR="${SCRIPT_DIR}/configs"
-R_SCRIPT="${SCRIPT_DIR}/empbayes/fit_emp_bayes_hierarchical_models.R"
-R_SCRIPT2="${SCRIPT_DIR}/empbayes/generate_informative_priors.R"
-R_SCRIPT3="${SCRIPT_DIR}/empbayes/fit_emp_bayes_group_models.R"
+R_SCRIPT="${SCRIPT_DIR}/empbayes/fit_empbayes_hierarchical.R"
+R_SCRIPT2="${SCRIPT_DIR}/empbayes/generate_empbayes_priors.R"
+R_SCRIPT3="${SCRIPT_DIR}/empbayes/fit_empbayes_batch.R"
 SBATCH_SCRIPTS_DIR="${SCRIPT_DIR}/sbatch_resc_scripts"
 SBATCH_SCRIPT="${SBATCH_SCRIPTS_DIR}/resources_emp_bayes_models.sbatch"
-
-PROJ_DIR="${SCRIPT_DIR}/.."
-MODEL_DIR="${PROJ_DIR}/models/bin"
-DATA_FILE="${PROJ_DIR}/Data/AHRB/modigt_data_Wave1.sav"
-OUTPUT_DIR="${PROJ_DIR}/log_files"
 
 # Function to check and print status
 check_and_print() {
@@ -109,15 +104,7 @@ check_and_print "R script 3: $R_SCRIPT3"
 check_and_print "SBATCH script: $SBATCH_SCRIPT"
 
 # Check data file
-[ -f "$DATA_FILE" ]
-check_and_print "Data file: $DATA_FILE"
-
-# Check data file
 check_and_print "Model type: $MODEL_TYPE"
-
-# Check output directory
-[ -d "$OUTPUT_DIR" ] && [ -w "$OUTPUT_DIR" ]
-check_and_print "Output directory (exists and writable): $OUTPUT_DIR"
 
 # Check for required R packages
 Rscript -e "if (!all(c('rstan', 'optparse') %in% installed.packages()[,'Package'])) quit(status=1)"
@@ -147,13 +134,6 @@ generate_r3_call() {
 
 # Check model files and submit jobs
 for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
-  MODEL_FILE_HIER="${MODEL_DIR}/${MODEL_TYPE}/${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}.stan"
-  echo "[OK] Model file: $MODEL_FILE_HIER"
-  echo
-  
-  MODEL_FILE_EMP="${MODEL_DIR}/${MODEL_TYPE}/${TASK}_group_emp_${MODEL_NAME}_${MODEL_TYPE}.stan"
-  echo "[OK] Model file: $MODEL_FILE_EMP"
-  echo
 
   if $DRY_RUN; then
     echo "Dry run for model ${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}:"
