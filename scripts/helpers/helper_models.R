@@ -822,6 +822,13 @@ get_igt_mod_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_mod_hier_ev_ddm_b1p2"]] <- list(
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
+    params = setdiff(c(param_sets$ddm_b1p2, param_sets$ev), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_mod_hier_ev_ddm"]] <- list(
     data = c(data_types$basic_hier_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$ev), "con"),
