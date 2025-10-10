@@ -92,6 +92,10 @@ analyze_convergence <- function(fit, thresholds) {
   # R-hat analysis
   if (!is.null(fit$diagnostics) && "rhat" %in% colnames(fit$diagnostics)) {
     rhat_values <- fit$diagnostics[, "rhat"]
+    # Filter out lp__ if present
+    if ("lp__" %in% names(rhat_values)) {
+      rhat_values <- rhat_values[names(rhat_values) != "lp__"]
+    }
     
     convergence$rhat <- list(
       values = rhat_values,
@@ -114,6 +118,10 @@ analyze_convergence <- function(fit, thresholds) {
   if (!is.null(fit$diagnostics)) {
     if ("ess_bulk" %in% colnames(fit$diagnostics)) {
       ess_bulk <- fit$diagnostics[, "ess_bulk"]
+      # Filter out lp__ if present
+      if ("lp__" %in% names(ess_bulk)) {
+        ess_bulk <- ess_bulk[names(ess_bulk) != "lp__"]
+      }
       total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
       ess_bulk_ratio <- ess_bulk / total_samples
       
@@ -138,6 +146,10 @@ analyze_convergence <- function(fit, thresholds) {
     
     if ("ess_tail" %in% colnames(fit$diagnostics)) {
       ess_tail <- fit$diagnostics[, "ess_tail"]
+      # Filter out lp__ if present
+      if ("lp__" %in% names(ess_tail)) {
+        ess_tail <- ess_tail[names(ess_tail) != "lp__"]
+      }
       total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
       ess_tail_ratio <- ess_tail / total_samples
       
@@ -156,6 +168,10 @@ analyze_convergence <- function(fit, thresholds) {
   # MCSE analysis
   if (!is.null(fit$draws)) {
     draws_matrix <- posterior::as_draws_matrix(fit$draws)
+    # Filter out lp__ if present
+    if ("lp__" %in% colnames(draws_matrix)) {
+      draws_matrix <- draws_matrix[, colnames(draws_matrix) != "lp__", drop = FALSE]
+    }
     mcse_values <- apply(draws_matrix, 2, posterior::mcse_mean)
     posterior_sd <- apply(draws_matrix, 2, sd, na.rm = TRUE)
     mcse_ratio <- mcse_values / posterior_sd
@@ -299,7 +315,7 @@ analyze_sampling_diagnostics <- function(fit, thresholds) {
 #' @param thresholds Threshold configuration
 #' @return Data frame with per-parameter diagnostics
 analyze_parameter_diagnostics <- function(fit, thresholds) {
-  # Get parameter names
+  # Get parameter names (exclude lp__)
   if (!is.null(fit$params)) {
     params <- fit$params
   } else if (!is.null(fit$all_params)) {
@@ -308,6 +324,8 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
     params <- dimnames(fit$draws)[[3]]
   }
   
+  # Filter out lp__ if present
+  params <- params[params != "lp__"]
   n_params <- length(params)
   
   # Initialize data frame
@@ -326,17 +344,22 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
     stringsAsFactors = FALSE
   )
   
-  # Fill in diagnostics
+  # Fill in diagnostics (filter out lp__ by matching param names)
   if (!is.null(fit$diagnostics)) {
     if ("rhat" %in% colnames(fit$diagnostics)) {
-      param_df$rhat <- fit$diagnostics[, "rhat"]
+      rhat_all <- fit$diagnostics[, "rhat"]
+      # Match by parameter names, excluding lp__
+      rhat_filtered <- rhat_all[names(rhat_all) %in% params]
+      param_df$rhat <- rhat_filtered[params]  # Ensure correct order
       param_df$rhat_status <- sapply(param_df$rhat, function(x) {
         classify_diagnostic(x, thresholds, "rhat")
       })
     }
     
     if ("ess_bulk" %in% colnames(fit$diagnostics)) {
-      param_df$ess_bulk <- fit$diagnostics[, "ess_bulk"]
+      ess_bulk_all <- fit$diagnostics[, "ess_bulk"]
+      ess_bulk_filtered <- ess_bulk_all[names(ess_bulk_all) %in% params]
+      param_df$ess_bulk <- ess_bulk_filtered[params]
       total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
       param_df$ess_bulk_ratio <- param_df$ess_bulk / total_samples
       param_df$ess_bulk_status <- sapply(param_df$ess_bulk_ratio, function(x) {
@@ -345,15 +368,23 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
     }
     
     if ("ess_tail" %in% colnames(fit$diagnostics)) {
-      param_df$ess_tail <- fit$diagnostics[, "ess_tail"]
+      ess_tail_all <- fit$diagnostics[, "ess_tail"]
+      ess_tail_filtered <- ess_tail_all[names(ess_tail_all) %in% params]
+      param_df$ess_tail <- ess_tail_filtered[params]
       total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
       param_df$ess_tail_ratio <- param_df$ess_tail / total_samples
     }
   }
   
-  # MCSE
+  # MCSE (also filter lp__ from draws)
   if (!is.null(fit$draws)) {
     draws_matrix <- posterior::as_draws_matrix(fit$draws)
+    # Filter out lp__ column
+    if ("lp__" %in% colnames(draws_matrix)) {
+      draws_matrix <- draws_matrix[, colnames(draws_matrix) != "lp__", drop = FALSE]
+    }
+    # Match columns to params
+    draws_matrix <- draws_matrix[, params, drop = FALSE]
     param_df$mcse <- apply(draws_matrix, 2, posterior::mcse_mean)
     posterior_sd <- apply(draws_matrix, 2, sd, na.rm = TRUE)
     param_df$mcse_ratio <- param_df$mcse / posterior_sd
@@ -373,8 +404,9 @@ prepare_single_fit_plots <- function(fit) {
   
   # Traceplot data
   if (!is.null(fit$draws)) {
-    # Sample parameters for traceplots (max 10)
+    # Sample parameters for traceplots (max 10), excluding lp__
     all_params <- dimnames(fit$draws)[[3]]
+    all_params <- all_params[all_params != "lp__"]
     n_sample <- min(10, length(all_params))
     sampled_params <- sample(all_params, n_sample)
     

@@ -63,6 +63,9 @@ identify_hierarchical_parameters <- function(hier_fit) {
     dimnames(hier_fit$draws)[[3]]
   }
   
+  # Filter out lp__ if present
+  all_params <- all_params[all_params != "lp__"]
+  
   # Identify subject-indexed parameters (e.g., alpha[1], alpha[2])
   indexed_params <- all_params[grepl("\\[\\d+\\]", all_params)]
   
@@ -115,8 +118,16 @@ analyze_subject_level_parameters <- function(hier_fit, param_structure, threshol
   
   # Extract diagnostics for subject parameters
   if (!is.null(hier_fit$diagnostics)) {
+    # Get all params from fit, filtering lp__
+    fit_all_params <- if (!is.null(hier_fit$all_params)) {
+      hier_fit$all_params
+    } else {
+      rownames(hier_fit$diagnostics)
+    }
+    fit_all_params <- fit_all_params[fit_all_params != "lp__"]
+    
     # Get indices for subject parameters
-    subj_param_indices <- which(hier_fit$all_params %in% subject_params)
+    subj_param_indices <- which(fit_all_params %in% subject_params)
     
     if (length(subj_param_indices) > 0) {
       subj_diagnostics <- hier_fit$diagnostics[subj_param_indices, , drop = FALSE]
@@ -127,7 +138,7 @@ analyze_subject_level_parameters <- function(hier_fit, param_structure, threshol
       for (i in 1:n_subjects) {
         # Get parameters for this subject
         subj_i_params <- subject_params[grepl(sprintf("\\[%d\\]", i), subject_params)]
-        subj_i_indices <- which(hier_fit$all_params %in% subj_i_params)
+        subj_i_indices <- which(fit_all_params %in% subj_i_params)
         
         if (length(subj_i_indices) > 0) {
           subj_i_diag <- subj_diagnostics[rownames(subj_diagnostics) %in% subj_i_params, , drop = FALSE]
@@ -206,7 +217,15 @@ check_basic_hierarchical_health <- function(hier_fit, param_structure, threshold
   
   # Check if hyperparameters are not degenerate
   if (length(param_structure$group_params) > 0 && !is.null(hier_fit$diagnostics)) {
-    group_param_indices <- which(hier_fit$all_params %in% param_structure$group_params)
+    # Get all params from fit, filtering lp__
+    fit_all_params <- if (!is.null(hier_fit$all_params)) {
+      hier_fit$all_params
+    } else {
+      rownames(hier_fit$diagnostics)
+    }
+    fit_all_params <- fit_all_params[fit_all_params != "lp__"]
+    
+    group_param_indices <- which(fit_all_params %in% param_structure$group_params)
     
     if (length(group_param_indices) > 0) {
       group_diagnostics <- hier_fit$diagnostics[group_param_indices, , drop = FALSE]
@@ -285,7 +304,17 @@ analyze_group_level_parameters <- function(hier_fit, param_structure, thresholds
     return(NULL)
   }
   
-  group_param_indices <- which(hier_fit$all_params %in% param_structure$group_params)
+  # Get all params from fit, filtering lp__
+  fit_all_params <- if (!is.null(hier_fit$all_params)) {
+    hier_fit$all_params
+  } else if (!is.null(hier_fit$diagnostics)) {
+    rownames(hier_fit$diagnostics)
+  } else {
+    NULL
+  }
+  fit_all_params <- fit_all_params[fit_all_params != "lp__"]
+  
+  group_param_indices <- which(fit_all_params %in% param_structure$group_params)
   
   if (length(group_param_indices) > 0 && !is.null(hier_fit$diagnostics)) {
     group_diagnostics <- hier_fit$diagnostics[group_param_indices, , drop = FALSE]
