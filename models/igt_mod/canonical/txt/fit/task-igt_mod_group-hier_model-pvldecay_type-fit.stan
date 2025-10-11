@@ -1,4 +1,4 @@
-functions {
+wfunctions {
   vector igt_model_lp(
 			array[] int choice, array[] int shown, array[] real outcome,
 			vector ev, int Tsub, vector sensitivity,

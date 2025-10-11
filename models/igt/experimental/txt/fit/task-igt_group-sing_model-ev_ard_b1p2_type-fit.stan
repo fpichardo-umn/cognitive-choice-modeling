@@ -124,13 +124,13 @@ data {
 
 parameters {
   // ARD parameters
-  real<lower=-3, upper=3> boundary1_pr; // Boundary separation (first 20 trials)
-  real<lower=-3, upper=3> boundary_pr;  // Boundary separation (remaining trials)
-  real<lower=-3, upper=3> tau1_pr;      // Non-decision time (first 20 trials)
-  real<lower=-3, upper=3> tau_pr;       // Non-decision time (remaining trials)
-  real<lower=-3, upper=3> urgency_pr;   // Urgency signal (V0)
-  real<lower=-3, upper=3> wd_pr;        // Advantage weight
-  real<lower=-3, upper=3> ws_pr;        // Sum weight
+  real<lower=-5, upper=5> boundary1_pr; // Boundary separation (first 20 trials)
+  real<lower=-5, upper=5> boundary_pr;  // Boundary separation (remaining trials)
+  real<lower=-5, upper=5> tau1_pr;      // Non-decision time (first 20 trials)
+  real<lower=-5, upper=5> tau_pr;       // Non-decision time (remaining trials)
+  real urgency_pr;   // Urgency signal (V0)
+  real wd_pr;        // Advantage weight
+  real ws_pr;        // Sum weight
   
   // EV learning parameters
   real drift_con_pr;                    // Consistency parameter
@@ -141,8 +141,8 @@ parameters {
 
 transformed parameters {
   // ARD parameters
-  real<lower=0> boundary1;
-  real<lower=0> boundary;
+  real<lower=0, upper=6> boundary1;
+  real<lower=0, upper=6> boundary;
   real<lower=RTbound, upper=minRT> tau1;
   real<lower=RTbound, upper=minRT> tau;
   real<lower=0> urgency;
@@ -155,8 +155,8 @@ transformed parameters {
   real<lower=0, upper=1> wgt_rew;
   real<lower=0, upper=1> update;
   
-  boundary1 = exp(boundary1_pr);
-  boundary = exp(boundary_pr);
+  boundary1 = inv_logit(boundary1_pr) * 5 + 0.01;
+  boundary  = inv_logit(boundary_pr) * 5 + 0.01;
   tau1 = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   tau = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   urgency = exp(urgency_pr);

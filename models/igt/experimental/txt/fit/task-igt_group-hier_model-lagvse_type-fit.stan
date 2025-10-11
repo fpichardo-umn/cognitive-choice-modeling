@@ -1,0 +1,124 @@
+functions {
+  vector igt_model_lp(
+        array[] int choice, array[] real wins, array[] real losses,
+        vector ev_exploit, vector choice_lag, int Tsub,
+        real sensitivity, real gain, real loss, real decay, real phi
+        ) {
+    // Define values
+    real curUtil;
+    vector[4] local_ev_exploit = ev_exploit;
+    vector[4] local_choice_lag = choice_lag;  // Track trials since last chosen
+    vector[4] combined_value;
+    
+    // For each trial
+    for (t in 1:Tsub) {
+      // Increment lag for all options
+      local_choice_lag += 1;
+
+      // Combine exploitation and exploration values
+      combined_value = local_ev_exploit + phi * local_choice_lag;
+      
+      // Choice probability using sensitivity
+      target += categorical_logit_lpmf(choice[t] | sensitivity * combined_value);
+      
+      // Calculate utility (using value sensitivity for wins and losses)
+      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      
+      // Exploitation: Decay all deck values
+      local_ev_exploit = local_ev_exploit * (1 - decay);
+      
+      // Exploitation: Update chosen deck
+      local_ev_exploit[choice[t]] += curUtil;
+      
+      // Exploration: Reset lag for chosen deck
+      local_choice_lag[choice[t]] = 0;
+    }
+    
+    return local_ev_exploit;
+  }
+}
+
+data {
+  int<lower=1> N;                              // Number of subjects
+  int<lower=1> T;                              // Maximum number of trials
+  array[N] int<lower=1> sid;      	       // Subject IDs
+  array[N] int<lower=1> Tsubj;                 // Number of trials for each subject
+  array[N, T] int<lower=1, upper=4> choice;   // Choices made at each trial (1-4)
+  array[N, T] real<lower=0> wins;             // Win amount at each trial
+  array[N, T] real<lower=0> losses;           // Loss amount at each trial
+}
+
+parameters {
+  // Group-level hyperparameters
+  array[5] real mu_pr;                // Group means for all parameters
+  array[5] real<lower=0> sigma;       // Group standard deviations
+
+  // Subject-level raw parameters
+  array[N] real con_pr;               // Consistency parameter
+  array[N] real gain_pr;              // Value sensitivity parameter
+  array[N] real loss_pr;              // Loss aversion
+  array[N] real decay_pr;             // Decay parameter for exploitation
+  array[N] real phi_pr;               // Choice lag weight
+}
+
+transformed parameters {
+  // Transform subject-level raw parameters
+  array[N] real<lower=0, upper=5> con;
+  array[N] real<lower=0, upper=1> gain;
+  array[N] real<lower=0, upper=10> loss;
+  array[N] real<lower=0, upper=1> decay;
+  array[N] real<lower=-10, upper=10> phi;
+  
+  // Hierarchical transformation
+  for (n in 1:N) {
+    con[n]   = inv_logit(mu_pr[1] + sigma[1] * con_pr[n]) * 5;
+    gain[n]  = inv_logit(mu_pr[2] + sigma[2] * gain_pr[n]);
+    loss[n]  = inv_logit(mu_pr[3] + sigma[3] * loss_pr[n]) * 10;
+    decay[n] = inv_logit(mu_pr[4] + sigma[4] * decay_pr[n]);
+    phi[n]   = -10 + inv_logit(mu_pr[5] + sigma[5] * phi_pr[n]) * 20;
+  }
+}
+
+model {
+  // Hyperpriors
+  for (i in 1:5) {
+    mu_pr[i] ~ normal(0, 1);
+    sigma[i] ~ normal(0, 2);
+  }
+
+  // Subject-level priors
+  for (n in 1:N) {
+    con_pr[n]   ~ normal(0, 1);
+    gain_pr[n]  ~ normal(0, 1);
+    loss_pr[n]  ~ normal(0, 1);
+    decay_pr[n] ~ normal(0, 1);
+    phi_pr[n]   ~ normal(0, 1);
+  }
+
+  // Process each subject
+  for (n in 1:N) {
+    vector[4] ev_exploit = rep_vector(0., 4);
+    vector[4] ev_explore = rep_vector(0., 4);
+    real sensitivity = pow(3, con[n]) - 1;
+    
+    ev_exploit = igt_model_lp(choice[n, 1:Tsubj[n]], 
+                              wins[n, 1:Tsubj[n]], abs(losses[n, 1:Tsubj[n]]),
+                              ev_exploit, ev_explore, Tsubj[n], 
+                              sensitivity, gain[n], loss[n], decay[n], phi[n]);
+  }
+}
+
+generated quantities {
+  // Group-level parameters in interpretable scale
+  real<lower=0, upper=5> mu_con;
+  real<lower=0, upper=1> mu_gain;
+  real<lower=0, upper=10> mu_loss;
+  real<lower=0, upper=1> mu_decay;
+  real<lower=-10, upper=10> mu_phi;
+  
+  mu_con   = inv_logit(mu_pr[1]) * 5;
+  mu_gain  = inv_logit(mu_pr[2]);
+  mu_loss  = inv_logit(mu_pr[3]) * 10;
+  mu_decay = inv_logit(mu_pr[4]);
+  mu_phi   = -10 + inv_logit(mu_pr[5]) * 20;
+}

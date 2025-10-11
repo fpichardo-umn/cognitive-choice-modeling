@@ -147,8 +147,8 @@ transformed parameters {
   // Subject-level parameters (now arrays indexed by subject)
   array[N] real<lower=0, upper=6> boundary1;
   array[N] real<lower=0, upper=6> boundary;
-  array[N] real<lower=RTbound, upper=minRT> tau1;
-  array[N] real<lower=RTbound, upper=minRT> tau;
+  array[N] real<lower=RTbound, upper=max(minRT)> tau1;
+  array[N] real<lower=RTbound, upper=max(minRT)> tau;
   array[N] real<lower=0> urgency;
   array[N] real<lower=0> wd;
   array[N] real<lower=0> ws;
@@ -183,24 +183,29 @@ model {
   mu_pr ~ normal(0, 1);
   sigma ~ normal(0, 2); // A weakly informative prior
 
-  // Priors on subject-level raw parameters (standard normal)
-  // This is efficient as Stan can vectorize these
-  boundary1_pr ~ normal(0, 1);
-  boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
-  tau_pr ~ normal(0, 1);
-  urgency_pr ~ normal(0, 1);
-  wd_pr ~ normal(0, 1);
-  ws_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
-  wgt_pun_pr ~ normal(0, 1);
-  wgt_rew_pr ~ normal(0, 1);
-  update_pr ~ normal(0, 1);
+  // Subject-level priors
+  for (n in 1:N) {
+    boundary1_pr[n]  ~ normal(0, 1);
+    boundary_pr[n]   ~ normal(0, 1);
+    tau1_pr[n]       ~ normal(0, 1);
+    tau_pr[n]        ~ normal(0, 1);
+    urgency_pr[n]    ~ normal(0, 1);
+    wd_pr[n]         ~ normal(0, 1);
+    ws_pr[n]         ~ normal(0, 1);
+    drift_con_pr[n]  ~ normal(0, 1);
+    wgt_pun_pr[n]    ~ normal(0, 1);
+    wgt_rew_pr[n]    ~ normal(0, 1);
+    update_pr[n]     ~ normal(0, 1);
+  }
+
+  // Initial subject-level deck expectations
+  array[N] vector[4] ev;
+  for (n in 1:N) {
+    ev[n] = rep_vector(0., 4);
+  }
 
   // Main loop to model each subject
   for (n in 1:N) {
-    // Initialize values for the current subject
-    vector[4] ev = rep_vector(0.0, 4);
     real sensitivity = pow(3, drift_con[n]) - 1;
 
     // Create trial-varying boundary and tau vectors for this subject
@@ -231,7 +236,7 @@ model {
 generated quantities {
   // To get interpretable group-level parameters
   real<lower=0> mu_boundary1 = inv_logit(mu_pr[1]) * 5 + 0.01;
-  real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 5 + 0.01;
+  real<lower=0> mu_boundary = inv_logit(mu_pr[1]) * 5 + 0.01;
   real<lower=RTbound, upper=minRT> mu_tau1 = inv_logit(mu_pr[3]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   real<lower=RTbound, upper=minRT> mu_tau = inv_logit(mu_pr[4]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   real<lower=0> mu_urgency = exp(mu_pr[5]);
