@@ -81,9 +81,9 @@ if should_run_step 2; then
   echo "Generating informative priors..."
   Rscript ./scripts/empbayes/generate_empbayes_priors.R \
     -m ${MODEL_NAME} \
-    -k ${TASK} \
-    --seed ${SLURM_JOB_ID} \
-    --verbose
+    -s ${SOURCE} \
+    --ses ${SES} \
+    -k ${TASK}
   check_status $? "Generating informative priors"
 fi
 
@@ -93,7 +93,7 @@ if should_run_step 3; then
   # Source the config files
   source ./scripts/configs/fit_params_emp_indiv_${FIT_CONFIG}.conf
   
-  Rscript ./scripts/empbayes/fit_emp_bayes_batch.R \
+  Rscript ./scripts/empbayes/fit_empbayes_batch.R \
     -m ${MODEL_NAME} \
     -s ${SOURCE} \
     --ses ${SES} \
