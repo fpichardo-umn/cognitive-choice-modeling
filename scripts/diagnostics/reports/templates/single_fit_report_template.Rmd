@@ -251,6 +251,10 @@ cat(sprintf("- **Median ESS**: %.0f (%.1f%%)\n",
             ess_info$median, ess_info$median_ratio * 100))
 cat(sprintf("- **Status**: %s\n\n", ess_info$status))
 
+if (any(ess_info$ratios > 1.0, na.rm = TRUE)) {
+  cat("ℹ️ **Note**: Some ESS values exceed 100%. This is valid and indicates negative autocorrelation (anticorrelation) in the chains, which actually improves efficiency beyond independent samples.\n\n")
+}
+
 if (ess_info$n_problematic > 0) {
   cat(sprintf("⚠ **Warning**: %d parameters have ESS ratio < %.0f%%\n\n", 
               ess_info$n_problematic, thresholds$thresholds$ess_ratio$problematic * 100))
@@ -491,10 +495,13 @@ if (!is.null(fit)) {
 
 Densities from different chains should overlap completely. Separation indicates non-convergence.
 
-```{r density-by-chain, fig.width=12, fig.height=8}
+```{r density-by-chain, fig.width=12, fig.height=8, results='asis'}
 if (!is.null(fit)) {
   density_plots <- create_density_by_chain_plots(fit, n_per_page = 6)
-  print(density_plots[[1]])
+  for (i in seq_along(density_plots)) {
+    print(density_plots[[i]])
+    if (i < length(density_plots)) cat("\n\n")
+  }
 } else {
   cat("*Fit object not available for plotting*\n")
 }

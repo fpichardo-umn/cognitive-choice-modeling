@@ -50,6 +50,9 @@ generate_diagnostic_report <- function(diagnostic_results, task, cohort, session
     ext = ""
   )
   
+  # Remove trailing dot if present
+  report_base <- sub("\\.$", "", report_base)
+  
   rmd_file <- file.path(output_dir, paste0(report_base, ".Rmd"))
   html_file <- file.path(output_dir, paste0(report_base, ".html"))
   

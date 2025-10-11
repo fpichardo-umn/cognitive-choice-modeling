@@ -63,5 +63,6 @@ model {
   real sensitivity = pow(3, con) - 1;
   
   // Run model
-  ev = igt_model_lp(choice, wins, abs(losses), ev, T, sensitivity, update, wgt_pun, wgt_rew);
+  ev = igt_model_lp(choice, wins, abs(losses), ev, T, 
+			sensitivity, update, wgt_pun, wgt_rew);
 }

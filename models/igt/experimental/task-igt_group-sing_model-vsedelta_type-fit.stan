@@ -2,7 +2,7 @@ functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev_exploit, vector ev_explore, int Tsub,
-        real sensitivity, real gain, real loss, real decay, 
+        real sensitivity, real gain, real loss, real update, 
         real explore_alpha, real explore_bonus
         ) {
     // Define values
@@ -22,11 +22,8 @@ functions {
       // Calculate utility (using value sensitivity for wins and losses)
       curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
       
-      // Exploitation: Decay all deck values
-      local_ev_exploit = local_ev_exploit * (1 - decay);
-      
       // Exploitation: Update chosen deck
-      local_ev_exploit[choice[t]] += curUtil;
+      local_ev_exploit[choice[t]] += curUtil + update * (curUtil  - local_ev_exploit[choice[t]]);
       
       // Exploration: Reset chosen deck to zero
       local_ev_explore[choice[t]] = 0;
@@ -55,7 +52,7 @@ parameters {
   real con_pr;           // Consistency parameter
   real gain_pr;          // Value sensitivity parameter
   real loss_pr;          // Loss aversion
-  real decay_pr;         // Decay parameter for exploitation
+  real update_pr;         // Learning parameter for exploitation
   real explore_alpha_pr; // Learning rate for exploration
   real explore_bonus_pr; // Exploration bonus parameter
 }
@@ -64,14 +61,14 @@ transformed parameters {
   real<lower=0, upper=5> con;
   real<lower=0, upper=1> gain;
   real<lower=0, upper=10> loss;
-  real<lower=0, upper=1> decay;
+  real<lower=0, upper=1> update;
   real<lower=0, upper=1> explore_alpha;
   real<lower=-10, upper=10> explore_bonus;
   
   con = inv_logit(con_pr) * 5;
   gain = inv_logit(gain_pr);
   loss = inv_logit(con_pr) * 10;
-  decay = inv_logit(decay_pr);
+  update = inv_logit(update_pr);
   explore_alpha = inv_logit(explore_alpha_pr);
   explore_bonus = -10 + inv_logit(explore_bonus_pr) * 20;
 }
@@ -81,7 +78,7 @@ model {
   con_pr ~ normal(0, 1);
   gain_pr ~ normal(0, 1);
   loss_pr ~ normal(0, 1);
-  decay_pr ~ normal(0, 1);
+  update_pr ~ normal(0, 1);
   explore_alpha_pr ~ normal(0, 1);
   explore_bonus_pr ~ normal(0, 1);
   
@@ -93,6 +90,6 @@ model {
   // Run model
   ev_exploit = igt_model_lp(choice, wins, abs(losses), 
 				ev_exploit, ev_explore, T, 
-                           	sensitivity, gain, loss, decay, 
+                           	sensitivity, gain, loss, update, 
 				explore_alpha, explore_bonus);
 }

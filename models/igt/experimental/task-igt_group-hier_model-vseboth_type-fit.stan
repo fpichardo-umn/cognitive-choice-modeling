@@ -2,7 +2,7 @@ functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev_exploit, vector ev_explore, int Tsub,
-        real sensitivity, real gain, real loss, real decay, 
+        real sensitivity, real gain, real loss, real update, real decay, 
         real explore_alpha, real explore_bonus
         ) {
     // Define values
@@ -26,7 +26,7 @@ functions {
       local_ev_exploit = local_ev_exploit * (1 - decay);
       
       // Exploitation: Update chosen deck
-      local_ev_exploit[choice[t]] += curUtil;
+      local_ev_exploit[choice[t]] += curUtil + update * (curUtil  - local_ev_exploit[choice[t]]);
       
       // Exploration: Reset chosen deck to zero
       local_ev_explore[choice[t]] = 0;
@@ -55,8 +55,8 @@ data {
 
 parameters {
   // Group-level hyperparameters
-  array[6] real mu_pr;                // Group means for all parameters
-  array[6] real<lower=0> sigma;       // Group standard deviations
+  array[7] real mu_pr;                // Group means for all parameters
+  array[7] real<lower=0> sigma;       // Group standard deviations
 
   // Subject-level raw parameters
   array[N] real con_pr;               // Consistency parameter
@@ -65,6 +65,7 @@ parameters {
   array[N] real decay_pr;             // Decay parameter for exploitation
   array[N] real explore_alpha_pr;     // Learning rate for exploration
   array[N] real explore_bonus_pr;     // Exploration bonus parameter
+  array[N] real update_pr;             // Learning parameter for exploitation
 }
 
 transformed parameters {
@@ -75,15 +76,17 @@ transformed parameters {
   array[N] real<lower=0, upper=1> decay;
   array[N] real<lower=0, upper=1> explore_alpha;
   array[N] real<lower=-10, upper=10> explore_bonus;
+  array[N] real<lower=0, upper=1> update;
   
   // Hierarchical transformation
   for (n in 1:N) {
     con[n]           = inv_logit(mu_pr[1] + sigma[1] * con_pr[n]) * 5;
     gain[n]          = inv_logit(mu_pr[2] + sigma[2] * gain_pr[n]);
-    loss[n]          = inv_logit(mu_pr[3] + sigma[3] * loss_pr[n]) * 10;  // Fixed bug: was using con_pr
+    loss[n]          = inv_logit(mu_pr[3] + sigma[3] * loss_pr[n]) * 10; 
     decay[n]         = inv_logit(mu_pr[4] + sigma[4] * decay_pr[n]);
     explore_alpha[n] = inv_logit(mu_pr[5] + sigma[5] * explore_alpha_pr[n]);
     explore_bonus[n] = -10 + inv_logit(mu_pr[6] + sigma[6] * explore_bonus_pr[n]) * 20;
+    update[n]         = inv_logit(mu_pr[7] + sigma[7] * update_pr[n]);
   }
 }
 
@@ -102,6 +105,7 @@ model {
     decay_pr[n]         ~ normal(0, 1);
     explore_alpha_pr[n] ~ normal(0, 1);
     explore_bonus_pr[n] ~ normal(0, 1);
+    update_pr[n]         ~ normal(0, 1);
   }
 
   // Process each subject
@@ -114,7 +118,7 @@ model {
     ev_exploit = igt_model_lp(choice[n, 1:Tsubj[n]],
                               wins[n, 1:Tsubj[n]], abs(losses[n, 1:Tsubj[n]]), 
                               ev_exploit, ev_explore, Tsubj[n], 
-				sensitivity, gain[n],loss[n], decay[n],
+				sensitivity, gain[n],loss[n], update[n], decay[n],
 				explore_alpha[n], explore_bonus[n]);
   }
 }
@@ -127,6 +131,7 @@ generated quantities {
   real<lower=0, upper=1> mu_decay;
   real<lower=0, upper=1> mu_explore_alpha;
   real<lower=-10, upper=10> mu_explore_bonus;
+  real<lower=0, upper=1> mu_update;
   
   // Compute interpretable group-level parameters
   mu_con           = inv_logit(mu_pr[1]) * 5;
@@ -135,4 +140,5 @@ generated quantities {
   mu_decay         = inv_logit(mu_pr[4]);
   mu_explore_alpha = inv_logit(mu_pr[5]);
   mu_explore_bonus = -10 + inv_logit(mu_pr[6]) * 20;
+  mu_update         = inv_logit(mu_pr[7]);
 }

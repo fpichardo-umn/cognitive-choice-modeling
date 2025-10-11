@@ -2,7 +2,7 @@ functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, vector ef, int Tsub,
-        real Arew, real Apun, real K, real betaF, real betaP
+        real Drew, real Dpun, real K, real betaF, real betaP
         ) {
     // Define values
     vector[4] local_ev = ev;
@@ -41,15 +41,27 @@ functions {
       if (wins[t] >= losses[t]) {
         // Update ef for all decks with fictive outcomes
         local_ef += Apun * PEfreq_fic;
+
+	// Decay all
+	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Drew);
+	local_ev[choice[t]] = local_ev[choice[t]] * (1 - Drew);
+	
+
         // Update chosen deck
-        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
-        local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
+        local_ef[choice[t]] = PEfreq;
+        local_ev[choice[t]] = PEval;
       } else {
         // Update ef for all decks with fictive outcomes
         local_ef += Arew * PEfreq_fic;
+
+	// Decay all
+	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Dpun);
+	local_ev[choice[t]] = local_ev[choice[t]] * (1 - Dpun);
+	
+
         // Update chosen deck
-        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
-        local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
+        local_ef[choice[t]] = PEfreq;
+        local_ev[choice[t]] = PEval;
       }
       
       // Perseverance updating
@@ -70,22 +82,22 @@ data {
 }
 
 parameters {
-  real Arew_pr;    // Reward learning rate
-  real Apun_pr;    // Punishment learning rate
+  real Drew_pr;    // Reward decay rate
+  real Dpun_pr;    // Punishment decay rate
   real K_pr;       // Decay rate for perseverance
   real betaF_pr;   // Weight for frequency (EF)
   real betaP_pr;   // Weight for perseverance
 }
 
 transformed parameters {
-  real<lower=0, upper=1> Arew;
-  real<lower=0, upper=1> Apun;
+  real<lower=0, upper=1> Drew;
+  real<lower=0, upper=1> Dpun;
   real<lower=0, upper=5> K;
   real betaF;
   real betaP;
   
-  Arew  = inv_logit(Arew_pr);
-  Apun  = inv_logit(Apun_pr);
+  Drew  = inv_logit(Drew_pr);
+  Dpun  = inv_logit(Dpun_pr);
   K     = inv_logit(K_pr) * 5;
   betaF = betaF_pr;  // Unbounded
   betaP = betaP_pr;  // Unbounded
@@ -93,8 +105,8 @@ transformed parameters {
 
 model {
   // Priors
-  Arew_pr  ~ normal(0, 1);
-  Apun_pr  ~ normal(0, 1);
+  Drew_pr  ~ normal(0, 1);
+  Dpun_pr  ~ normal(0, 1);
   K_pr     ~ normal(0, 1);
   betaF_pr ~ normal(0, 1);
   betaP_pr ~ normal(0, 1);
@@ -105,5 +117,5 @@ model {
   
   // Run model
   ev = igt_model_lp(choice, wins, abs(losses), ev, ef, T, 
-			Arew, Apun, K, betaF, betaP);
+			Drew, Dpun, K, betaF, betaP);
 }
