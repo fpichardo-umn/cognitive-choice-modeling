@@ -119,7 +119,7 @@ parameters {
   real drift_con_pr;                    // DDM: Drift consistency parameter
   real Apun_pr;                         // ORL: Punishment learning rate
   real Arew_pr;                         // ORL: Reward learning rate
-  real betaF_pr;                        // ORL: Win frequency weight
+  real betaF;                        // ORL: Win frequency weight
 }
 
 transformed parameters {
@@ -129,19 +129,16 @@ transformed parameters {
   real<lower=RTbound, upper=max(minRT)> tau;
   real<lower=0, upper=1> 	         beta;
   real<lower=-5, upper=5> 	         drift_con;
-  real<lower=0, upper=1>    	         Apun;      // Renamed
-  real<lower=0, upper=1> 	         Arew;      // Renamed
-  real 	                         betaF;     // Renamed
+  real<lower=0, upper=1>    	         Apun;
+  real<lower=0, upper=1> 	         Arew;
 
-  boundary1 = inv_logit(mu_pr[1] + sigma[1] * boundary1_pr) * 5 + 0.01;
-  boundary  = inv_logit(mu_pr[2] + sigma[2] * boundary_pr) * 5 + 0.01;
-  tau1      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-  tau       = inv_logit(mu_pr[4] + sigma[4] * tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-  beta      = inv_logit(mu_pr[5] + sigma[5] * beta_pr);
-  drift_con = inv_logit(mu_pr[6] + sigma[6] * drift_con_pr) * 10 - 5;
-  Apun      = inv_logit(mu_pr[7] + sigma[7] * Apun_pr); // New role for param 7
-  Arew      = inv_logit(mu_pr[8] + sigma[8] * Arew_pr); // New role for param 8
-  betaF     = mu_pr[9] + sigma[9] * betaF_pr;           // New role for param 9
+  boundary1 = inv_logit(boundary1_pr) * 5 + 0.01;
+  boundary  = inv_logit(boundary_pr) * 5 + 0.01;
+  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  tau       = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  beta      = inv_logit(beta_pr);
+  drift_con = inv_logit(drift_con_pr) * 10 - 5;
+  Apun      = inv_logit(Apun_pr);
 }
 
 model {
@@ -154,7 +151,7 @@ model {
   drift_con_pr ~ normal(0, 1);
   Apun_pr      ~ normal(0, 1);
   Arew_pr      ~ normal(0, 1);
-  betaF_pr     ~ normal(0, 1);
+  betaF     ~ normal(0, 1);
 
   // Process each subject
   vector[4] ev = rep_vector(0., 4);

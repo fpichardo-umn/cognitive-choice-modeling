@@ -57,8 +57,8 @@ parameters {
   real decay_pr;   // Decay rate
   real gain_pr;    // Outcome sensitivity parameter
   real loss_pr;    // Loss aversion parameter
-  real epP_pr;     // Positive perseverance strength
-  real epN_pr;     // Negative perseverance strength
+  real epP;     // Positive perseverance strength
+  real epN;     // Negative perseverance strength
   real K_pr;       // Perseverance decay parameter
   real w_pr;       // Value weight parameter
 }
@@ -68,8 +68,6 @@ transformed parameters {
   real<lower=0, upper=1> decay;
   real<lower=0, upper=1> gain;
   real<lower=0, upper=10> loss;
-  real epP;
-  real epN;
   real<lower=0, upper=1> K;
   real<lower=0, upper=1> w;
   
@@ -77,8 +75,6 @@ transformed parameters {
   decay = inv_logit(decay_pr);
   gain = inv_logit(gain_pr);
   loss = inv_logit(loss_pr) * 10;
-  epP = epP_pr;
-  epN = epN_pr;
   K = inv_logit(K_pr);
   w = inv_logit(w_pr);
   decay = inv_logit(decay_pr);
@@ -90,8 +86,8 @@ model {
   decay_pr ~ normal(0, 1);
   gain_pr ~ normal(0, 1);
   loss_pr ~ normal(0, 1);
-  epP_pr ~ normal(0, 1);
-  epN_pr ~ normal(0, 1);
+  epP ~ normal(0, 1);
+  epN ~ normal(0, 1);
   K_pr ~ normal(0, 1);
   w_pr ~ normal(0, 1);
   

@@ -97,17 +97,12 @@ functions {
 //---
 
 data {
-  // Group-level data
-  int<lower=1> N;                          // Number of subjects
-  int<lower=1> T;                          // Maximum number of trials
-  array[N] int<lower=1> sid;      	   // Subject IDs
-  array[N] int<lower=1> Tsubj;             // Number of trials for each subject
-
-  // Subject-level data (now indexed by subject)
-  real<lower=0> minRT;                     // Minimum RT across all subjects
-  real RTbound;                            // Lower bound for RT across all subjects
-  array[N, T] int<lower=1, upper=4> choice;
-  array[N, T] real<lower=0> RT;
+  int<lower=1> sid;     		 // Subject ID
+  int<lower=1> T;                         // Number of trials
+  real<lower=0> minRT;                    // Minimum RT + small value to restrict tau
+  real RTbound;                           // Lower bound of RT across all subjects
+  array[T] int<lower=1, upper=4> choice;  // Choices made at each trial (1-4)
+  array[T] real<lower=0> RT;              // Response times
 }
 
 //---
@@ -118,53 +113,46 @@ parameters {
   array[11] real<lower=0> sigma;
 
   // Subject-level raw parameters (z-scores for non-centered parameterization)
-  array[N] real<lower=-5, upper=5> boundary1_pr;
-  array[N] real<lower=-5, upper=5> boundary_pr;
-  array[N] real tau1_pr;
-  array[N] real tau_pr;
-  array[N] real urgency_pr;
-  array[N] real wd_pr;
-  array[N] real ws_pr;
+  real<lower=-5, upper=5> boundary1_pr;
+  real<lower=-5, upper=5> boundary_pr;
+  real tau1_pr;
+  real tau_pr;
+  real urgency_pr;
+  real wd_pr;
+  real ws_pr;
   // Static Value parameters
-  array[N] real V1;
-  array[N] real V2;
-  array[N] real V3;
-  array[N] real V4;
+  real V1;
+  real V2;
+  real V3;
+  real V4;
 }
 
 //---
 
 transformed parameters {
   // Subject-level parameters (now arrays indexed by subject)
-  array[N] real<lower=0, upper=6> boundary1;
-  array[N] real<lower=0, upper=6> boundary;
-  array[N] real<lower=RTbound, upper=minRT> tau1;
-  array[N] real<lower=RTbound, upper=minRT> tau;
-  array[N] real<lower=0> urgency;
-  array[N] real<lower=0> wd;
-  array[N] real<lower=0> ws;
+  real<lower=0, upper=6> boundary1;
+  real<lower=0, upper=6> boundary;
+  real<lower=RTbound, upper=minRT> tau1;
+  real<lower=RTbound, upper=minRT> tau;
+  real<lower=0> urgency;
+  real<lower=0> wd;
+  real<lower=0> ws;
 
-  // Hierarchical transformation for each subject
-  for (n in 1:N) {
-    // ARD parameters
-    boundary1[n] = inv_logit(mu_pr[1] + sigma[1] * boundary1_pr[n]) * 5 + 0.01;
-    boundary[n]  = inv_logit(mu_pr[2] + sigma[2] * boundary_pr[n]) * 5 + 0.01;
-    tau1[n]      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr[n]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-    tau[n]       = inv_logit(mu_pr[4] + sigma[4] * tau_pr[n]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-    urgency[n]   = exp(mu_pr[5] + sigma[5] * urgency_pr[n]);
-    wd[n]        = exp(mu_pr[6] + sigma[6] * wd_pr[n]);
-    ws[n]        = exp(mu_pr[7] + sigma[7] * ws_pr[n]);
+  // ARD parameters
+  boundary1 = inv_logit(boundary1_pr) * 5 + 0.01;
+  boundary  = inv_logit(boundary_pr) * 5 + 0.01;
+  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  tau       = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  urgency   = exp(urgency_pr);
+  wd        = exp(wd_pr);
+  ws        = exp(ws_pr);
 }
 
 //---
 
 model {
-  // Priors on group-level hyperparameters
-  mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 2); // A weakly informative prior
-
-  // Priors on subject-level raw parameters (standard normal)
-  // This is efficient as Stan can vectorize these
+  // Priors
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
   tau1_pr ~ normal(0, 1);
@@ -172,51 +160,31 @@ model {
   urgency_pr ~ normal(0, 1);
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
-  V1_pr ~ normal(0, 1);
-  V2_pr ~ normal(0, 1);
-  V3_pr ~ normal(0, 1);
-  V4_pr ~ normal(0, 1);
+  V1 ~ normal(0, 1);
+  V2 ~ normal(0, 1);
+  V3 ~ normal(0, 1);
+  V4 ~ normal(0, 1);
 
-  // Main loop to model each subject
-  for (n in 1:N) {
-    // Initialize values for the current subject
-    vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
+  // Initialize values for the current subject
+  vector[4] V_subj = [V1, V2, V3, V4]';
 
-    // Create trial-varying boundary and tau vectors for this subject
-    vector[Tsubj[n]] boundaries;
-    vector[Tsubj[n]] taus;
+  // Create trial-varying boundary and tau vectors for this subject
+  vector[T] boundaries;
+  vector[T] taus;
     
-    // Check if the subject has more than 20 trials to avoid errors
-    if (Tsubj[n] > 20) {
-        boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
-        taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
-    } else {
-        boundaries = rep_vector(boundary1[n], Tsubj[n]);
-        taus = rep_vector(tau1[n], Tsubj[n]);
-    }
-    
-    // Compute log-likelihood for the subject and add to the total
-    target += igt_ard_model_lp(
-        choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-        V_subj,
-        boundaries, taus, urgency[n], wd[n], ws[n]
-    );
+  // Check if the subject has more than 20 trials to avoid errors
+  if (Tsubj > 20) {
+      boundaries = append_row(rep_vector(boundary1, 20), rep_vector(boundary, Tsubj - 20));
+      taus = append_row(rep_vector(tau1, 20), rep_vector(tau, Tsubj - 20));
+  } else {
+      boundaries = rep_vector(boundary1, Tsubj);
+      taus = rep_vector(tau1, Tsubj);
   }
-}
+    
+  // Compute log-likelihood for the subject and add to the total
+  target += igt_ard_model_lp(
+        choice, RT, T,
+        V_subj,
+        boundaries, taus, urgency, wd, ws
 
-//---
-
-generated quantities {
-  // To get interpretable group-level parameters
-  real<lower=0> mu_boundary1 = inv_logit(mu_pr[1]) * 5 + 0.01;
-  real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 5 + 0.01;
-  real<lower=RTbound, upper=minRT> mu_tau1 = inv_logit(mu_pr[3]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-  real<lower=RTbound, upper=minRT> mu_tau = inv_logit(mu_pr[4]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-  real<lower=0> mu_urgency = exp(mu_pr[5]);
-  real<lower=0> mu_wd = exp(mu_pr[6]);
-  real<lower=0> mu_ws = exp(mu_pr[7]);
-  real mu_V1 = mu_pr[8];
-  real mu_V2 = mu_pr[9];
-  real mu_V3 = mu_pr[10];
-  real mu_V4 = mu_pr[11];
 }

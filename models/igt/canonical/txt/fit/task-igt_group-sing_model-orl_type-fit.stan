@@ -73,8 +73,8 @@ parameters {
   real Arew_pr;    // Reward learning rate
   real Apun_pr;    // Punishment learning rate
   real K_pr;       // Decay rate for perseverance
-  real betaF_pr;   // Weight for frequency (EF)
-  real betaP_pr;   // Weight for perseverance
+  real betaF;   // Weight for frequency (EF)
+  real betaP;   // Weight for perseverance
 }
 
 transformed parameters {
@@ -87,8 +87,6 @@ transformed parameters {
   Arew  = inv_logit(Arew_pr);
   Apun  = inv_logit(Apun_pr);
   K     = inv_logit(K_pr) * 5;
-  betaF = betaF_pr;  // Unbounded
-  betaP = betaP_pr;  // Unbounded
 }
 
 model {
@@ -96,8 +94,8 @@ model {
   Arew_pr  ~ normal(0, 1);
   Apun_pr  ~ normal(0, 1);
   K_pr     ~ normal(0, 1);
-  betaF_pr ~ normal(0, 1);
-  betaP_pr ~ normal(0, 1);
+  betaF ~ normal(0, 1);
+  betaP ~ normal(0, 1);
   
   // Initialize values
   vector[4] ev = rep_vector(0., 4);  // Expected value

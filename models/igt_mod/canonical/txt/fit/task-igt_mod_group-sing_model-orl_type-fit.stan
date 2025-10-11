@@ -81,8 +81,8 @@ parameters {
   // Subject-level raw parameters
   real Arew_pr;                       // Reward learning rate
   real Apun_pr;                       // Punishment learning rate
-  real betaF_pr;                      // Weight for frequency (EF)
-  real betaB_pr;                      // Bias to play vs. pass
+  real betaF;                      // Weight for frequency (EF)
+  real betaB;                      // Bias to play vs. pass
 }
 
 transformed parameters {
@@ -94,16 +94,14 @@ transformed parameters {
 
   Arew   = inv_logit(Arew_pr);
   Apun   = inv_logit(Apun_pr);
-  betaF  = betaF_pr;
-  betaB  = betaB_pr; // Bias is unbounded
 }
 
 model {
   // Individual priors
   Arew_pr  ~ normal(0, 1);
   Apun_pr  ~ normal(0, 1);
-  betaF_pr ~ normal(0, 1);
-  betaB_pr ~ normal(0, 1);
+  betaF ~ normal(0, 1);
+  betaB ~ normal(0, 1);
 
   vector[4] ev = rep_vector(0., 4);           // Expected value
   vector[4] ef = rep_vector(0., 4);           // Expected frequency

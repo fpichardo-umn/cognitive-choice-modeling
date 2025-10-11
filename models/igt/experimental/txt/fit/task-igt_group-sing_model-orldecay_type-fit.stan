@@ -85,22 +85,18 @@ parameters {
   real Drew_pr;    // Reward decay rate
   real Dpun_pr;    // Punishment decay rate
   real K_pr;       // Decay rate for perseverance
-  real betaF_pr;   // Weight for frequency (EF)
-  real betaP_pr;   // Weight for perseverance
+  real betaF;   // Weight for frequency (EF)
+  real betaP;   // Weight for perseverance
 }
 
 transformed parameters {
   real<lower=0, upper=1> Drew;
   real<lower=0, upper=1> Dpun;
   real<lower=0, upper=5> K;
-  real betaF;
-  real betaP;
   
   Drew  = inv_logit(Drew_pr);
   Dpun  = inv_logit(Dpun_pr);
   K     = inv_logit(K_pr) * 5;
-  betaF = betaF_pr;  // Unbounded
-  betaP = betaP_pr;  // Unbounded
 }
 
 model {
@@ -108,8 +104,8 @@ model {
   Drew_pr  ~ normal(0, 1);
   Dpun_pr  ~ normal(0, 1);
   K_pr     ~ normal(0, 1);
-  betaF_pr ~ normal(0, 1);
-  betaP_pr ~ normal(0, 1);
+  betaF ~ normal(0, 1);
+  betaP ~ normal(0, 1);
   
   // Initialize values
   vector[4] ev = rep_vector(0., 4);  // Expected value
