@@ -99,6 +99,16 @@ generate_diagnostic_report <- function(diagnostic_results, task, cohort, session
   template_text <- gsub("{{MODEL}}", model, template_text, fixed = TRUE)
   template_text <- gsub("{{SUBJECT_ID}}", subject_id, template_text, fixed = TRUE)
   
+  # For hierarchical, add n_subjects
+  if (fit_type %in% c("hierarchical", "batch")) {
+    n_subjects <- if (!is.null(diagnostic_results$n_subjects)) {
+      diagnostic_results$n_subjects
+    } else {
+      0
+    }
+    template_text <- gsub("{{N_SUBJECTS}}", as.character(n_subjects), template_text, fixed = TRUE)
+  }
+  
   # Write modified Rmd file
   writeLines(template_text, rmd_file)
   cat("Created Rmd file:", rmd_file, "\n")
