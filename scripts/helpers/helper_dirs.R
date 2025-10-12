@@ -323,10 +323,10 @@ get_output_file_path <- function(task, cohort, group_type, model_name, model_typ
   additional_tags <- list()
   
   # Add subject/index information
-  if (!is.null(index)) {
-    additional_tags$sub <- sprintf("%04d", as.integer(index))
-  } else if (!is.null(subid)) {
+  if (!is.null(subid)) {
     additional_tags$sub <- subid
+  } else if (!is.null(index)) {
+    additional_tags$sub <- sprintf("%04d", as.integer(index))
   }
   
   # Add empirical bayes tag if needed

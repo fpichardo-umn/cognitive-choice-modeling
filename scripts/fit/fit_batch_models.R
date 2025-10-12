@@ -32,6 +32,8 @@ option_list = list(
               help="Subs list file [Data/txt/subs/] (default: subject_ids_complete_valid.txt)"),
   make_option(c("-n", "--dry_run"), action="store_true", default=FALSE, 
               help="Perform a dry run"),
+  make_option(c("-o", "--overwrite"), action="store_true", default=FALSE, 
+              help="Overwrite existing fits (default: skip if fit already exists)"),
   make_option(c("-p", "--parallel"), action="store_true", default=FALSE, 
               help="Run subjects in parallel (uses multiple cores)"),
   make_option(c("-c", "--cores"), type="integer", default=4, 
@@ -147,6 +149,7 @@ if (!is.null(opt$ses)) {
   log_message(sprintf("Session: %s", opt$ses))
 }
 log_message(sprintf("Fit config: %s, Data config: %s", opt$fit_config, opt$data_config))
+log_message(sprintf("Overwrite mode: %s", if(opt$overwrite) "ON (re-fit all)" else "OFF (skip existing fits)"))
 
 # Validate subject indices
 invalid_indices <- subject_indices[subject_indices > length(subject_ids) | subject_indices < 1]
@@ -216,7 +219,30 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
     return(NULL)
   }
   
-  log_message(sprintf("Processing subject %s (index: %d)", subject_id, index))
+  # Construct expected output path to check if fit already exists
+  model_status <- if (!is.null(opt$model_status)) opt$model_status else "canonical"
+  fit_dir <- file.path(get_safe_data_dir(), opt$source)
+  if (!is.null(opt$ses)) {
+    fit_dir <- file.path(fit_dir, paste0("ses-", opt$ses))
+  }
+  fit_dir <- file.path(fit_dir, "fits", opt$type, opt$task, model_status, opt$model)
+  
+  # Expected output filename (BIDS-style)
+  fit_filename <- sprintf("sub-%s_task-%s_model-%s_fit.rds", subject_id, opt$task, opt$model)
+  fit_path <- file.path(fit_dir, fit_filename)
+  
+  # Check if fit already exists and skip if overwrite is FALSE
+  if (file.exists(fit_path) && !opt$overwrite) {
+    log_message(sprintf("Skipping subject %s (index: %d) - fit already exists at: %s", 
+                        subject_id, index, fit_path))
+    return(TRUE)  # Return success since the fit exists
+  }
+  
+  if (file.exists(fit_path) && opt$overwrite) {
+    log_message(sprintf("Overwriting existing fit for subject %s (index: %d)", subject_id, index))
+  } else {
+    log_message(sprintf("Processing subject %s (index: %d)", subject_id, index))
+  }
   
   # Determine RT handling method (following logic from batch script)
   rt_method <- if (is.null(fit_params$rt_method)) {
