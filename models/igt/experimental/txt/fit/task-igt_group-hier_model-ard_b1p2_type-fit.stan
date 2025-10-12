@@ -154,6 +154,7 @@ transformed parameters {
     urgency[n]   = exp(mu_pr[5] + sigma[5] * urgency_pr[n]);
     wd[n]        = exp(mu_pr[6] + sigma[6] * wd_pr[n]);
     ws[n]        = exp(mu_pr[7] + sigma[7] * ws_pr[n]);
+  }
 }
 
 //---
