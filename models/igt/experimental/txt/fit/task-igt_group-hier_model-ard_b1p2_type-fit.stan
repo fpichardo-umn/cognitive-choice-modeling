@@ -173,10 +173,10 @@ model {
   urgency_pr ~ normal(0, 1);
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
-  V1_pr ~ normal(0, 1);
-  V2_pr ~ normal(0, 1);
-  V3_pr ~ normal(0, 1);
-  V4_pr ~ normal(0, 1);
+  V1 ~ normal(0, 1);
+  V2 ~ normal(0, 1);
+  V3 ~ normal(0, 1);
+  V4 ~ normal(0, 1);
 
   // Main loop to model each subject
   for (n in 1:N) {
