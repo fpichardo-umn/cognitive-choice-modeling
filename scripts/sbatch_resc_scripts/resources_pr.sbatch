@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64gb
 #SBATCH --tmp=64gb
-#SBATCH -t 72:00:00
+#SBATCH -t 96:00:00
 #SBATCH --mail-type=ALL
 #SBATCH -o log_files/pipeline/%x_%j.out
 #SBATCH -e log_files/pipeline/%x_%j.err
