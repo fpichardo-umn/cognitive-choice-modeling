@@ -93,11 +93,13 @@ if should_run_step 3; then
   # Source the config files
   source ./scripts/configs/fit_params_emp_indiv_${FIT_CONFIG}.conf
   
+  # max number of subjects: a
   Rscript ./scripts/empbayes/fit_empbayes_batch.R \
     -m ${MODEL_NAME} \
     -s ${SOURCE} \
     --ses ${SES} \
     -k ${TASK} \
+    -a "all" \ 
     --n_trials ${n_trials} \
     --RTbound_min_ms ${RTbound_min_ms} \
     --RTbound_max_ms ${RTbound_max_ms} \
