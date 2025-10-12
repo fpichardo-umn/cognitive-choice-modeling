@@ -280,6 +280,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_ard_b1p2"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), "wins", "losses"),
+    params = c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   # PVL Delta Model
   models[["igt_sing_pvldelta"]] <- list(
     data = data_types$basic_igt,
@@ -563,7 +570,7 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
-  models[["igt_hier_orl"]] <- list(
+  models[["igt_hier_orlboth"]] <- list(
     data = data_types$basic_hier_igt,
     params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_decay, param_sets$orl_igt),
     non_pr_params = NULL,
@@ -1029,6 +1036,13 @@ get_igt_mod_defaults = function() {
   models[["igt_mod_sing_ddm"]] <- list(
     data = data_types$ddm_specific,
     params = param_sets$ddm_simple,
+    non_pr_params = c("drift"),
+    exclude_params = NULL
+  )
+  
+  models[["igt_mod_hier_ddm_b1p2"]] <- list(
+    data = data_types$ddm_specific,
+    params = param_sets$ddm_b1p2,
     non_pr_params = c("drift"),
     exclude_params = NULL
   )
