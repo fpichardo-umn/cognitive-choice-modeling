@@ -164,9 +164,9 @@ transformed parameters {
     boundary[n]  = inv_logit(mu_pr[2] + sigma[2] * boundary_pr[n]) * 5 + 0.01;
     tau1[n]      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr[n]) * (minRT[n] - RTbound - 1e-6) * 0.95 + RTbound;
     tau[n]       = inv_logit(mu_pr[4] + sigma[4] * tau_pr[n]) * (minRT[n] - RTbound - 1e-6) * 0.95 + RTbound;
-    urgency[n]   = exp(mu_pr[5] + sigma[5] * urgency_pr[n]);
-    wd[n]        = exp(mu_pr[6] + sigma[6] * wd_pr[n]);
-    ws[n]        = exp(mu_pr[7] + sigma[7] * ws_pr[n]);
+    urgency[n]   = softplus(mu_pr[5] + sigma[5] * urgency_pr[n]);
+    wd[n]        = softplus(mu_pr[6] + sigma[6] * wd_pr[n]);
+    ws[n]        = softplus(mu_pr[7] + sigma[7] * ws_pr[n]);
     
     // EV Learning parameters
     drift_con[n] = inv_logit(mu_pr[8] + sigma[8] * drift_con_pr[n]) * 5;
