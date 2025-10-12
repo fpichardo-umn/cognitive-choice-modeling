@@ -40,7 +40,7 @@ real partial_sum(array[] int slice_n, int start, int end,
     }
     
     // The call to your existing function remains the same
-    log_lik += igt_ard_model_lp(
+    log_lik += igt_ard_model(
         choice[subj_idx, 1:Tsubj[subj_idx]], wins[subj_idx, 1:Tsubj[subj_idx]],
         losses[subj_idx, 1:Tsubj[subj_idx]], RT[subj_idx, 1:Tsubj[subj_idx]],
         ev, Tsubj[subj_idx],
@@ -90,7 +90,7 @@ real partial_sum(array[] int slice_n, int start, int end,
 }
 
   // Win-All likelihood for 4-choice ARD
-  real ard_win_all_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {
+  real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates) {
     real t = RT - tau;
     if (t <= 0) return log(1e-10);
 
@@ -122,7 +122,7 @@ real partial_sum(array[] int slice_n, int start, int end,
   }
 
   // Combined model function (no changes needed)
-  real igt_ard_model_lp(
+  real igt_ard_model(
         array[] int choice, array[] real wins, array[] real losses, array[] real RT,
         vector ev_init, int T,
         real sensitivity, real update, real wgt_pun, real wgt_rew,
@@ -152,7 +152,7 @@ real partial_sum(array[] int slice_n, int start, int end,
       // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
       drift_rates = drift_rates * sensitivity;
       if (RT[t] != 999) {
-        log_lik += ard_win_all_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
+        log_lik += ard_win_all(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
       }
 
       // Compute utility and update expected value

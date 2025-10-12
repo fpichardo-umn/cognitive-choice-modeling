@@ -37,7 +37,7 @@ real partial_sum(array[] int slice_n, int start, int end,
       taus = rep_vector(tau1[subj_idx], Tsubj[subj_idx]);
     }
     
-    log_lik += igt_ard_model_lp(
+    log_lik += igt_ard_model(
         choice[subj_idx, 1:Tsubj[subj_idx]], RT[subj_idx, 1:Tsubj[subj_idx]], Tsubj[subj_idx],
         V_subj,
         boundaries, taus, urgency[subj_idx], wd[subj_idx], ws[subj_idx]
@@ -85,7 +85,7 @@ real partial_sum(array[] int slice_n, int start, int end,
 }
 
   // Win-All likelihood for 4-choice ARD
-  real ard_win_all_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {
+  real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates) {
     real t = RT - tau;
     if (t <= 0) {
       return log(1e-10);
@@ -126,7 +126,7 @@ real partial_sum(array[] int slice_n, int start, int end,
   }
 
   // Combined model function
-  real igt_ard_model_lp(
+  real igt_ard_model(
         array[] int choice, array[] real RT, int T,
         vector V_subj,
         vector boundaries, vector taus, real urgency, real wd, real ws
@@ -152,7 +152,7 @@ real partial_sum(array[] int slice_n, int start, int end,
     for (t in 1:T) {
       // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
       if (RT[t] != 999) {
-        log_lik += ard_win_all_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
+        log_lik += ard_win_all(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
       }
     }
 
