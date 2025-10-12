@@ -140,20 +140,32 @@ kable(status_df)
 These subjects have the most diagnostic issues:
 
 ```{r worst-subjects}
-if (!is.null(diagnostic_results$subject_analysis$worst_subjects)) {
-  worst <- diagnostic_results$subject_analysis$worst_subjects
+if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
+  # Convert list to data frame
+  df <- diagnostic_results$subject_analysis$subject_summaries
+  df <- do.call(rbind, lapply(df, as.data.frame))
   
-  worst_df <- data.frame(
-    Subject = sapply(worst, function(x) x$subject_id),
-    Status = sapply(worst, function(x) x$status),
-    `Worst R-hat` = sprintf("%.4f", sapply(worst, function(x) x$worst_rhat)),
-    `Min ESS Ratio` = sprintf("%.3f", sapply(worst, function(x) x$min_ess_ratio %||% NA)),
-    `Problem Score` = sprintf("%.1f", sapply(worst, function(x) x$problem_score)),
-    check.names = FALSE,
-    stringsAsFactors = FALSE
-  )
+  # Filter to non-PASS subjects only
+  df_problems <- df %>%
+    filter(status != "PASS") %>%
+    arrange(desc(problem_score))
   
-  kable(worst_df, row.names = FALSE)
+  if (nrow(df_problems) > 0) {
+    display_df <- df_problems %>%
+      select(subject_id, status, worst_rhat, min_ess_ratio, problem_score) %>%
+      mutate(
+        worst_rhat = sprintf("%.4f", worst_rhat),
+        min_ess_ratio = sprintf("%.3f", ifelse(is.na(min_ess_ratio), 0, min_ess_ratio)),
+        problem_score = sprintf("%.1f", problem_score)
+      )
+    
+    kable(display_df, row.names = FALSE,
+          col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Ratio", "Problem Score"))
+  } else {
+    cat("✓ **All subjects passed diagnostics!**\n")
+  }
+} else {
+  cat("*Subject summaries not available*\n")
 }
 ```
 
