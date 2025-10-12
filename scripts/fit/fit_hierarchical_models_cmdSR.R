@@ -101,7 +101,7 @@ cat("Target sample size:", opt$n_subs, "subjects\n")
 # Get task-specific directories
 if (!is.null(opt$task)) {
   # Get subjects directory with source
-  SUBS_DIR <- file.path(SAFE_DIR, opt$source)
+  SUBS_DIR <- file.path(SAFE_DATA_DIR, opt$source)
   if (!is.null(opt$ses)) {
     SUBS_DIR <- file.path(SUBS_DIR, paste0("ses-", opt$ses))
   }
