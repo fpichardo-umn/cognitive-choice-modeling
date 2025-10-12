@@ -2,61 +2,74 @@
 functions {
   // PDF for a single LBA accumulator
   real race_pdf(real t, real boundary, real drift) {
-    if (t <= 0 || drift <= 0) return 1e-10;
-    real boundary_over_sqrt_2pi_t3 = boundary / (sqrt(2 * pi()) * pow(t, 1.5)); // Corrected from pow(t, 3) to pow(t, 1.5) for standard LBA/diffusion PDF
+    if (t <= 0 || drift <= 0 || !is_finite(t) || !is_finite(boundary) || !is_finite(drift)) return 1e-10;
+    real denom = sqrt(2 * pi()) * pow(t, 1.5);
+    if (!is_finite(denom) || denom <= 0) return 1e-10;
+    real boundary_over = boundary / denom;
     real drift_t_minus_boundary = drift * t - boundary;
-    return boundary_over_sqrt_2pi_t3 * exp(-0.5 * square(drift_t_minus_boundary) / t);
+    real exponent = -0.5 * square(drift_t_minus_boundary) / t;
+    if (!is_finite(exponent)) return 1e-10;
+    return boundary_over * exp(exponent);
   }
 
   // CDF for a single LBA accumulator
   real race_cdf_func(real t, real boundary, real drift) {
-    if (t <= 0 || drift <= 0) return 0;
+    if (t <= 0 || drift <= 0 || !is_finite(t) || !is_finite(boundary) || !is_finite(drift))
+      return 0;
     real sqrt_t = sqrt(t);
+    if (!is_finite(sqrt_t) || sqrt_t <= 0) return 0;
+
     real drift_t = drift * t;
     real term1 = (drift_t - boundary) / sqrt_t;
     real term2 = -(drift_t + boundary) / sqrt_t;
-    return Phi(term1) + exp(2 * drift * boundary) * Phi(term2);
+ 
+    if (!is_finite(term1) || !is_finite(term2)) return 0;
+
+    real expo_arg = 2.0 * drift * boundary;
+    // clamp expo_arg to avoid exp overflow (exp(700) ~ 1e304)
+    if (expo_arg > 700) {
+      return Phi_approx(term1);
+    } else if (expo_arg < -700) {
+      return Phi_approx(term1);
+    } else {
+      real p1 = Phi_approx(term1);
+      real p2 = Phi_approx(term2);
+      real mult = exp(expo_arg);
+      if (!is_finite(mult) || p2 == 0) return p1;
+      return p1 + mult * p2;
+    }
   }
 
   // Win-All likelihood for 4-choice ARD
   real ard_win_all_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {
     real t = RT - tau;
-    if (t <= 0) {
-      return log(1e-10);
-    }
+    if (t <= 0) return log(1e-10);
 
     array[3] int winning_indices;
     array[9] int losing_indices;
-    real joint_pdf = 1.0;
-    real joint_survival = 1.0;
     int losing_idx = 1;
 
-    // Get indices for winning choice's accumulators
-    for (i in 1:3) {
-      winning_indices[i] = (choice - 1) * 3 + i;
-    }
-
-    // Get indices for all other accumulators
+    for (i in 1:3) winning_indices[i] = (choice - 1) * 3 + i;
     for (j in 1:4) {
-      if (j != choice) {
-        for (i in 1:3) {
-          losing_indices[losing_idx] = (j - 1) * 3 + i;
-          losing_idx += 1;
-        }
-      }
+      if (j != choice) for (i in 1:3) { losing_indices[losing_idx] = (j - 1) * 3 + i; losing_idx += 1; }
     }
 
-    // PDF for all winning accumulators finishing at time t
+    // Sum log-pdfs for winning accumulators (use floor clamp to avoid log(0))
+    real log_pdf_sum = 0;
     for (i in 1:3) {
-      joint_pdf *= race_pdf(t, boundary, drift_rates[winning_indices[i]]);
+      real p = race_pdf(t, boundary, drift_rates[winning_indices[i]]);
+      log_pdf_sum += log(fmax(p, 1e-300));
     }
 
-    // CDF for all losing accumulators *not* finishing by time t
+    // Sum log-survivals for losing accumulators
+    real log_surv_sum = 0;
     for (i in 1:9) {
-      joint_survival *= (1.0 - race_cdf_func(t, boundary, drift_rates[losing_indices[i]]));
+      real surv = 1.0 - race_cdf_func(t, boundary, drift_rates[losing_indices[i]]);
+      // clamp to [1e-300, 1]
+      log_surv_sum += log(fmax(surv, 1e-300));
     }
 
-    return log(fmax(joint_pdf * joint_survival, 1e-10));
+    return log_pdf_sum + log_surv_sum;
   }
 
   // Combined model function (no changes needed)
