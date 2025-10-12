@@ -131,7 +131,7 @@ model {
     ev = igt_model_lp(
       choice[n, 1:Tsubj[n]],
       shown[n, 1:Tsubj[n]],
-      outcomes[n, 1:Tsubj[n]],
+      outcome[n, 1:Tsubj[n]],
       ev,
       ef,
       Tsubj[n],
