@@ -37,10 +37,15 @@ param_sets <- list(
   vpp_igt = c("epP", "epN", "K", "w"),
   
   # ORL model parameters
-  orl = c("Arew", "Apun", "K", "betaF", "betaP"),
+  orl_base = c("betaF"),
+  orl_delta = c("Arew", "Apun"),
+  orl_decay = c("Drew", "Dpun"),
+  orl_igt = c("K", "betaP"),
+  orl_igt_mod = c("betaB"),
   
   # VSE model params
-  vse_base = c("explore_alpha", "explore_bonus"),
+  vse_orig = c("explore_alpha", "explore_bonus"),
+  vse_lag = c("phi"),
   
   # Dual Processing parameters
   dual = c("consistency", "update_rate_mb", "update_rate_mf", "decay_factor", 
@@ -539,28 +544,42 @@ get_igt_defaults = function() {
   # ORL Model
   models[["igt_sing_orl"]] <- list(
     data = data_types$basic_igt,
-    params = param_sets$orl,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_hier_orl"]] <- list(
     data = data_types$basic_hier_igt,
-    params = param_sets$orl,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_orldecay"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$orl_base, param_sets$orl_decay, param_sets$orl_igt),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_orl"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_decay, param_sets$orl_igt),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_orl_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl), "con"),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl_base), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_orl_lardmean_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl), "con"),
+    params = setdiff(c(param_sets$rdm_b1p2, c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt)), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -568,35 +587,70 @@ get_igt_defaults = function() {
   # VSE Model
   models[["igt_sing_vse"]] <- list(
     data = data_types$basic_igt,
-    params = c(param_sets$pvl_decay, param_sets$vse_base),
+    params = c(param_sets$pvl_decay, param_sets$vse_orig),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_hier_vse"]] <- list(
     data = data_types$basic_hier_igt,
-    params = c(param_sets$pvl_decay, param_sets$vse_base),
+    params = c(param_sets$pvl_decay, param_sets$vse_orig),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_lagvse"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_decay, param_sets$vse_lag),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_vsedelta"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_delta, param_sets$vse_orig),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_lagvsedelta"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_delta, param_sets$vse_lag),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_vseboth"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_both, param_sets$vse_orig),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_lagvseboth"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_both, param_sets$vse_lag),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_hier_vse2"]] <- list(
     data = data_types$basic_hier_igt,
-    params = c(param_sets$pvl_decay, param_sets$vse_base),
+    params = c(param_sets$pvl_decay, param_sets$vse_orig),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_vse_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_base), "con"),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_orig), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_vse_lardmean_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_base), "con"),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_orig), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -710,6 +764,13 @@ get_igt_mod_defaults = function() {
   models[["igt_mod_sing_pvlbothsd"]] <- list(
     data = data_types$basic_igt_mod,
     params = param_sets$pvl_both,
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_mod_hier_orl"]] <- list(
+    data = data_types$basic_hier_igt_mod,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt_mod),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -1078,6 +1139,13 @@ get_igt_mod_defaults = function() {
   models[["igt_mod_sing_nnlboth_ddm_b1p2"]] <- list(
     data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_b1p2, param_sets$nnl_both), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_mod_hier_orl_ddm_b1p2"]] <- list(
+    data = c(data_types$basic_hier_igt_mod, data_types$with_rt_igt),
+    params = setdiff(c(param_sets$ddm_b1p2, c(param_sets$orl_base, param_sets$orl_delta)), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
