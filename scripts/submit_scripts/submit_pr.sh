@@ -9,7 +9,7 @@ print_usage() {
   echo "Usage: $0 -k <task> -m <model> -s <source> -e <email> [options]"
   echo "Example: $0 -k igt_mod -m ev -s combined -e your@email.edu"
   echo "Example: $0 -k igt_mod -m ev -s combined -e your@email.edu -g group -c fit,pr_genparams"
-  echo "Example: $0 -k igt_mod -m ev -s combined -e your@email.edu --n-subjects 150 --n-iter 3000"
+  echo "Example: $0 -k igt_mod -m ev -s combined -e your@email.edu --n-subjects 150 --fit-config emp_hier_complex"
   echo ""
   echo "Required Options:"
   echo "  -k    Task name (e.g., igt_mod)"
@@ -25,11 +25,23 @@ print_usage() {
   echo "        Can be comma-separated: fit,pr_genparams,pr_simulate"
   echo "  -n    Dry run (show what would be submitted without submitting)"
   echo ""
+  echo "Configuration Options:"
+  echo "  --fit-config NAME     Fit config name (default: default)"
+  echo "                        Options: default, sing, sim, emp_hier_complex, emp_hier_simple, etc."
+  echo "                        Configs set MCMC params: n_warmup, n_iter, n_chains, adapt_delta, max_treedepth"
+  echo "  --data-config NAME    Data config name (default: default)"
+  echo "                        Options: default, sing_igt_mod, sing_igt, igt_mod, igt"
+  echo "                        Configs set data params: n_trials, RTbound_min_ms, RTbound_max_ms, rt_method"
+  echo "  --method METHOD       Parameter generation method (default: mbSPSepse)"
+  echo "                        Options: mbSPSepse, sbSPSepse, tSPSepse, hpsEPSE"
+  echo ""
+  echo "Subject Selection:"
+  echo "  --subs-file FILE      Subject file filename in Data/raw/{source}/ses-{ses}/"
+  echo "                        If not provided: batch uses all, hier uses top N subjects"
+  echo ""
   echo "PR Parameter Options:"
   echo "  --n-subjects N    Number of subjects (default: 200)"
   echo "  --n-trials N      Number of trials (default: 100)"
-  echo "  --n-iter N        MCMC iterations (default: 5000)"
-  echo "  --check-iter N    Checkpoint interval (default: 10000)"
   echo "  --indiv           Enable individual fitting (default: disabled for hier)"
   echo ""
   echo "Defaults:"
@@ -38,7 +50,10 @@ print_usage() {
   echo "  - Session: 00"
   echo "  - Number of subjects: 200"
   echo "  - Number of trials: 100"
-  echo "  - MCMC iterations: 5000"
+  echo "  - Fit config: default"
+  echo "  - Data config: default"
+  echo "  - Method: mbSPSepse"
+  echo "  - Seed: SLURM_JOB_ID"
   echo "  - No individual fitting (hierarchical only)"
   echo "  - 72 hour time limit, 64GB memory"
   echo ""
@@ -52,9 +67,11 @@ COMPONENTS="all"
 SESSION="00"
 N_SUBJECTS=200
 N_TRIALS=100
-N_ITER=5000
-CHECK_ITER=10000
 NO_INDIV=true
+FIT_CONFIG="default"
+DATA_CONFIG="default"
+METHOD="mbSPSepse"
+SUBS_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -72,9 +89,11 @@ while [[ $# -gt 0 ]]; do
     -n) DRY_RUN=true; shift ;;
     --n-subjects) N_SUBJECTS=$2; shift 2 ;;
     --n-trials) N_TRIALS=$2; shift 2 ;;
-    --n-iter) N_ITER=$2; shift 2 ;;
-    --check-iter) CHECK_ITER=$2; shift 2 ;;
     --indiv) NO_INDIV=false; shift ;;
+    --fit-config) FIT_CONFIG=$2; shift 2 ;;
+    --data-config) DATA_CONFIG=$2; shift 2 ;;
+    --method) METHOD=$2; shift 2 ;;
+    --subs-file) SUBS_FILE=$2; shift 2 ;;
     -*) echo "Invalid option: $1" >&2; print_usage ;;
     *) echo "Unexpected argument: $1" >&2; print_usage ;;
   esac
@@ -112,7 +131,13 @@ fi
 COMPONENTS_ENCODED=$(echo "$COMPONENTS" | sed 's/,/;/g')
 ENV_VARS="ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,GROUP_TYPE=$GROUP_TYPE"
 ENV_VARS="${ENV_VARS},COMPONENTS=$COMPONENTS_ENCODED"
-ENV_VARS="${ENV_VARS},SESSION=$SESSION,N_SUBJECTS=$N_SUBJECTS,N_TRIALS=$N_TRIALS,N_ITER=$N_ITER,CHECK_ITER=$CHECK_ITER,NO_INDIV=$NO_INDIV"
+ENV_VARS="${ENV_VARS},SESSION=$SESSION,N_SUBJECTS=$N_SUBJECTS,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV"
+ENV_VARS="${ENV_VARS},FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD"
+
+# Add subs file if provided
+if [ ! -z "$SUBS_FILE" ]; then
+  ENV_VARS="${ENV_VARS},SUBS_FILE=$SUBS_FILE"
+fi
 
 if $DRY_RUN; then
   echo "====== DRY RUN: WOULD SUBMIT WITH THESE PARAMETERS ======"
@@ -124,12 +149,19 @@ if $DRY_RUN; then
   echo "Session: $SESSION"
   echo "Number of subjects: $N_SUBJECTS"
   echo "Number of trials: $N_TRIALS"
-  echo "MCMC iterations: $N_ITER"
-  echo "Checkpoint interval: $CHECK_ITER"
   echo "No individual fitting: $NO_INDIV"
+  echo "Fit config: $FIT_CONFIG"
+  echo "Data config: $DATA_CONFIG"
+  echo "Method: $METHOD"
+  if [ ! -z "$SUBS_FILE" ]; then
+    echo "Subject file: $SUBS_FILE"
+  else
+    echo "Subject file: (not specified - will use defaults)"
+  fi
   echo "Email: $USER_EMAIL"
   echo "Job name: $JOB_NAME"
   echo "Log directory: $LOG_DIR"
+  echo "Seed: (will be SLURM_JOB_ID)"
   echo ""
   echo "Command that would be executed:"
   echo "sbatch --parsable \\"
@@ -140,14 +172,10 @@ if $DRY_RUN; then
   echo "  --error=\"${LOG_DIR}/${JOB_NAME}_%j.err\" \\"
   echo "  $BATCH_SCRIPT"
   echo ""
-  echo "PR command that would be run:"
-  echo "run_full_PR.sh -k $TASK -m $MODEL -s $SOURCE -g $GROUP_TYPE --ses $SESSION \\"
-  echo "  --n-subjects $N_SUBJECTS --n-trials $N_TRIALS --n-iter $N_ITER --check-iter $CHECK_ITER \\"
-  if [ "$NO_INDIV" = true ]; then
-    echo "  --no-indiv $COMPONENTS"
-  else
-    echo "  $COMPONENTS"
-  fi
+  echo "Configs will be sourced from:"
+  echo "  Fit: scripts/configs/fit_params_${FIT_CONFIG}.conf"
+  echo "  Data: scripts/configs/data_params_${DATA_CONFIG}.conf"
+  echo ""
   echo "====== DRY RUN COMPLETED ======"
 else
   # Ensure the necessary directories exist
@@ -168,7 +196,12 @@ else
     echo "Task: $TASK, Model: $MODEL, Source: $SOURCE"
     echo "Group type: $GROUP_TYPE, Components: $COMPONENTS"
     echo "Session: $SESSION, Subjects: $N_SUBJECTS, Trials: $N_TRIALS"
-    echo "MCMC iterations: $N_ITER, Checkpoint: $CHECK_ITER"
+    echo "Fit config: $FIT_CONFIG, Data config: $DATA_CONFIG"
+    echo "Method: $METHOD"
+    if [ ! -z "$SUBS_FILE" ]; then
+      echo "Subject file: $SUBS_FILE"
+    fi
+    echo "Seed will be: $job_id"
     echo "Check logs in: ${LOG_DIR}/"
   else
     echo "Failed to submit PR job"
