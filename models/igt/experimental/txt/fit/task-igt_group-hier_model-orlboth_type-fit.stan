@@ -149,7 +149,7 @@ model {
 
 generated quantities {
   // Group-level parameters in interpretable scale
-  real<lower=0, upper=1> mu_decay n;
+  real<lower=0, upper=1> mu_decay;
   real<lower=0, upper=5> mu_K;
   real mu_betaF;
   real mu_betaP;
