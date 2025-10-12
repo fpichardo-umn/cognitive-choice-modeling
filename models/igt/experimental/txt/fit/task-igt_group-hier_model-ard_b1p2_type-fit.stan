@@ -152,7 +152,7 @@ real partial_sum(array[] int slice_n, int start, int end,
     for (t in 1:T) {
       // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
       if (RT[t] != 999) {
-        log_lik += ard_win_all_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+        log_lik += ard_win_all_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
       }
     }
 
