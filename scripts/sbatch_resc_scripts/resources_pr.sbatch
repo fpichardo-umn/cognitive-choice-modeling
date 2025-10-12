@@ -35,9 +35,12 @@ echo "DEBUG: COMPONENTS (after conversion) = '$COMPONENTS'"
 SESSION=${SESSION:-"00"}
 N_SUBJECTS=${N_SUBJECTS:-200}
 N_TRIALS=${N_TRIALS:-100}
-N_ITER=${N_ITER:-5000}
-CHECK_ITER=${CHECK_ITER:-10000}
+FIT_CONFIG=${FIT_CONFIG:-"default"}
+DATA_CONFIG=${DATA_CONFIG:-"default"}
+METHOD=${METHOD:-"mbSPSepse"}
+SUBS_LIST=${SUBS_LIST:-""}
 NO_INDIV=${NO_INDIV:-true}
+SEED=${SEED:-$SLURM_JOB_ID}
 
 # Change to the submit directory
 cd ${SLURM_SUBMIT_DIR}
@@ -71,15 +74,32 @@ log_message "Checkpoint interval: $CHECK_ITER"
 log_message "No individual fitting: $NO_INDIV"
 log_message "Working directory: $(pwd)"
 
+# SOURCE config files to get MCMC and data parameters
+CONFIG_DIR="${PROJ_DIR}/scripts/configs"
+FIT_CONFIG_FILE="${CONFIG_DIR}/fit_params_${FIT_CONFIG}.conf"
+DATA_CONFIG_FILE="${CONFIG_DIR}/data_params_${DATA_CONFIG}.conf"
+
+source "$FIT_CONFIG_FILE"
+log_message "Loaded fit config: $FIT_CONFIG_FILE"
+
+source "$DATA_CONFIG_FILE"
+log_message "Loaded data config: $DATA_CONFIG_FILE"
+    
 # Build command arguments for run_full_PR.sh
 CMD_ARGS=("-k" "$TASK" "-m" "$MODEL" "-s" "$SOURCE" "-g" "$GROUP_TYPE")
 
 # Add session and pipeline parameters
 CMD_ARGS+=("--ses" "$SESSION")
 CMD_ARGS+=("--n-subjects" "$N_SUBJECTS")
+CMD_ARGS+=("--subs-file" "$SUBS_FILE")
 CMD_ARGS+=("--n-trials" "$N_TRIALS")
 CMD_ARGS+=("--n-iter" "$N_ITER")
 CMD_ARGS+=("--check-iter" "$CHECK_ITER")
+CMD_ARGS+=("--fit-config" "$FIT_CONFIG")
+CMD_ARGS+=("--data-config" "$DATA_CONFIG")
+CMD_ARGS+=("--method" "$METHOD")
+CMD_ARGS+=("--n-warmup" "$n_warmup")
+CMD_ARGS+=("--n-iter" "$n_iter")
 
 # Add no-indiv flag if enabled
 if [ "$NO_INDIV" = true ]; then
