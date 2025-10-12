@@ -1,5 +1,51 @@
 // Hierarchical SSM-Only ARD Model for the Iowa Gambling Task
 functions {
+  // New function for parallelization
+real partial_sum_lpdf(array[] int slice_n, int start, int end,
+                      // All data passed to the function
+                      array[] int Tsubj,
+                      array[,] int choice,
+                      array[,] real RT,
+                      // All parameters passed to the function
+                      array[] real V1,
+                      array[] real V2,
+                      array[] real V3,
+                      array[] real V4,
+                      array[] real boundary1,
+                      array[] real boundary,
+                      array[] real tau1,
+                      array[] real tau,
+                      array[] real urgency,
+                      array[] real wd,
+                      array[] real ws
+                      ) {
+  real log_lik = 0.0;
+  // Loop ONLY over the subjects in this slice
+  for (n in start:end) {
+    int subj_idx = slice_n[n]; // Get the actual subject index
+    
+    vector[4] V_subj = [V1[subj_idx], V2[subj_idx], V3[subj_idx], V4[subj_idx]]';
+    
+    vector[Tsubj[subj_idx]] boundaries;
+    vector[Tsubj[subj_idx]] taus;
+
+    if (Tsubj[subj_idx] > 20) {
+      boundaries = append_row(rep_vector(boundary1[subj_idx], 20), rep_vector(boundary[subj_idx], Tsubj[subj_idx] - 20));
+      taus = append_row(rep_vector(tau1[subj_idx], 20), rep_vector(tau[subj_idx], Tsubj[subj_idx] - 20));
+    } else {
+      boundaries = rep_vector(boundary1[subj_idx], Tsubj[subj_idx]);
+      taus = rep_vector(tau1[subj_idx], Tsubj[subj_idx]);
+    }
+    
+    log_lik += igt_ard_model_lp(
+        choice[subj_idx, 1:Tsubj[subj_idx]], RT[subj_idx, 1:Tsubj[subj_idx]], Tsubj[subj_idx],
+        V_subj,
+        boundaries, taus, urgency[subj_idx], wd[subj_idx], ws[subj_idx]
+    );
+  }
+  return log_lik;
+}
+
   // PDF for a single LBA accumulator
   real race_pdf(real t, real boundary, real drift) {
   if (t <= 0 || drift <= 0) return 1e-10;
@@ -198,31 +244,19 @@ model {
   V3 ~ normal(0, 1);
   V4 ~ normal(0, 1);
 
-  // Main loop to model each subject
-  for (n in 1:N) {
-    // Initialize values for the current subject
-    vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
-
-    // Create trial-varying boundary and tau vectors for this subject
-    vector[Tsubj[n]] boundaries;
-    vector[Tsubj[n]] taus;
-    
-    // Check if the subject has more than 20 trials to avoid errors
-    if (Tsubj[n] > 20) {
-        boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
-        taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
-    } else {
-        boundaries = rep_vector(boundary1[n], Tsubj[n]);
-        taus = rep_vector(tau1[n], Tsubj[n]);
-    }
-    
-    // Compute log-likelihood for the subject and add to the total
-    target += igt_ard_model_lp(
-        choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-        V_subj,
-        boundaries, taus, urgency[n], wd[n], ws[n]
-    );
-  }
+  // Define grainsize for parallelization
+  int grainsize = 1;
+  
+  // New parallelized likelihood calculation
+  target += reduce_sum(partial_sum_lpdf,
+                       sid, // Array to slice over (subject IDs)
+                       grainsize,
+                       // Pass all necessary data
+                       Tsubj, choice, RT,
+                       // Pass all necessary parameters
+                       V1, V2, V3, V4,
+                       boundary1, boundary, tau1, tau,
+                       urgency, wd, ws);
 }
 
 //---
