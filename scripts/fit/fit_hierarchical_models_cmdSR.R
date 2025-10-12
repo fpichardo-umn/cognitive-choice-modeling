@@ -26,6 +26,8 @@ option_list = list(
   make_option(c("-p", "--params"), type="character", default=NULL, 
               help="Comma-separated list of model parameters"),
   make_option(c("--n_subs"), type="integer", default=1000, help="Number of subjects for hierarchical model"),
+  make_option(c("-l", "--subs_file"), type="character", default="subject_ids_complete_valid.txt", 
+              help="Subs list file [Data/txt/subs/] (default: subject_ids_complete_valid.txt)"),
   make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=4000, help="RT max bound in milliseconds"),
@@ -96,12 +98,33 @@ exclude_params <- if (opt$init) model_defaults[[full_model_name]]$exclude_params
 cat("Preparing hierarchical data for", full_model_name, "\n")
 cat("Target sample size:", opt$n_subs, "subjects\n")
 
+# Get task-specific directories
+if (!is.null(opt$task)) {
+  # Get subjects directory with source
+  SUBS_DIR <- file.path(SAFE_DIR, opt$source)
+  if (!is.null(opt$ses)) {
+    SUBS_DIR <- file.path(SUBS_DIR, paste0("ses-", opt$ses))
+  }
+  SUBS_LIST_FILE <- file.path(SUBS_DIR, opt$subs_file)
+} else {
+  stop("Task name is required using the -k option.")
+}
+
+# Check subjects list file
+if (!file.exists(SUBS_LIST_FILE)) {
+  stop(sprintf("Subjects list file not found: %s", SUBS_LIST_FILE))
+}
+subject_ids <- readLines(SUBS_LIST_FILE)
+
 # Load and prepare hierarchical data
 if (!opt$dry_run) {
   cat("Loading data for hierarchical model fitting...\n")
   
   # Load full dataset using helper function
   all_data <- load_data(opt$task, opt$source, opt$ses)
+  
+  # Filter based on list
+  all_data = all_data[all_data$subjID %in% subject_ids]
   
   # For hierarchical models, we work with multiple subjects
   # Check if we have enough subjects
