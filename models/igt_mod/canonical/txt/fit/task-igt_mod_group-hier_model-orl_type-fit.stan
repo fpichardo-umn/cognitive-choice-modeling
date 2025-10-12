@@ -33,10 +33,10 @@ functions {
       // ---=== Learning only occurs if the participant chose to "play" ===---
       if (choice[t] == 1) {
         // Calculate sign of the outcome for EF updates
-        sign_outcome = (wins[t] >= losses[t]) ? 1.0 : -1.0;
+        sign_outcome = (outcome > 0) ? 1.0 : -1.0;
 
         // Prediction errors for value and frequency of the CHOSEN deck
-        PEval = (wins[t] - losses[t]) - local_ev[curDeck];
+        PEval = outcome - local_ev[curDeck];
         PEfreq = sign_outcome - local_ef[curDeck];
         
         // Calculate fictive prediction errors for non-chosen decks
