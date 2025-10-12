@@ -99,7 +99,7 @@ if should_run_step 3; then
     -s ${SOURCE} \
     --ses ${SES} \
     -k ${TASK} \
-    -a "all" \ 
+    -a "all" \
     --n_trials ${n_trials} \
     --RTbound_min_ms ${RTbound_min_ms} \
     --RTbound_max_ms ${RTbound_max_ms} \
