@@ -124,7 +124,7 @@ if (!opt$dry_run) {
   all_data <- load_data(opt$task, opt$source, opt$ses)
   
   # Filter based on list
-  all_data = all_data[all_data$subjID %in% subject_ids]
+  all_data = all_data[all_data$subjID %in% subject_ids,]
   
   # For hierarchical models, we work with multiple subjects
   # Check if we have enough subjects
