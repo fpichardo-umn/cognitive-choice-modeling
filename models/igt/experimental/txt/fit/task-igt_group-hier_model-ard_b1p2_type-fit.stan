@@ -22,25 +22,23 @@ real partial_sum(array[] int slice_n, int start, int end,
   real log_lik = 0.0;
   // Loop ONLY over the subjects in this slice
   for (n in start:end) {
-    int subj_idx = slice_n[n]; // Get the actual subject index
     
-    vector[4] V_subj = [V1[subj_idx], V2[subj_idx], V3[subj_idx], V4[subj_idx]]';
-    
-    vector[Tsubj[subj_idx]] boundaries;
-    vector[Tsubj[subj_idx]] taus;
+    vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
+    vector[Tsubj[n]] boundaries;
+    vector[Tsubj[n]] taus;
 
-    if (Tsubj[subj_idx] > 20) {
-      boundaries = append_row(rep_vector(boundary1[subj_idx], 20), rep_vector(boundary[subj_idx], Tsubj[subj_idx] - 20));
-      taus = append_row(rep_vector(tau1[subj_idx], 20), rep_vector(tau[subj_idx], Tsubj[subj_idx] - 20));
+    if (Tsubj[n] > 20) {
+      boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
+      taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
     } else {
-      boundaries = rep_vector(boundary1[subj_idx], Tsubj[subj_idx]);
-      taus = rep_vector(tau1[subj_idx], Tsubj[subj_idx]);
+      boundaries = rep_vector(boundary1[n], Tsubj[n]);
+      taus = rep_vector(tau1[n], Tsubj[n]);
     }
     
     log_lik += igt_ard_model(
-        choice[subj_idx, 1:Tsubj[subj_idx]], RT[subj_idx, 1:Tsubj[subj_idx]], Tsubj[subj_idx],
+        choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
         V_subj,
-        boundaries, taus, urgency[subj_idx], wd[subj_idx], ws[subj_idx]
+        boundaries, taus, urgency[n], wd[n], ws[n]
     );
   }
   return log_lik;
@@ -176,6 +174,13 @@ data {
   array[N, T] real<lower=0> RT;
 }
 
+transformed data {
+  array[N] int subject_indices;
+  for (i in 1:N) {
+    subject_indices[i] = i;
+  }
+}
+
 //---
 
 parameters {
@@ -249,7 +254,7 @@ model {
   
   // New parallelized likelihood calculation
   target += reduce_sum(partial_sum,
-                       sid, // Array to slice over (subject IDs)
+                       subject_indices, // Array to slice over: indices
                        grainsize,
                        // Pass all necessary data
                        Tsubj, choice, RT,

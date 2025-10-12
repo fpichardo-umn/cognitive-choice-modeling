@@ -24,28 +24,28 @@ real partial_sum(array[] int slice_n, int start, int end,
   real log_lik = 0.0;
   // Loop ONLY over the subjects in this slice
   for (n in start:end) {
-    int subj_idx = slice_n[n]; // Get the actual subject index
+    
     vector[4] ev = rep_vector(0.0, 4);
-    real sensitivity = pow(3, drift_con[subj_idx]) - 1;
+    real sensitivity = pow(3, drift_con[n]) - 1;
 
-    vector[Tsubj[subj_idx]] boundaries;
-    vector[Tsubj[subj_idx]] taus;
+    vector[Tsubj[n]] boundaries;
+    vector[Tsubj[n]] taus;
 
-    if (Tsubj[subj_idx] > 20) {
-      boundaries = append_row(rep_vector(boundary1[subj_idx], 20), rep_vector(boundary[subj_idx], Tsubj[subj_idx] - 20));
-      taus = append_row(rep_vector(tau1[subj_idx], 20), rep_vector(tau[subj_idx], Tsubj[subj_idx] - 20));
+    if (Tsubj[n] > 20) {
+      boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
+      taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
     } else {
-      boundaries = rep_vector(boundary1[subj_idx], Tsubj[subj_idx]);
-      taus = rep_vector(tau1[subj_idx], Tsubj[subj_idx]);
+      boundaries = rep_vector(boundary1[n], Tsubj[n]);
+      taus = rep_vector(tau1[n], Tsubj[n]);
     }
     
     // The call to your existing function remains the same
     log_lik += igt_ard_model(
-        choice[subj_idx, 1:Tsubj[subj_idx]], wins[subj_idx, 1:Tsubj[subj_idx]],
-        losses[subj_idx, 1:Tsubj[subj_idx]], RT[subj_idx, 1:Tsubj[subj_idx]],
-        ev, Tsubj[subj_idx],
-        sensitivity, update[subj_idx], wgt_pun[subj_idx], wgt_rew[subj_idx],
-        boundaries, taus, urgency[subj_idx], wd[subj_idx], ws[subj_idx]
+        choice[n, 1:Tsubj[n]], wins[n, 1:Tsubj[n]],
+        losses[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
+        ev, Tsubj[n],
+        sensitivity, update[n], wgt_pun[n], wgt_rew[n],
+        boundaries, taus, urgency[n], wd[n], ws[n]
     );
   }
   return log_lik;
@@ -182,6 +182,13 @@ data {
   array[N, T] real<lower=0> losses;
 }
 
+transformed data {
+  array[N] int subject_indices;
+  for (i in 1:N) {
+    subject_indices[i] = i;
+  }
+}
+
 //---
 
 parameters {
@@ -264,7 +271,7 @@ model {
   
   // New parallelized likelihood calculation
   target += reduce_sum(partial_sum,
-                       sid, // Array to slice over (subject IDs)
+                       subject_indices, // Array to slice over: indices
                        grainsize,
                        // Pass all necessary data
                        Tsubj, choice, wins, losses, RT,
