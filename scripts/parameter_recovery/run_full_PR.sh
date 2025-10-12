@@ -597,14 +597,8 @@ run_fit() {
             CMD_ARGS+=("--ses $SESSION")
         fi
         
-        # Subject selection
-        if [ ! -z "$SUBS_LIST" ]; then
-            CMD_ARGS+=("--subs_file" "$SUBS_LIST")
-        else
-            CMD_ARGS+=("--n_subs" "$N_SUBJECTS")
-        fi
-        
         CMD_ARGS+=(
+            "--subs_file" "$SUBS_FILE"
             "--n_subs $N_SUBJECTS"
             "--n_trials ${N_TRIALS:-120}"
             "--n_warmup $N_WARMUP"
