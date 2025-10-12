@@ -1,7 +1,7 @@
 // Hierarchical SSM-Only ARD Model for the Iowa Gambling Task
 functions {
   // New function for parallelization
-real partial_sum_lpdf(array[] int slice_n, int start, int end,
+real partial_sum_lp(array[] int slice_n, int start, int end,
                       // All data passed to the function
                       array[] int Tsubj,
                       array[,] int choice,
@@ -248,7 +248,7 @@ model {
   int grainsize = 1;
   
   // New parallelized likelihood calculation
-  target += reduce_sum(partial_sum_lpdf,
+  target += reduce_sum(partial_sum_lp,
                        sid, // Array to slice over (subject IDs)
                        grainsize,
                        // Pass all necessary data
