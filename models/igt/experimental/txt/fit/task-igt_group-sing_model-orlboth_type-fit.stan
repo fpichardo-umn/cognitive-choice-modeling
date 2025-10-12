@@ -2,7 +2,7 @@ functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, vector ef, int Tsub,
-        real Arew, real Apun, real Drew, real Dpun, real K, real betaF, real betaP
+        real Arew, real Apun, real decay, real K, real betaF, real betaP
         ) {
     // Define values
     vector[4] local_ev = ev;
@@ -40,11 +40,11 @@ functions {
       // Update EV and EF based on valence
       if (wins[t] >= losses[t]) {
         // Update ef for all decks with fictive outcomes
-        local_ef += Apun * PEfreq_fic;
+        local_ef += PEfreq_fic * (1 - decay);
 
 	// Decay all
-	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Drew);
-	local_ev[choice[t]] = local_ev[choice[t]] * (1 - Drew);
+	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
+	local_ev[choice[t]] = local_ev[choice[t]] * (1 - decay);
 	
 
         // Update chosen deck
@@ -52,11 +52,11 @@ functions {
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
         // Update ef for all decks with fictive outcomes
-        local_ef += Arew * PEfreq_fic;
+        local_ef += PEfreq_fic * (1 - decay_;
 
 	// Decay all
-	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Dpun);
-	local_ev[choice[t]] = local_ev[choice[t]] * (1 - Dpun);
+	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
+	local_ev[choice[t]] = local_ev[choice[t]] * (1 - decay);
 	
 
         // Update chosen deck
@@ -82,8 +82,7 @@ data {
 }
 
 parameters {
-  real Drew_pr;    // Reward decay rate
-  real Dpun_pr;    // Punishment decay rate
+  real decay_pr;    // Decay rate
   real K_pr;       // Decay rate for perseverance
   real betaF;   // Weight for frequency (EF)
   real betaP;   // Weight for perseverance
@@ -92,14 +91,12 @@ parameters {
 }
 
 transformed parameters {
-  real<lower=0, upper=1> Drew;
-  real<lower=0, upper=1> Dpun;
+  real<lower=0, upper=1> decay;
   real<lower=0, upper=5> K;
   real<lower=0, upper=1> Arew;
   real<lower=0, upper=1> Apun;
   
-  Drew  = inv_logit(Drew_pr);
-  Dpun  = inv_logit(Dpun_pr);
+  decay  = inv_logit(decay_pr);
   K     = inv_logit(K_pr) * 5;
   Arew  = inv_logit(Arew_pr);
   Apun  = inv_logit(Apun_pr);
@@ -107,8 +104,7 @@ transformed parameters {
 
 model {
   // Priors
-  Drew_pr  ~ normal(0, 1);
-  Dpun_pr  ~ normal(0, 1);
+  decay_pr  ~ normal(0, 1);
   K_pr     ~ normal(0, 1);
   betaF ~ normal(0, 1);
   betaP ~ normal(0, 1);
@@ -121,5 +117,5 @@ model {
   
   // Run model
   ev = igt_model_lp(choice, wins, abs(losses), ev, ef, T, 
-			Arew, Apun, Drew, Dpun, K, betaF, betaP);
+			Arew, Apun, decay, K, betaF, betaP);
 }

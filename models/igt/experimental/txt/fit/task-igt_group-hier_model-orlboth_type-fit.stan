@@ -2,7 +2,7 @@ functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, vector ef, int Tsub,
-        real Arew, real Apun, real Drew, real Dpun, real K, real betaF, real betaP
+        real Arew, real Apun, real decay, real K, real betaF, real betaP
         ) {
     // Define values
     vector[4] local_ev = ev;
@@ -40,11 +40,11 @@ functions {
       // Update EV and EF based on valence
       if (wins[t] >= losses[t]) {
         // Update ef for all decks with fictive outcomes
-        local_ef += PEfreq_fic * (1 - Dpun);
+        local_ef += PEfreq_fic * (1 - decay);
 
 	// Decay all
-	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Drew);
-	local_ev[choice[t]] = local_ev[choice[t]] * (1 - Drew);
+	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
+	local_ev[choice[t]] = local_ev[choice[t]] * (1 - decay);
 	
 
         // Update chosen deck
@@ -52,11 +52,11 @@ functions {
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
         // Update ef for all decks with fictive outcomes
-        local_ef += PEfreq_fic * (1 - Drew);
+        local_ef += PEfreq_fic * (1 - decay);
 
 	// Decay all
-	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Dpun);
-	local_ev[choice[t]] = local_ev[choice[t]] * (1 - Dpun);
+	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
+	local_ev[choice[t]] = local_ev[choice[t]] * (1 - decay);
 	
 
         // Update chosen deck
@@ -89,8 +89,7 @@ parameters {
   array[7] real<lower=0> sigma;       // Group standard deviations
 
   // Subject-level raw parameters
-  array[N] real Drew_pr;              // Reward decay rate
-  array[N] real Dpun_pr;              // Punishment decay rate
+  array[N] real decay_pr;             // Decay rate
   array[N] real K_pr;                 // Decay rate for perseverance
   array[N] real betaF_pr;             // Weight for frequency (EF)
   array[N] real betaP_pr;             // Weight for perseverance
@@ -100,8 +99,7 @@ parameters {
 
 transformed parameters {
   // Transform subject-level raw parameters
-  array[N] real<lower=0, upper=1> Drew;
-  array[N] real<lower=0, upper=1> Dpun;
+  array[N] real<lower=0, upper=1> decay;
   array[N] real<lower=0, upper=5> K;
   array[N] real betaF;
   array[N] real betaP;
@@ -110,13 +108,12 @@ transformed parameters {
   
   // Hierarchical transformation
   for (n in 1:N) {
-    Drew[n]   = inv_logit(mu_pr[1] + sigma[1] * Drew_pr[n]);
-    Dpun[n]   = inv_logit(mu_pr[2] + sigma[2] * Dpun_pr[n]);
-    K[n]      = inv_logit(mu_pr[3] + sigma[3] * K_pr[n]) * 5;
-    betaF[n]  = mu_pr[4] + sigma[4] * betaF_pr[n];
-    betaP[n]  = mu_pr[5] + sigma[5] * betaP_pr[n];
-    Arew[n]  = inv_logit(mu_pr[6] + sigma[6] * Arew_pr[n]);
-    Apun[n]  = inv_logit(mu_pr[7] + sigma[7] * Apun_pr[n]);
+    decay[n]   = inv_logit(mu_pr[1] + sigma[1] * decay_pr[n]);
+    K[n]      = inv_logit(mu_pr[2] + sigma[2] * K_pr[n]) * 5;
+    betaF[n]  = mu_pr[3] + sigma[3] * betaF_pr[n];
+    betaP[n]  = mu_pr[4] + sigma[4] * betaP_pr[n];
+    Arew[n]  = inv_logit(mu_pr[5] + sigma[5] * Arew_pr[n]);
+    Apun[n]  = inv_logit(mu_pr[6] + sigma[6] * Apun_pr[n]);
   }
 }
 
@@ -129,8 +126,7 @@ model {
 
   // Subject-level priors
   for (n in 1:N) {
-    Drew_pr[n]  ~ normal(0, 1);
-    Dpun_pr[n]  ~ normal(0, 1);
+    decay_pr[n] ~ normal(0, 1);
     K_pr[n]     ~ normal(0, 1);
     betaF_pr[n] ~ normal(0, 1);
     betaP_pr[n] ~ normal(0, 1);
@@ -146,15 +142,14 @@ model {
     // Use the same function as single-subject model
     ev = igt_model_lp(choice[n, 1:Tsubj[n]],
                       wins[n, 1:Tsubj[n]], abs(losses[n, 1:Tsubj[n]]), 
-                      ev, ef, Tsubj[n], Arew[n], Apun[n], Drew[n], Dpun[n], K[n], 
+                      ev, ef, Tsubj[n], Arew[n], Apun[n], decay[n], K[n], 
                       betaF[n], betaP[n]);
   }
 }
 
 generated quantities {
   // Group-level parameters in interpretable scale
-  real<lower=0, upper=1> mu_Drew;
-  real<lower=0, upper=1> mu_Dpun;
+  real<lower=0, upper=1> mu_decay n;
   real<lower=0, upper=5> mu_K;
   real mu_betaF;
   real mu_betaP;
@@ -162,11 +157,10 @@ generated quantities {
   real<lower=0, upper=1> mu_Apun;
   
   // Compute interpretable group-level parameters
-  mu_Drew  = inv_logit(mu_pr[1]);
-  mu_Dpun  = inv_logit(mu_pr[2]);
-  mu_K     = inv_logit(mu_pr[3]) * 5;
-  mu_betaF = mu_pr[4];
-  mu_betaP = mu_pr[5];
-  mu_Arew  = inv_logit(mu_pr[6]);
-  mu_Apun  = inv_logit(mu_pr[7]);
+  mu_decay  = inv_logit(mu_pr[1]);
+  mu_K     = inv_logit(mu_pr[2]) * 5;
+  mu_betaF = mu_pr[3];
+  mu_betaP = mu_pr[4];
+  mu_Arew  = inv_logit(mu_pr[5]);
+  mu_Apun  = inv_logit(mu_pr[6]);
 }
