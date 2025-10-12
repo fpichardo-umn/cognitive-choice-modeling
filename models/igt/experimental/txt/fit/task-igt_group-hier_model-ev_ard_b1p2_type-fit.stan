@@ -112,7 +112,7 @@ data {
   array[N] int<lower=1> Tsubj;             // Number of trials for each subject
 
   // Subject-level data (now indexed by subject)
-  real<lower=0> minRT;                     // Minimum RT across all subjects
+  array[N] real<lower=0> minRT;                     // Minimum RT across all subjects
   real RTbound;                            // Lower bound for RT across all subjects
   array[N, T] int<lower=1, upper=4> choice;
   array[N, T] real<lower=0> RT;
