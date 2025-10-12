@@ -117,6 +117,7 @@ model {
     outcome,
     ev,
     ef,
+    T,
     Arew,
     Apun,
     betaF,
