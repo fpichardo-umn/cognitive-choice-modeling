@@ -28,7 +28,6 @@ option_list = list(
               help="Path to fit data (required for EPSE methods)"),
   make_option(c("-p", "--params"), type="character", default=NULL),
   make_option(c("-s", "--seed"), type="integer", default=12345),
-  make_option(c("-c", "--config"), type="character", default=NULL),
   make_option(c("-e", "--exclude_file"), type="character", default=NULL, 
               help="Path to list of subs to filter out")
 )
@@ -58,6 +57,13 @@ group_type <- opt$group
 cohort <- opt$cohort
 session <- opt$session
 full_model_name <- paste(task, group_type, model_name, sep="_")
+
+# Source required files to get model classes
+source_required_files(dirs$PR_DIR, opt$task)
+
+# Initialize task and model objects
+task_obj <- initialize_task(task, dirs$PR_DIR)
+model_obj <- initialize_model(model_name, task, task_obj, dirs$PR_DIR)
 
 # Handle model fit loading for empirical-based methods
 if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")) {
@@ -144,27 +150,26 @@ if (!is.null(model_fit)) {
   model_fit <- filter_model_fit(model_fit, subs_to_exclude)
 }
 
-# Set config file path
-if (is.null(opt$config)) {
-  config_file <- file.path(dirs$PR_DIR, "config", "tasks", task, "models", paste0(model_name, ".yaml"))
-} else {
-  config_file <- opt$config
-}
-
-# Generate parameters
+# Generate parameters using model object instead of config file
 if (!is.null(model_fit) && "subjects" %in% names(model_fit)) {
   names(model_fit) <- c(unlist(model_fit$subjects), "subjects")
 }
 
-highest_num_subs = max(as.numeric(gsub(".*\\[(\\d+)\\].*", "\\1", 
-                                       model_fit$all_params[grepl("\\[\\d+\\]", model_fit$all_params)])), 
-                       na.rm = TRUE)
+# Determine maximum number of subjects from model fit
+if (!is.null(model_fit) && !is.null(model_fit$all_params)) {
+  highest_num_subs <- max(as.numeric(gsub(".*\\[(\\d+)\\].*", "\\1", 
+                                         model_fit$all_params[grepl("\\[\\d+\\]", model_fit$all_params)])), 
+                         na.rm = TRUE)
+  n_subs_to_generate <- min(opt$n_subjects, highest_num_subs)
+} else {
+  n_subs_to_generate <- opt$n_subjects
+}
 
 params <- generate_parameters(
-  config_file = config_file,
+  model = model_obj,
   method = opt$method,
   model_fit = model_fit,
-  n_subjects = min(opt$n_subjects, highest_num_subs)
+  n_subjects = n_subs_to_generate
 )
 
 # Save parameters using BIDS-inspired filename
@@ -180,7 +185,7 @@ filename <- file.path(
     additional_tags = list(
       "type" = "params",
       "desc" = opt$method,
-      "n" = min(opt$n_subjects, highest_num_subs)
+      "n" = n_subs_to_generate
     ),
     ext = "rds"
   )
@@ -188,4 +193,4 @@ filename <- file.path(
 
 saveRDS(params, filename)
 cat("Parameters saved to:", "\n")
-cat(filename)
+cat(filename, "\n")

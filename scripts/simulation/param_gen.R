@@ -3,7 +3,6 @@
 suppressPackageStartupMessages({
   library(R6)
   library(data.table)
-  library(yaml)
 })
 
 #' Parameter Handler Class
@@ -62,14 +61,41 @@ ParameterHandler <- R6Class("ParameterHandler",
                             )
 )
 
+#' Helper function to auto-generate categories from parameter range
+#' Divides range into three equal parts: low, medium, high
+#' @param range Vector of [min, max]
+#' @return List with low, medium, high category ranges
+auto_generate_categories <- function(range) {
+  min_val <- range[1]
+  max_val <- range[2]
+  span <- max_val - min_val
+  
+  list(
+    low = c(min_val, min_val + span/3),
+    medium = c(min_val + span/3, min_val + 2*span/3),
+    high = c(min_val + 2*span/3, max_val)
+  )
+}
+
 #' Base class for parameter generation methods
 ParameterGenerator <- R6Class("ParameterGenerator",
                               public = list(
                                 handler = NULL,
                                 config = NULL,
                                 
-                                initialize = function(config_file) {
-                                  self$config <- yaml::read_yaml(config_file)
+                                initialize = function(model) {
+                                  # Get parameter info from model
+                                  param_info <- model$get_parameter_info()
+                                  
+                                  # Convert to config format expected by existing code
+                                  self$config <- list(parameters = list())
+                                  
+                                  for (param_name in names(param_info)) {
+                                    self$config$parameters[[param_name]] <- list(
+                                      range = param_info[[param_name]]$range,
+                                      categories = auto_generate_categories(param_info[[param_name]]$range)
+                                    )
+                                  }
                                 }
                               )
 )
@@ -78,8 +104,19 @@ ParameterGenerator <- R6Class("ParameterGenerator",
 FPSEGenerator <- R6Class("FPSEGenerator",
                          inherit = ParameterGenerator,
                          public = list(
-                           initialize = function(config_file) {
-                             self$config <- yaml::read_yaml(config_file)
+                           initialize = function(model) {
+                             # Get parameter info from model
+                             param_info <- model$get_parameter_info()
+                             
+                             # Convert to config format expected by existing code
+                             self$config <- list(parameters = list())
+                             
+                             for (param_name in names(param_info)) {
+                               self$config$parameters[[param_name]] <- list(
+                                 range = param_info[[param_name]]$range,
+                                 categories = auto_generate_categories(param_info[[param_name]]$range)
+                               )
+                             }
                            },
                            
                            stratified_sampling = function(n_subjects) {
@@ -304,13 +341,13 @@ EPSEGenerator <- R6Class("EPSEGenerator",
 )
 
 #' Main parameter generation function
-#' @param config_file Path to parameter configuration file
+#' @param model Model object with get_parameter_info() method
 #' @param method Parameter generation method
 #' @param model_fit Optional model fit object for EPSE methods
 #' @param n_subjects Number of subjects to generate
 #' @return Data table of generated parameters
 generate_parameters <- function(
-    config_file,
+    model,
     method = c("ssFPSE", "mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE"),
     model_fit = NULL,
     n_subjects = 100
@@ -324,10 +361,10 @@ generate_parameters <- function(
   
   # Generate parameters based on method
   if (method == "ssFPSE") {
-    generator <- FPSEGenerator$new(config_file)
+    generator <- FPSEGenerator$new(model)
     params <- generator$stratified_sampling(n_subjects)
   } else {
-    generator <- EPSEGenerator$new(config_file)
+    generator <- EPSEGenerator$new(model)
     params <- switch(method,
                      "mbSPSepse" = generator$median_based_sps(model_fit, n_subjects),
                      "sbSPSepse" = generator$simulation_based_sps(model_fit, n_subjects),
