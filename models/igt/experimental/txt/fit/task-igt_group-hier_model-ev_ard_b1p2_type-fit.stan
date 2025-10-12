@@ -246,9 +246,9 @@ generated quantities {
   real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 5 + 0.01;
   real<lower=0> mu_tau1 = inv_logit(mu_pr[3]) * (mean(minRT) - RTbound - 1e-6) * 0.99 + RTbound;
   real<lower=0> mu_tau = inv_logit(mu_pr[4]) * (mean(minRT) - RTbound - 1e-6) * 0.99 + RTbound;
-  real<lower=0> mu_urgency = exp(mu_pr[5]);
-  real<lower=0> mu_wd = exp(mu_pr[6]);
-  real<lower=0> mu_ws = exp(mu_pr[7]);
+  real<lower=0> mu_urgency = log1p_exp(mu_pr[5]);
+  real<lower=0> mu_wd = log1p_exp(mu_pr[6]);
+  real<lower=0> mu_ws = log1p_exp(mu_pr[7]);
   real<lower=0, upper=5> mu_drift_con = inv_logit(mu_pr[8]) * 5;
   real<lower=0, upper=1> mu_wgt_pun = inv_logit(mu_pr[9]);
   real<lower=0, upper=1> mu_wgt_rew = inv_logit(mu_pr[10]);
