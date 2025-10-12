@@ -147,8 +147,8 @@ transformed parameters {
   // Subject-level parameters (now arrays indexed by subject)
   array[N] real<lower=0, upper=6> boundary1;
   array[N] real<lower=0, upper=6> boundary;
-  array[N] real<lower=RTbound, upper=minRT> tau1;
-  array[N] real<lower=RTbound, upper=minRT> tau;
+  array[N] real<lower=RTbound, upper=max(minRT)> tau1;
+  array[N] real<lower=RTbound, upper=max(minRT)> tau;
   array[N] real<lower=0> urgency;
   array[N] real<lower=0> wd;
   array[N] real<lower=0> ws;
@@ -162,8 +162,8 @@ transformed parameters {
     // ARD parameters
     boundary1[n] = inv_logit(mu_pr[1] + sigma[1] * boundary1_pr[n]) * 5 + 0.01;
     boundary[n]  = inv_logit(mu_pr[2] + sigma[2] * boundary_pr[n]) * 5 + 0.01;
-    tau1[n]      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr[n]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-    tau[n]       = inv_logit(mu_pr[4] + sigma[4] * tau_pr[n]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+    tau1[n]      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr[n]) * (minRT[n] - RTbound - 1e-6) * 0.99 + RTbound;
+    tau[n]       = inv_logit(mu_pr[4] + sigma[4] * tau_pr[n]) * (minRT[n] - RTbound - 1e-6) * 0.99 + RTbound;
     urgency[n]   = exp(mu_pr[5] + sigma[5] * urgency_pr[n]);
     wd[n]        = exp(mu_pr[6] + sigma[6] * wd_pr[n]);
     ws[n]        = exp(mu_pr[7] + sigma[7] * ws_pr[n]);
@@ -232,8 +232,8 @@ generated quantities {
   // To get interpretable group-level parameters
   real<lower=0> mu_boundary1 = inv_logit(mu_pr[1]) * 5 + 0.01;
   real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 5 + 0.01;
-  real<lower=RTbound, upper=minRT> mu_tau1 = inv_logit(mu_pr[3]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
-  real<lower=RTbound, upper=minRT> mu_tau = inv_logit(mu_pr[4]) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
+  real<lower=0> mu_tau1 = inv_logit(mu_pr[3]) * (mean(minRT) - RTbound - 1e-6) * 0.99 + RTbound;
+  real<lower=0> mu_tau = inv_logit(mu_pr[4]) * (mean(minRT) - RTbound - 1e-6) * 0.99 + RTbound;
   real<lower=0> mu_urgency = exp(mu_pr[5]);
   real<lower=0> mu_wd = exp(mu_pr[6]);
   real<lower=0> mu_ws = exp(mu_pr[7]);
