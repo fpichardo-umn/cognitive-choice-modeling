@@ -127,8 +127,8 @@ parameters {
 transformed parameters {
   real<lower=0, upper=6> 		 boundary1;
   real<lower=0, upper=6> 		 boundary;
-  real<lower=RTbound, upper=max(minRT)> tau1;
-  real<lower=RTbound, upper=max(minRT)> tau;
+  real<lower=RTbound, upper=minRT> tau1;
+  real<lower=RTbound, upper=minRT> tau;
   real<lower=0, upper=1> 	         beta;
   real<lower=-5, upper=5> 	         drift_con;
   real<lower=0, upper=1>    	         Apun;      // Renamed
@@ -167,7 +167,7 @@ model {
 {
     ev = igt_pp_orl_ddm_model_lp(
         choice, shown, outcome,
-        RT, ev, ef, Tsubj, // Pass ef
+        RT, ev, ef, T, // Pass ef
         sensitivity, Arew, Apun, betaF, // Pass ORL params
         boundary1, boundary, tau1, tau, beta
         );
