@@ -281,7 +281,7 @@ get_igt_defaults = function() {
   )
   
   models[["igt_hier_ard_b1p2"]] <- list(
-    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), "wins", "losses"),
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
     params = c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"),
     non_pr_params = NULL,
     exclude_params = NULL
