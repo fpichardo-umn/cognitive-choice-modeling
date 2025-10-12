@@ -109,7 +109,7 @@ model {
   vector[4] ev = rep_vector(0., 4);           // Expected value
   vector[4] ef = rep_vector(0., 4);           // Expected frequency
     
-    // Call the Play/Pass ORL model function
+  // Call the Play/Pass ORL model function
   ev = igt_model_lp(
     choice,
     shown,
@@ -121,5 +121,4 @@ model {
     betaF,
     betaB
     );
-  }
 }
