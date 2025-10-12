@@ -48,7 +48,7 @@ if (!is.null(opt$output_dir)) {
 ensure_dir_exists(output_dir)
 
 # Source parameter generation functions
-source(file.path(dirs$PR_DIR, "simulation/param_gen.R"))
+source(file.path(dirs$SIM_DIR, "param_gen.R"))
 
 # Extract model name and create full model name
 model_name <- opt$model
@@ -59,17 +59,17 @@ session <- opt$session
 full_model_name <- paste(task, group_type, model_name, sep="_")
 
 # Source required files to get model classes
-source_required_files(dirs$PR_DIR, opt$task)
+source_required_files(dirs$SIM_DIR, opt$task)
 
 # Initialize task and model objects
-task_obj <- initialize_task(task, dirs$PR_DIR)
-model_obj <- initialize_model(model_name, task, task_obj, dirs$PR_DIR)
+task_obj <- initialize_task(task, dirs$SIM_DIR)
+model_obj <- initialize_model(model_name, task, task_obj, dirs$SIM_DIR)
 
 # Handle model fit loading for empirical-based methods
 if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")) {
   if (is.null(opt$fit_file)) {
     # Try to construct default path using BIDS-inspired filename
-    fit_file <- file.path(dirs$DATA_DIR, "rds", "fit", opt$cohort, 
+    fit_file <- file.path(dirs$DATA_DIR, "fits", "fit", opt$cohort, paste0("ses-", opt$session), 
                           generate_bids_filename(
                             prefix = NULL,
                             task = opt$task,

@@ -1,12 +1,12 @@
-opt_model = "ev_ddm_b1p2"
+opt_model = "vsedelta"
 # =======
 #opt_model = "orl"
 
-opt_task = "igt_mod"
-opt_cohort = "ahrb"
+opt_task = "igt"
+opt_cohort = "luc"
 opt_session = "00"
-opt_nsubs = 1
-opt_group = "sing"
+opt_nsubs = 200
+opt_group = "hier"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 

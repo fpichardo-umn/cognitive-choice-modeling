@@ -58,7 +58,9 @@ setup_directories <- function(task, create_missing = TRUE) {
 # Model initialization function
 initialize_model <- function(model_name, task_name, task, SIM_DIR) {
   model <- NULL
-  source_path <- file.path(SIM_DIR, "models", task_name, paste0(task_name, "_", model_name, "_model.R"))
+  source_path <- file.path(SIM_DIR, "models", task_name, 
+                           check_model_status(task_name, "hier", model_name), 
+                           paste0(task_name, "_", model_name, "_model.R"))
   
   # Check if model file exists
   if (!file.exists(source_path)) {

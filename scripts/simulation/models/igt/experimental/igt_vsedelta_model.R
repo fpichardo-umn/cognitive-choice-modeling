@@ -1,7 +1,7 @@
 # IGT VSE Delta Model
 # Value-plus-Sequential-Exploration with delta rule learning only (no decay)
 
-igtVSEDeltaModel <- R6::R6Class("igtVSEDeltaModel",
+igtVSEDELTAModel <- R6::R6Class("igtVSEDELTAModel",
   inherit = ModelBase,
   
   public = list(

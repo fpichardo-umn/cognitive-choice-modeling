@@ -1,7 +1,7 @@
 # IGT LagVSE Both Model
 # Combines choice lag exploration with both direct utility addition AND delta rule learning
 
-igtLagVSEBothModel <- R6::R6Class("igtLagVSEBothModel",
+igtLAGVSEBOTHModel <- R6::R6Class("igtLAGVSEBOTHModel",
   inherit = ModelBase,
   
   public = list(

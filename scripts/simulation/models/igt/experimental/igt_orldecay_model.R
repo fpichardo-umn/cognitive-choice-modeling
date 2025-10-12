@@ -1,7 +1,7 @@
 # IGT ORL Decay Model
 # Outcome-Representation Learning with decay rates only (no learning rates)
 
-igtORLDecayModel <- R6::R6Class("igtORLDecayModel",
+igtORLDECAYModel <- R6::R6Class("igtORLDECAYModel",
   inherit = ModelBase,
   
   public = list(

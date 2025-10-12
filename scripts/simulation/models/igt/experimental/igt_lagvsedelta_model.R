@@ -1,7 +1,7 @@
 # IGT LagVSE Delta Model
 # Combines choice lag exploration with delta rule learning (no decay)
 
-igtLagVSEDeltaModel <- R6::R6Class("igtLagVSEDeltaModel",
+igtLAGVSEDELTAModel <- R6::R6Class("igtLAGVSEDELTAModel",
   inherit = ModelBase,
   
   public = list(

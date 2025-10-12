@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 # Pure ARD model with static deck values (no learning)
 # Advantage Race Diffusion with block-specific parameters
 
-igtARD_B1P2Model <- R6::R6Class("igtARD_B1P2Model",
+igtARDB1P2Model <- R6::R6Class("igtARDB1P2Model",
   inherit = ModelBase,
   
   public = list(

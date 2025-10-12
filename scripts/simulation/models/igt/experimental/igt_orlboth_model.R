@@ -1,7 +1,7 @@
 # IGT ORL Both Model
 # Outcome-Representation Learning with both decay rates AND learning rates
 
-igtORLBothModel <- R6::R6Class("igtORLBothModel",
+igtORLBOTHModel <- R6::R6Class("igtORLBOTHModel",
   inherit = ModelBase,
   
   public = list(

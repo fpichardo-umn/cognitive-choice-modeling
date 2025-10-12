@@ -1,7 +1,7 @@
 # IGT VSE Both Model
 # Value-plus-Sequential-Exploration with both direct utility addition AND delta rule learning
 
-igtVSEBothModel <- R6::R6Class("igtVSEBothModel",
+igtVSEBOTHModel <- R6::R6Class("igtVSEBOTHModel",
   inherit = ModelBase,
   
   public = list(

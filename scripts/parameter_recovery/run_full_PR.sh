@@ -295,8 +295,8 @@ fi
 FULL_MODEL_NAME="${TASK}_${GROUP_TYPE}_${MODEL}"
 
 # Define file paths based on naming conventions
-PARAM_FILE="Data/${TASK}/sim/params/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-${N_SUBJECTS}.rds"
-SIM_FILE="Data/${TASK}/sim/rds/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-sim_desc-data.rds"
+PARAM_FILE="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-${N_SUBJECTS}.rds"
+SIM_FILE="Outputs/${TASK}/simulation/data/rds/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-sim_desc-data.rds"
 
 # Show option lists for the different components
 print_fit_options() {
@@ -711,6 +711,8 @@ run_pr_recovery() {
         exit 1
     fi
     
+    source "./scripts/configs/fit_params_sim.conf"
+    
     # Build command arguments
     CMD_ARGS=(
         "-m $MODEL"
@@ -731,12 +733,12 @@ run_pr_recovery() {
         CMD_ARGS+=("--render")
     fi
     CMD_ARGS+=(
-        "--n_warmup $N_WARMUP"
-        "--n_iter $N_ITER"
-        "--n_chains $N_CHAINS"
-        "--adapt_delta $ADAPT_DELTA"
-        "--max_treedepth $MAX_TREEDEPTH"
-        "--check_iter $CHECK_ITER"
+        "--n_warmup $n_warmup"
+        "--n_iter $n_iter"
+        "--n_chains $n_chains"
+        "--adapt_delta $adapt_delta"
+        "--max_treedepth $max_treedepth"
+        "--check_iter $check_iter"
         "--seed $SEED"
     )
     

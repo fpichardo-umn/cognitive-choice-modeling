@@ -38,8 +38,8 @@ opt <- parse_args(opt_parser)
 dirs <- setup_directories(opt$task)
 
 # Source required files
-source_required_files(dirs$PR_DIR, opt$task)
-source(file.path(dirs$PR_DIR, "simulation/simulator.R"))
+source_required_files(dirs$SIM_DIR, opt$task)
+source(file.path(dirs$SIM_DIR, "simulator.R"))
 
 # Extract model name and create full model name
 model_name <- opt$model
@@ -50,11 +50,33 @@ session <- opt$session
 full_model_name <- paste(task_name, group_type, model_name, sep="_")
 
 # Load parameters
-params <- readRDS(opt$param_file)
+if (is.null(opt$param_file)){
+  filename <- file.path(
+    get_simulation_output_dir(opt$task, "parameters"),
+    generate_bids_filename(
+      prefix = NULL,
+      task = opt$task,
+      group = opt$group,
+      model = opt$model,
+      cohort = opt$cohort,
+      ses = opt$session,
+      additional_tags = list(
+        "type" = "params",
+        "desc" = "*",
+        "n" = "*"
+      ),
+      ext = "rds"
+    )
+  )
+  param_file = Sys.glob(filename)[1]
+} else {
+  param_file = opt$param_file
+}
+params <- readRDS(param_file)
 
 # Initialize task and model
-task <- initialize_task(task_name, dirs$PR_DIR)
-model <- initialize_model(model_name, task_name, task, dirs$PR_DIR)
+task <- initialize_task(task_name, dirs$SIM_DIR)
+model <- initialize_model(model_name, task_name, task, dirs$SIM_DIR)
 
 # Build task_params from command line RT bounds
 task_params <- list(
@@ -80,6 +102,7 @@ sim_data <- simulate_data(
 # Save simulated data as CSV
 csv_filename <- file.path(
   get_simulation_output_dir(opt$task, "data"),
+  "txt",
   generate_bids_filename(
     prefix = NULL,
     task = task_name,
@@ -99,6 +122,7 @@ write.csv(data.frame(sim_data), csv_filename, row.names = FALSE)
 # Save simulated data as RDS
 rds_filename <- file.path(
   get_simulation_output_dir(opt$task, "data"),
+  "rds",
   generate_bids_filename(
     prefix = NULL,
     task = task_name,

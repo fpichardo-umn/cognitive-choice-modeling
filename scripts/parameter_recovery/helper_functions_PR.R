@@ -17,19 +17,20 @@ setup_directories <- function(task, create_missing = TRUE) {
   # Project base directories
   PROJ_DIR <- get_proj_dir()
   SCRIPT_DIR <- file.path(PROJ_DIR, "scripts")
+  OUT_DIR <- file.path(PROJ_DIR, "Outputs", task)
   PR_DIR <- file.path(SCRIPT_DIR, "parameter_recovery")
   SIM_DIR <- file.path(SCRIPT_DIR, "simulation")
+  SIM_OUT_DIR <- file.path(OUT_DIR, "simulation")
   
   # Task-specific directories
   DATA_DIR <- get_task_output_dir(task)
   MODELS_DIR <- get_models_dir(task)
-  MODELS_BIN_DIR <- get_bin_dir(task)
   
   # SIM dirs
-  PARAMS_DIR <- file.path(SIM_DIR, "params")
-  TXT_SIM_DIR <- file.path(SIM_DIR, "data", "txt")
-  RDS_SIM_DIR <- file.path(SIM_DIR, "data", "rds")
-  PPC_DIR <- file.path(SIM_DIR, "ppc")
+  PARAMS_DIR <- file.path(SIM_OUT_DIR, "params")
+  TXT_SIM_DIR <- file.path(SIM_OUT_DIR, "data", "txt")
+  RDS_SIM_DIR <- file.path(SIM_OUT_DIR, "data", "rds")
+  PPC_DIR <- file.path(SIM_OUT_DIR, "ppc")
   
   # PR dirs
   FIT_SIM_DIR <- get_validation_output_dir(task, "parameter_recovery", "fits")
@@ -37,8 +38,10 @@ setup_directories <- function(task, create_missing = TRUE) {
   
   dirs <- list(
     PROJ_DIR = PROJ_DIR,
+    OUT_DIR = OUT_DIR,
     DATA_DIR = DATA_DIR,
     SIM_DIR = SIM_DIR,
+    SIM_OUT_DIR = SIM_OUT_DIR,
     PARAMS_DIR = PARAMS_DIR,
     TXT_SIM_DIR = TXT_SIM_DIR,
     RDS_SIM_DIR = RDS_SIM_DIR,
@@ -47,7 +50,6 @@ setup_directories <- function(task, create_missing = TRUE) {
     PPC_DIR = PPC_DIR,
     MODELS_DIR = MODELS_DIR,
     SCRIPT_DIR = SCRIPT_DIR,
-    MODELS_BIN_DIR = MODELS_BIN_DIR,
     PR_DIR = PR_DIR
   )
   

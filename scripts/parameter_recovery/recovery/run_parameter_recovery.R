@@ -60,18 +60,11 @@ if (!is.null(opt$output_rec_dir)) {
 ensure_dir_exists(output_fit_dir)
 ensure_dir_exists(output_rec_dir)
 
-# Make sure the directories exist
-if (!dir.exists(output_fit_dir)) {
-  dir.create(output_fit_dir, recursive = TRUE)
-}
-if (!dir.exists(output_rec_dir)) {
-  dir.create(output_rec_dir, recursive = TRUE)
-}
-
 # Load simulated data - use new path if not specified
 if (is.null(opt$sim_data)) {
   sim_data_file <- file.path(
     get_simulation_output_dir(opt$task, "data"),
+    "rds",
     generate_bids_filename(
       prefix = NULL,
       task = opt$task,
@@ -205,7 +198,6 @@ if (opt$indiv || is_batch) {
       ses = session,
       group_type = fit_group,
       model_name = opt$model,
-      subid = subid,
       model_type = "fit",
       data_list = sub_stan_data,
       n_subs = 1,

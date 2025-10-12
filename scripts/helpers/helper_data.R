@@ -611,7 +611,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
   }
   
   # Store subject info and trial counts
-  data_list$sid <- subjects
+  data_list$sid <- as.integer(subjects)
   data_list$N <- as.integer(n_subs)
   data_list$T <- as.integer(n_trials)
   
