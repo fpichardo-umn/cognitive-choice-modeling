@@ -2,21 +2,41 @@
 functions {
   // PDF for a single LBA accumulator
   real race_pdf(real t, real boundary, real drift) {
-    if (t <= 0 || drift <= 0) return 1e-10;
-    real boundary_over_sqrt_2pi_t3 = boundary / (sqrt(2 * pi()) * pow(t, 1.5));
-    real drift_t_minus_boundary = drift * t - boundary;
-    return boundary_over_sqrt_2pi_t3 * exp(-0.5 * square(drift_t_minus_boundary) / t);
-  }
+  if (t <= 0 || drift <= 0) return 1e-10;
+  real denom = sqrt(2 * pi()) * pow(t, 1.5);
+  if (denom <= 0) return 1e-10;
+  real boundary_over = boundary / denom;
+  real drift_t_minus_boundary = drift * t - boundary;
+  real exponent = -0.5 * square(drift_t_minus_boundary) / t;
+  // guard against overflow / underflow
+  if (exponent < -700 || exponent > 700) return 1e-10;
+  return boundary_over * exp(exponent);
+}
 
   // CDF for a single LBA accumulator
   real race_cdf_func(real t, real boundary, real drift) {
-    if (t <= 0 || drift <= 0) return 0;
-    real sqrt_t = sqrt(t);
-    real drift_t = drift * t;
-    real term1 = (drift_t - boundary) / sqrt_t;
-    real term2 = -(drift_t + boundary) / sqrt_t;
-    return Phi(term1) + exp(2 * drift * boundary) * Phi(term2);
+  if (t <= 0 || drift <= 0) return 0;
+  real sqrt_t = sqrt(t);
+  if (sqrt_t <= 0) return 0;
+
+  real drift_t = drift * t;
+  real term1 = (drift_t - boundary) / sqrt_t;
+  real term2 = -(drift_t + boundary) / sqrt_t;
+
+  real expo_arg = 2.0 * drift * boundary;
+  // clamp to avoid overflow in exp()
+  if (expo_arg > 700) {
+    return Phi_approx(term1);
+  } else if (expo_arg < -700) {
+    return Phi_approx(term1);
+  } else {
+    real p1 = Phi_approx(term1);
+    real p2 = Phi_approx(term2);
+    real mult = exp(expo_arg);
+    if (p2 == 0) return p1;
+    return p1 + mult * p2;
   }
+}
 
   // Win-All likelihood for 4-choice ARD
   real ard_win_all_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {

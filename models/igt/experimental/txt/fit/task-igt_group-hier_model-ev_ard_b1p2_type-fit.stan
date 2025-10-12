@@ -13,7 +13,6 @@ functions {
   return boundary_over * exp(exponent);
 }
 
-
   // CDF for a single LBA accumulator
   real race_cdf_func(real t, real boundary, real drift) {
   if (t <= 0 || drift <= 0) return 0;
