@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32gb
 #SBATCH --tmp=32gb
-#SBATCH -t 24:00:00
+#SBATCH -t 96:00:00
 #SBATCH --mail-type=ALL
 #SBATCH -o log_files/fit/%x_%j.out
 #SBATCH -e log_files/fit/%x_%j.err
