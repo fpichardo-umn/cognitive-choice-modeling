@@ -254,7 +254,7 @@ model {
   ws_pr ~ normal(0, 1);
   V1_pr ~ normal(0, 1);
   V2_pr ~ normal(0, 1);
-  V3_pr ~ a normal(0, 1);
+  V3_pr ~ normal(0, 1);
   V4_pr ~ normal(0, 1);
 
   // Define grainsize for parallelization
