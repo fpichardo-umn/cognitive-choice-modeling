@@ -47,6 +47,8 @@ option_list <- list(
               help="Iteration interval for checkpoint runs"),
   make_option(c("--seed"), type="integer", default=29518, 
               help="Random seed"),
+  make_option(c("-o", "--overwrite"), action="store_true", default=FALSE, 
+              help="Overwrite existing fits (default: skip if fit already exists)"),
   make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
   make_option(c("--priors_file"), type="character", default=NULL, 
               help="Path to priors CSV file (optional)"),
@@ -214,6 +216,45 @@ if (!opt$dry_run) {
     subjects_to_fit <- all_subjects[1:min(opt$n_subs, length(all_subjects))]
   }
   
+  # Determine which subjects to fit
+  if (!is.null(opt$subjects)) {
+    subjects_spec <- expand_array_spec(opt$subjects)
+    if (is.character(subjects_spec) && subjects_spec == "all") {
+      subjects_to_fit <- all_subjects
+    } else {
+      subjects_to_fit <- all_subjects[subjects_spec]
+      subjects_to_fit <- subjects_to_fit[!is.na(subjects_to_fit)]
+    }
+  } else {
+    # Use first n_subs eligible subjects
+    subjects_to_fit <- all_subjects[1:min(opt$n_subs, length(all_subjects))]
+  }
+  
+  # Filter out already-fitted subjects if overwrite is FALSE
+  if (!opt$overwrite && !opt$dry_run) {
+    log_message("Checking for existing fits...")
+    individual_dir <- get_empbayes_output_dir(opt$task, "individual", opt$source)
+    
+    subjects_needing_fit <- c()
+    for (subid in subjects_to_fit) {
+      ses_part <- if (!is.null(opt$ses)) sprintf("ses-%s_", opt$ses) else ""
+      expected_file <- sprintf("task-%s_cohort-%s_%sgroup-emp_model-%s_sub-%s.rds", 
+                               opt$task, opt$source, ses_part, opt$model, subid)
+      expected_path <- file.path(individual_dir, expected_file)
+      
+      if (!file.exists(expected_path)) {
+        subjects_needing_fit <- c(subjects_needing_fit, subid)
+      } else {
+        log_message(sprintf("Skipping %s (fit already exists)", subid))
+      }
+    }
+    
+    subjects_to_fit <- subjects_needing_fit
+    log_message(sprintf("Subjects needing fits: %d", length(subjects_to_fit)))
+  }
+  
+  log_message(sprintf("Subjects to fit: %d", length(subjects_to_fit)))
+  
   log_message(sprintf("Subjects to fit: %d", length(subjects_to_fit)))
   
 } else {
@@ -230,37 +271,37 @@ fit_single_subject <- function(subid, subject_data, full_model_name, data_to_ext
     return(FALSE)
   }
   
-  # Extract data
-  data_list <- extract_sample_data(
-    subject_data, 
-    data_to_extract, 
-    task = opt$task,
-    n_trials = opt$n_trials, 
-    RTbound_min_ms = opt$RTbound_min_ms,
-    RTbound_max_ms = opt$RTbound_max_ms,
-    RTbound_reject_min_ms = opt$RTbound_min_ms + 20,
-    RTbound_reject_max_ms = opt$RTbound_max_ms, 
-    rt_method = opt$rt_method,
-    minrt_ep_ms = 0, min_valid_rt_pct = opt$min_valid_rt_pct
-  )
-  
-  # Collect data filtering info
-  data_filt = c(
-    n_trials = opt$n_trials, 
-    RTbound_min_ms = opt$RTbound_min_ms, 
-    RTbound_max_ms = opt$RTbound_max_ms,
-    RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
-    RTbound_reject_max_ms = opt$RTbound_max_ms, 
-    rt_method = opt$rt_method, 
-    minrt_ep_ms = 0,
-    min_valid_rt_pct = opt$min_valid_rt_pct
-  )
-  
-  # Set output directory to empbayes/individual
-  output_dir <- get_empbayes_output_dir(opt$task, "individual", opt$source)
-  
   # Fit model with empirical Bayes priors
-  tryCatch({
+  tryCatch({  
+    # Extract data
+    data_list <- extract_sample_data(
+      subject_data, 
+      data_to_extract, 
+      task = opt$task,
+      n_trials = opt$n_trials, 
+      RTbound_min_ms = opt$RTbound_min_ms,
+      RTbound_max_ms = opt$RTbound_max_ms,
+      RTbound_reject_min_ms = opt$RTbound_min_ms + 20,
+      RTbound_reject_max_ms = opt$RTbound_max_ms, 
+      rt_method = opt$rt_method,
+      minrt_ep_ms = 0, min_valid_rt_pct = opt$min_valid_rt_pct
+    )
+    
+    # Collect data filtering info
+    data_filt = c(
+      n_trials = opt$n_trials, 
+      RTbound_min_ms = opt$RTbound_min_ms, 
+      RTbound_max_ms = opt$RTbound_max_ms,
+      RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
+      RTbound_reject_max_ms = opt$RTbound_max_ms, 
+      rt_method = opt$rt_method, 
+      minrt_ep_ms = 0,
+      min_valid_rt_pct = opt$min_valid_rt_pct
+    )
+    
+    # Set output directory to empbayes/individual
+    output_dir <- get_empbayes_output_dir(opt$task, "individual", opt$source)
+    
     fit <- fit_and_save_model(
       task = opt$task,
       cohort = opt$source,
