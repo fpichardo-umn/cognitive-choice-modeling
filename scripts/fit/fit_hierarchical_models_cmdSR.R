@@ -211,7 +211,8 @@ output_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
 
 # Fit hierarchical model
 cat("Fitting hierarchical model:", full_model_name, "\n")
-fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt$type, data_list, 
+fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name,
+                          opt$type, data_list, 
                           n_subs = selected_n_subs, 
                           n_trials = opt$n_trials, 
                           n_warmup = opt$n_warmup, 

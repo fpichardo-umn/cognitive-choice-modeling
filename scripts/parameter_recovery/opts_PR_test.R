@@ -1,19 +1,28 @@
-opt_model = "vsedelta"
+opt_model = "ev_ard_b1p2"
 # =======
 #opt_model = "orl"
 
 opt_task = "igt"
-opt_cohort = "luc"
+opt_cohort = "adb"
 opt_session = "00"
-opt_nsubs = 200
+opt_nsubs = 5#92
 opt_group = "hier"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
+opt_n_trials = 80
+
+opt_RTmin_ms = 50
+opt_RTmax_ms = 4000
+opt_n_warmup = 500
+opt_n_iter = 500
+opt_n_chains = 2
+opt_adapt_delta = .9
+opt_max_treedepth = 10
 
 # Fit
 opt <- list(
   subjects = "1-3",
-  subs_file = "subs_list_full_orig_sort.txt",
+  subs_file = "subject_ids_all.txt",#"subs_list_full_orig_sort.txt",
   model = opt_model,
   type = "fit",
   task = opt_task,
@@ -24,20 +33,20 @@ opt <- list(
   data = NULL,
   params = NULL,
   n_subs = opt_nsubs,
-  n_trials = 100,
-  RTbound_min_ms = 50,
-  RTbound_max_ms = 25000,
+  n_trials = opt_n_trials,
+  RTbound_min_ms = opt_RTmin_ms,
+  RTbound_max_ms = opt_RTmax_ms,
   rt_method = "mark",
-  n_warmup = 3000,
-  n_iter = 5000,
-  n_chains = 4,
-  adapt_delta = 0.95,
-  max_treedepth = 12,
+  n_warmup = opt_n_warmup,
+  n_iter = opt_n_iter,
+  n_chains = opt_n_chains,
+  adapt_delta = opt_adapt_delta,
+  max_treedepth = opt_max_treedepth,
   seed = 29518,
   dry_run = FALSE,
   check_iter = 20000,
   init = FALSE,
-  min_valid_rt_pct = 0.7
+  min_valid_rt_pct = 0.8
 )
 
 # Gen Params

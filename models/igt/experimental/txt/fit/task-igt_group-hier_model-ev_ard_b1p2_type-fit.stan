@@ -51,117 +51,138 @@ real partial_sum(array[] int slice_n, int start, int end,
   return log_lik;
 }
 
-  // PDF for a single LBA accumulator
-  real race_pdf(real t, real boundary, real drift) {
-  if (t <= 0 || drift <= 0) return 1e-10;
-  real denom = sqrt(2 * pi()) * pow(t, 1.5);
-  if (denom <= 0) return 1e-10;
-  real boundary_over = boundary / denom;
-  real drift_t_minus_boundary = drift * t - boundary;
-  real exponent = -0.5 * square(drift_t_minus_boundary) / t;
-  // guard against overflow / underflow
-  if (exponent < -700 || exponent > 700) return 1e-10;
-  return boundary_over * exp(exponent);
-}
-
-  // CDF for a single LBA accumulator
-  real race_cdf_func(real t, real boundary, real drift) {
-  if (t <= 0 || drift <= 0) return 0;
-  real sqrt_t = sqrt(t);
-  if (sqrt_t <= 0) return 0;
-
-  real drift_t = drift * t;
-  real term1 = (drift_t - boundary) / sqrt_t;
-  real term2 = -(drift_t + boundary) / sqrt_t;
-
-  real expo_arg = 2.0 * drift * boundary;
-  // clamp to avoid overflow in exp()
-  if (expo_arg > 700) {
-    return Phi_approx(term1);
-  } else if (expo_arg < -700) {
-    return Phi_approx(term1);
-  } else {
-    real p1 = Phi_approx(term1);
-    real p2 = Phi_approx(term2);
-    real mult = exp(expo_arg);
-    if (p2 == 0) return p1;
-    return p1 + mult * p2;
-  }
-}
-
-  // Win-All likelihood for 4-choice ARD
-  real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates) {
-    real t = RT - tau;
-    if (t <= 0) return log(1e-10);
-
-    array[3] int winning_indices;
-    array[9] int losing_indices;
-    int losing_idx = 1;
-
-    for (i in 1:3) winning_indices[i] = (choice - 1) * 3 + i;
-    for (j in 1:4) {
-      if (j != choice) for (i in 1:3) { losing_indices[losing_idx] = (j - 1) * 3 + i; losing_idx += 1; }
-    }
-
-    // Sum log-pdfs for winning accumulators (use floor clamp to avoid log(0))
-    real log_pdf_sum = 0;
-    for (i in 1:3) {
-      real p = race_pdf(t, boundary, drift_rates[winning_indices[i]]);
-      log_pdf_sum += log(fmax(p, 1e-300));
-    }
-
-    // Sum log-survivals for losing accumulators
-    real log_surv_sum = 0;
-    for (i in 1:9) {
-      real surv = 1.0 - race_cdf_func(t, boundary, drift_rates[losing_indices[i]]);
-      // clamp to [1e-300, 1]
-      log_surv_sum += log(fmax(surv, 1e-300));
-    }
-
-    return log_pdf_sum + log_surv_sum;
-  }
-
-  // Combined model function (no changes needed)
-  real igt_ard_model(
-        array[] int choice, array[] real wins, array[] real losses, array[] real RT,
-        vector ev_init, int T,
-        real sensitivity, real update, real wgt_pun, real wgt_rew,
-        vector boundaries, vector taus, real urgency, real wd, real ws
-        ) {
-
-    vector[4] local_ev = ev_init;
-    vector[12] drift_rates;
-    real log_lik = 0.0;
-    real curUtil;
-
-    for (t in 1:T) {
-      // Compute all 12 drift rates for this trial
-      drift_rates[1] = urgency + wd * (local_ev[1] - local_ev[2]) + ws * (local_ev[1] + local_ev[2]);
-      drift_rates[2] = urgency + wd * (local_ev[1] - local_ev[3]) + ws * (local_ev[1] + local_ev[3]);
-      drift_rates[3] = urgency + wd * (local_ev[1] - local_ev[4]) + ws * (local_ev[1] + local_ev[4]);
-      drift_rates[4] = urgency + wd * (local_ev[2] - local_ev[1]) + ws * (local_ev[2] + local_ev[1]);
-      drift_rates[5] = urgency + wd * (local_ev[2] - local_ev[3]) + ws * (local_ev[2] + local_ev[3]);
-      drift_rates[6] = urgency + wd * (local_ev[2] - local_ev[4]) + ws * (local_ev[2] + local_ev[4]);
-      drift_rates[7] = urgency + wd * (local_ev[3] - local_ev[1]) + ws * (local_ev[3] + local_ev[1]);
-      drift_rates[8] = urgency + wd * (local_ev[3] - local_ev[2]) + ws * (local_ev[3] + local_ev[2]);
-      drift_rates[9] = urgency + wd * (local_ev[3] - local_ev[4]) + ws * (local_ev[3] + local_ev[4]);
-      drift_rates[10] = urgency + wd * (local_ev[4] - local_ev[1]) + ws * (local_ev[4] + local_ev[1]);
-      drift_rates[11] = urgency + wd * (local_ev[4] - local_ev[2]) + ws * (local_ev[4] + local_ev[2]);
-      drift_rates[12] = urgency + wd * (local_ev[4] - local_ev[3]) + ws * (local_ev[4] + local_ev[3]);
-
-      // Add likelihood for this trial's RT and choice using Win-All rule - ONLY for valid RTs
-      drift_rates = drift_rates * sensitivity;
-      if (RT[t] != 999) {
-        log_lik += ard_win_all(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
+  // Vectorized PDF for LBA accumulators
+vector race_pdf_vec(vector t, vector boundary, vector drift) {
+  int N = num_elements(t);
+  vector[N] out;
+  for (i in 1:N) {
+    if (t[i] <= 0 || drift[i] <= 0) {
+      out[i] = 1e-10;
+    } else {
+      real denom = sqrt(2 * pi()) * pow(t[i], 1.5);
+      if (denom <= 0) {
+        out[i] = 1e-10;
+      } else {
+        real boundary_over = boundary[i] / denom;
+        real drift_t_minus_boundary = drift[i] * t[i] - boundary[i];
+        real exponent = -0.5 * square(drift_t_minus_boundary) / t[i];
+        if (exponent < -700) {
+          out[i] = 1e-10;
+        } else {
+          out[i] = boundary_over * exp(exponent);
+        }
       }
+    }
+  }
+  return out;
+}
 
-      // Compute utility and update expected value
-      curUtil = wgt_rew * wins[t] - wgt_pun * abs(losses[t]);
-      local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
+// Vectorized CDF for LBA accumulators
+vector race_cdf_vec(vector t, vector boundary, vector drift) {
+  int N = num_elements(t);
+  vector[N] out;
+  for (i in 1:N) {
+      if (t[i] <= 0 || drift[i] <= 0) {
+        out[i] = 0.0;
+      } else {
+        real sqrt_t = sqrt(t[i]);
+        real term1 = (drift[i] * t[i] - boundary[i]) / sqrt_t;
+        real term2 = -(drift[i] * t[i] + boundary[i]) / sqrt_t;
+        real expo_arg = 2.0 * drift[i] * boundary[i];
+
+        if (expo_arg > 700) {
+          out[i] = Phi_approx(term1);
+        } else {
+          out[i] = Phi_approx(term1) + exp(expo_arg) * Phi_approx(term2);
+        }
+      }
+  }
+  return out;
+}
+
+  // REVISED ard_win_all function
+real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates) {
+  real t = RT - tau;
+  if (t <= 0) {
+    return log(1e-10);
+  }
+
+  // Pre-define indices (can be done in transformed data for efficiency, but here is fine)
+  array[3] int winning_indices = { (choice - 1) * 3 + 1, (choice - 1) * 3 + 2, (choice - 1) * 3 + 3 };
+  array[9] int losing_indices;
+  int losing_idx = 1;
+  for (j in 1:4) {
+    if (j != choice) {
+      for (i in 1:3) {
+        losing_indices[losing_idx] = (j - 1) * 3 + i;
+        losing_idx += 1;
+      }
+    }
+  }
+
+  // Vectorized calculation for the winning accumulators' PDF
+  // Note: Using sum of logs is equivalent to log of products
+  real log_pdf_winners = sum(log(race_pdf_vec(
+    rep_vector(t, 3),
+    rep_vector(boundary, 3),
+    drift_rates[winning_indices]
+  )));
+
+  // Vectorized calculation for the losing accumulators' Survival Function (1 - CDF)
+  real log_survival_losers = sum(log1m(race_cdf_vec(
+    rep_vector(t, 9),
+    rep_vector(boundary, 9),
+    drift_rates[losing_indices]
+  )));
+
+  return log_pdf_winners + log_survival_losers;
+}
+
+  // Combined model function
+  real igt_ard_model(
+      array[] int choice, array[] real wins, array[] real losses, array[] real RT,
+      vector ev_init, int T,
+      real sensitivity, real update, real wgt_pun, real wgt_rew,
+      vector boundaries, vector taus, real urgency, real wd, real ws
+      ) {
+
+  vector[4] local_ev = ev_init;
+  real log_lik = 0.0;
+  real curUtil;
+
+  // Pre-calculate scaled components once per subject
+  real scaled_urgency = urgency * sensitivity;
+  real scaled_wswd_plus = (ws + wd) * sensitivity;
+  real scaled_wswd_minus = (ws - wd) * sensitivity;
+  
+  // This helper array defines the indices of the "other" decks for each deck.
+  // E.g., for deck 1, the others are 2, 3, 4. For deck 2, they are 1, 3, 4.
+  array[4, 3] int other_indices = { {2, 3, 4}, {1, 3, 4}, {1, 2, 4}, {1, 2, 3} };
+
+  for (t in 1:T) {
+    vector[12] drift_rates;
+    int k = 1;
+    for (i in 1:4) {
+      // Vectorized calculation for the 3 accumulators associated with choice i
+      // This calculates drift rates for i vs j, i vs k, i vs l all at once.
+      drift_rates[k:k+2] = scaled_urgency + 
+                             scaled_wswd_plus * local_ev[i] + 
+                             scaled_wswd_minus * local_ev[other_indices[i]];
+      k += 3;
     }
 
-    return log_lik;
+    // Add likelihood for this trial's RT and choice - ONLY for valid RTs
+    if (RT[t] != 999) {
+      log_lik += ard_win_all(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
+    }
+
+    // Compute utility and update expected value
+    curUtil = wgt_rew * wins[t] - wgt_pun * abs(losses[t]);
+    local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
   }
+
+  return log_lik;
+}
 }
 
 //---
