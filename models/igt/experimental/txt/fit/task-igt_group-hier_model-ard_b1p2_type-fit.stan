@@ -5,7 +5,7 @@ functions {
     vector[n] result;
     
     for (i in 1:n) {
-      if (t[i] <= 0 || drift[i] <= 0.001 || boundary[i] <= 0.001) {
+      if (t[i] <= 0 || boundary[i] <= 0.001) {
         result[i] = 1e-10;
       } else {
         real sqrt_t = sqrt(t[i]);
@@ -30,7 +30,7 @@ functions {
     vector[n] result;
     
     for (i in 1:n) {
-      if (t[i] <= 0 || drift[i] <= 0.001 || boundary[i] <= 0.001) {
+      if (t[i] <= 0 || boundary[i] <= 0.001) {
         result[i] = 1e-10;  // Small non-zero value instead of 0
       } else {
         real sqrt_t = sqrt(t[i]);
@@ -70,13 +70,6 @@ functions {
     vector[3] win_drifts = drift_rates[winning_indices];
     vector[9] lose_drifts = drift_rates[losing_indices];
     
-    for (i in 1:3) {
-      if (win_drifts[i] <= 0) win_drifts[i] = 0.001;
-    }
-    for (i in 1:9) {
-      if (lose_drifts[i] <= 0) lose_drifts[i] = 0.001;
-    }
-
     vector[3] pdf_winners = race_pdf_vec(
       rep_vector(t, 3), rep_vector(boundary, 3), win_drifts
     );
@@ -118,10 +111,7 @@ functions {
     
     // Calculate drift rates with minimum threshold
     for (i in 1:4) {
-      vector[3] temp_drifts = urgency + (ws + wd) * V_subj[i] + (ws - wd) * V_subj[other_indices[i]];
-      for (j in 1:3) {
-        drift_rates[k + j - 1] = fmax(0.001, temp_drifts[j]);  // Ensure positive drift
-      }
+      drift_rates[k:k+2] = urgency + (ws + wd) * V_subj[i] + (ws - wd) * V_subj[other_indices[i]];
       k += 3;
     }
 
@@ -129,12 +119,8 @@ functions {
       if (RT[t] != 999 && RT[t] > 0) {
         real trial_lik = ard_win_all(RT[t], choice[t], taus[t], boundaries[t], drift_rates,
                                      win_indices_all, lose_indices_all);
-        // Cap the contribution to prevent numerical issues
-        if (trial_lik < -1e6) {
-          log_lik += -1e6;
-        } else {
-          log_lik += trial_lik;
-        }
+        
+        log_lik += trial_lik;
       }
     }
     return log_lik;
@@ -170,12 +156,7 @@ functions {
           win_indices_all, lose_indices_all, other_indices
       );
       
-      // Cap contribution to prevent overflow
-      if (subj_lik < -1e7) {
-        log_lik += -1e7;
-      } else {
-        log_lik += subj_lik;
-      }
+      log_lik += subj_lik;
     }
     return log_lik;
   }
@@ -221,45 +202,45 @@ transformed data {
 //---
 parameters {
   // Group-level parameters with tighter priors
-  array[11] real<lower=-2, upper=2> mu_pr;
-  array[11] real<lower=0.1, upper=2> sigma;
+  array[11] real<lower=-5, upper=5> mu_pr;
+  array[11] real<lower=0.001, upper=5> sigma;
 
   // Individual-level parameters with tighter bounds
-  array[N] real<lower=-2, upper=2> boundary1_pr;
-  array[N] real<lower=-2, upper=2> boundary_pr;
-  array[N] real<lower=-2, upper=2> tau1_pr;
-  array[N] real<lower=-2, upper=2> tau_pr;
-  array[N] real<lower=-2, upper=2> urgency_pr;
-  array[N] real<lower=-2, upper=2> wd_pr;
-  array[N] real<lower=-2, upper=2> ws_pr;
-  array[N] real<lower=-2, upper=2> V1_pr;
-  array[N] real<lower=-2, upper=2> V2_pr;
-  array[N] real<lower=-2, upper=2> V3_pr;
-  array[N] real<lower=-2, upper=2> V4_pr;
+  array[N] real<lower=-5, upper=5> boundary1_pr;
+  array[N] real<lower=-5, upper=5> boundary_pr;
+  array[N] real<lower=-5, upper=5> tau1_pr;
+  array[N] real<lower=-5, upper=5> tau_pr;
+  array[N] real<lower=-5, upper=5> urgency_pr;
+  array[N] real<lower=-5, upper=5> wd_pr;
+  array[N] real<lower=-5, upper=5> ws_pr;
+  array[N] real<lower=-5, upper=5> V1_pr;
+  array[N] real<lower=-5, upper=5> V2_pr;
+  array[N] real<lower=-5, upper=5> V3_pr;
+  array[N] real<lower=-5, upper=5> V4_pr;
 }
 //---
 transformed parameters {
-  array[N] real<lower=0.1, upper=5> boundary1;
-  array[N] real<lower=0.1, upper=5> boundary;
+  array[N] real<lower=0.001, upper=5> boundary1;
+  array[N] real<lower=0.001, upper=5> boundary;
   array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
-  array[N] real<lower=0.01> urgency;
-  array[N] real<lower=0.01> wd;
-  array[N] real<lower=0.01> ws;
+  array[N] real<lower=0.001> urgency;
+  array[N] real<lower=0.001> wd;
+  array[N] real<lower=0.001> ws;
   array[N] real V1;
   array[N] real V2;
   array[N] real V3;
   array[N] real V4;
 
   // Hierarchical transformation with safer bounds
-  boundary1 = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.8 + 0.1);
-  boundary  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.8 + 0.1);
+  boundary1 = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
+  boundary  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
   
   // More conservative tau constraints
   tau1 = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* 
-                     fmax(0.05, (to_vector(minRT) - RTbound - 0.02) * 0.8) + RTbound);
+                     fmax(0.05, (to_vector(minRT) - RTbound - 0.02) * 0.95) + RTbound);
   tau  = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* 
-                     fmax(0.05, (to_vector(minRT) - RTbound - 0.02) * 0.8) + RTbound);
+                     fmax(0.05, (to_vector(minRT) - RTbound - 0.02) * 0.95) + RTbound);
   
   // Ensure positive values with minimum thresholds
   urgency = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) + 0.01);
@@ -274,8 +255,8 @@ transformed parameters {
 //---
 model {
   // Tighter priors
-  mu_pr ~ normal(0, 0.5);
-  sigma ~ normal(0.5, 0.5);
+  mu_pr ~ normal(0, 1);
+  sigma ~ normal(0, 1);
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
@@ -289,7 +270,7 @@ model {
   V3_pr ~ normal(0, 1);
   V4_pr ~ normal(0, 1);
 
-  int grainsize = 1;
+  int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum,
                        subject_indices, grainsize,
                        Tsubj, choice, RT,
@@ -300,10 +281,10 @@ model {
 }
 //---
 generated quantities {
-  real<lower=0> mu_boundary1 = inv_logit(mu_pr[1]) * 4.8 + 0.1;
-  real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 4.8 + 0.1;
-  real<lower=0> mu_tau1 = inv_logit(mu_pr[3]) * fmax(0.05, (mean(to_vector(minRT)) - RTbound - 0.02) * 0.8) + RTbound;
-  real<lower=0> mu_tau = inv_logit(mu_pr[4]) * fmax(0.05, (mean(to_vector(minRT)) - RTbound - 0.02) * 0.8) + RTbound;
+  real<lower=0> mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
+  real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 4.99 + 0.001;
+  real<lower=0> mu_tau1 = inv_logit(mu_pr[3]) * fmax(0.05, (mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real<lower=0> mu_tau = inv_logit(mu_pr[4]) * fmax(0.05, (mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real<lower=0> mu_urgency = log1p_exp(mu_pr[5]) + 0.01;
   real<lower=0> mu_wd = log1p_exp(mu_pr[6]) + 0.01;
   real<lower=0> mu_ws = log1p_exp(mu_pr[7]) + 0.01;
