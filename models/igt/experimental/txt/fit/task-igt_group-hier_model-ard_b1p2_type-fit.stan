@@ -197,10 +197,10 @@ parameters {
   array[N] real wd_pr;
   array[N] real ws_pr;
   // Static Value parameters
-  array[N] real V1;
-  array[N] real V2;
-  array[N] real V3;
-  array[N] real V4;
+  array[N] real V1_pr;
+  array[N] real V2_pr;
+  array[N] real V3_pr;
+  array[N] real V4_pr;
 }
 
 //---
@@ -214,6 +214,10 @@ transformed parameters {
   array[N] real<lower=0> urgency;
   array[N] real<lower=0> wd;
   array[N] real<lower=0> ws;
+  array[N] real V1;
+  array[N] real V2;
+  array[N] real V3;
+  array[N] real V4;
 
   // Hierarchical transformation for each subject
   for (n in 1:N) {
@@ -225,6 +229,10 @@ transformed parameters {
     urgency[n]   = log1p_exp(mu_pr[5] + sigma[5] * urgency_pr[n]);
     wd[n]        = log1p_exp(mu_pr[6] + sigma[6] * wd_pr[n]);
     ws[n]        = log1p_exp(mu_pr[7] + sigma[7] * ws_pr[n]);
+    V1[n] 	 = mu_pr[8]  + sigma[8]  * V1_pr[n];
+    V2[n] 	 = mu_pr[9]  + sigma[9]  * V2_pr[n];
+    V3[n] 	 = mu_pr[10] + sigma[10] * V3_pr[n];
+    V4[n] 	 = mu_pr[11] + sigma[11] * V4_pr[n];
   }
 }
 
@@ -244,10 +252,10 @@ model {
   urgency_pr ~ normal(0, 1);
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
-  V1 ~ normal(0, 1);
-  V2 ~ normal(0, 1);
-  V3 ~ normal(0, 1);
-  V4 ~ normal(0, 1);
+  V1_pr ~ normal(0, 1);
+  V2_pr ~ normal(0, 1);
+  V3_pr ~ a normal(0, 1);
+  V4_pr ~ normal(0, 1);
 
   // Define grainsize for parallelization
   int grainsize = 1;
