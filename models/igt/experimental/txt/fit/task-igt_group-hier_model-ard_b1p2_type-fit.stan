@@ -1,38 +1,49 @@
-// Hierarchical SSM-Only ARD Model for the Iowa Gambling Task - FULLY VECTORIZED
+// Hierarchical SSM-Only ARD Model for the Iowa Gambling Task
 functions {
   vector race_pdf_vec(vector t, vector boundary, vector drift) {
-    for (i in 1:num_elements(t)) {
+    int n = num_elements(t);
+    vector[n] result;
+    
+    for (i in 1:n) {
       if (t[i] <= 0 || drift[i] <= 0) {
-        return rep_vector(1e-10, num_elements(t));
+        result[i] = 1e-10;
+      } else {
+        real denom = sqrt(2 * pi()) * t[i] * sqrt(t[i]);
+        real boundary_over = boundary[i] / denom;
+        real drift_t_minus_boundary = drift[i] * t[i] - boundary[i];
+        real exponent = -0.5 * square(drift_t_minus_boundary) / t[i];
+        result[i] = boundary_over * exp(exponent);
       }
     }
-    vector[num_elements(t)] denom = sqrt(2 * pi()) * (t .* sqrt(t));
-    vector[num_elements(t)] boundary_over = boundary ./ denom;
-    vector[num_elements(t)] drift_t_minus_boundary = drift .* t - boundary;
-    vector[num_elements(t)] exponent = -0.5 * square(drift_t_minus_boundary) ./ t;
-    return boundary_over .* exp(exponent);
+    return result;
   }
 
   vector race_cdf_vec(vector t, vector boundary, vector drift) {
-     for (i in 1:num_elements(t)) {
+    int n = num_elements(t);
+    vector[n] result;
+    
+    for (i in 1:n) {
       if (t[i] <= 0 || drift[i] <= 0) {
-        return rep_vector(0.0, num_elements(t));
+        result[i] = 0.0;
+      } else {
+        real sqrt_t = sqrt(t[i]);
+        real term1 = (drift[i] * t[i] - boundary[i]) / sqrt_t;
+        real term2 = -(drift[i] * t[i] + boundary[i]) / sqrt_t;
+        real expo_arg = 2.0 * drift[i] * boundary[i];
+        result[i] = Phi_approx(term1) + exp(expo_arg) * Phi_approx(term2);
       }
     }
-    vector[num_elements(t)] sqrt_t = sqrt(t);
-    vector[num_elements(t)] term1 = (drift .* t - boundary) ./ sqrt_t;
-    vector[num_elements(t)] term2 = -(drift .* t + boundary) ./ sqrt_t;
-    vector[num_elements(t)] expo_arg = 2.0 * drift .* boundary;
-    return Phi_approx(term1) + exp(expo_arg) .* Phi_approx(term2);
+    return result;
   }
 
-  // Simplified ard_win_all using pre-calculated indices ---
+  // Simplified ard_win_all using pre-calculated indices
   real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates,
                    array[,] int win_indices_all, array[,] int lose_indices_all) {
     real t = RT - tau;
     if (t <= 0) {
-      return log(1e-10);
+      return negative_infinity();  // Use negative_infinity for numerical stability
     }
+    
     array[3] int winning_indices = win_indices_all[choice];
     array[9] int losing_indices = lose_indices_all[choice];
 
@@ -42,6 +53,7 @@ functions {
     real log_survival_losers = sum(log1m(race_cdf_vec(
       rep_vector(t, 9), rep_vector(boundary, 9), drift_rates[losing_indices]
     )));
+    
     return log_pdf_winners + log_survival_losers;
   }
 
@@ -53,6 +65,7 @@ functions {
     real log_lik = 0.0;
     vector[12] drift_rates;
     int k = 1;
+    
     for (i in 1:4) {
       drift_rates[k:k+2] = urgency + (ws + wd) * V_subj[i] + (ws - wd) * V_subj[other_indices[i]];
       k += 3;
@@ -77,6 +90,7 @@ functions {
                    array[] real tau1, array[] real tau,
                    array[] real urgency, array[] real wd, array[] real ws) {
     real log_lik = 0.0;
+    
     for (n in start:end) {
       vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
       vector[Tsubj[n]] boundaries;
@@ -117,7 +131,7 @@ transformed data {
     subject_indices[i] = i;
   }
 
-  // --- Pre-calculate all possible indices once ---
+  // Pre-calculate all possible indices once
   array[4, 3] int win_indices_all;
   array[4, 9] int lose_indices_all;
   array[4, 3] int other_indices = { {2, 3, 4}, {1, 3, 4}, {1, 2, 4}, {1, 2, 3} };
@@ -171,8 +185,11 @@ transformed parameters {
   // Hierarchical transformation for each subject
   boundary1 = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 5 + 0.01);
   boundary  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 5 + 0.01);
-  tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.95 + RTbound);
-  tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.95 + RTbound);
+  
+  // Adjusted tau constraints with more buffer
+  tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.01) * 0.9 + RTbound);
+  tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.01) * 0.9 + RTbound);
+  
   urgency   = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)));
   wd        = to_array_1d(log1p_exp(mu_pr[6] + sigma[6] .* to_vector(wd_pr)));
   ws        = to_array_1d(log1p_exp(mu_pr[7] + sigma[7] .* to_vector(ws_pr)));
@@ -211,8 +228,8 @@ model {
 generated quantities {
   real<lower=0> mu_boundary1 = inv_logit(mu_pr[1]) * 5 + 0.01;
   real<lower=0> mu_boundary = inv_logit(mu_pr[2]) * 5 + 0.01;
-  real<lower=0> mu_tau1 = inv_logit(mu_pr[3]) * (mean(to_vector(minRT)) - RTbound - 1e-6) * 0.99 + RTbound;
-  real<lower=0> mu_tau = inv_logit(mu_pr[4]) * (mean(to_vector(minRT)) - RTbound - 1e-6) * 0.99 + RTbound;
+  real<lower=0> mu_tau1 = inv_logit(mu_pr[3]) * (mean(to_vector(minRT)) - RTbound - 0.01) * 0.9 + RTbound;
+  real<lower=0> mu_tau = inv_logit(mu_pr[4]) * (mean(to_vector(minRT)) - RTbound - 0.01) * 0.9 + RTbound;
   real<lower=0> mu_urgency = log1p_exp(mu_pr[5]);
   real<lower=0> mu_wd = log1p_exp(mu_pr[6]);
   real<lower=0> mu_ws = log1p_exp(mu_pr[7]);
