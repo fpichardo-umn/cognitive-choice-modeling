@@ -43,8 +43,7 @@ functions {
         local_ef += PEfreq_fic * (1 - decay);
 
 	// Decay all
-	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
-	local_ev[choice[t]] = local_ev[choice[t]] * (1 - decay);
+	local_ev = local_ev * (1 - decay);
 	
 
         // Update chosen deck
@@ -55,8 +54,8 @@ functions {
         local_ef += PEfreq_fic * (1 - decay);
 
 	// Decay all
-	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
-	local_ev[choice[t]] = local_ev[choice[t]] * (1 - decay);
+	local_ef = local_ef * (1 - decay);
+	local_ev = local_ev * (1 - decay);
 	
 
         // Update chosen deck
