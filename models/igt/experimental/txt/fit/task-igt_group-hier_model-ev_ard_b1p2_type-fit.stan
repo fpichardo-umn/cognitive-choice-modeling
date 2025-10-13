@@ -186,7 +186,7 @@ transformed data {
 //---
 parameters {
   array[11] real mu_pr;
-  array[11] real<lower=0> sigma;
+  array[11] real<lower=0, upper=3> sigma;
 
   array[N] real<lower=-5, upper=5> boundary1_pr;
   array[N] real<lower=-5, upper=5> boundary_pr;
