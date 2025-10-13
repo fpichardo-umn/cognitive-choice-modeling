@@ -10,7 +10,7 @@ functions {
         return rep_vector(1e-10, num_elements(t));
       }
     }
-    vector[num_elements(t)] denom = sqrt(2 * pi()) * t_dot_pow_1_5; // More efficient t^1.5
+    vector[num_elements(t)] denom = sqrt(2 * pi()) * (t .* sqrt(t));
     vector[num_elements(t)] boundary_over = boundary ./ denom;
     vector[num_elements(t)] drift_t_minus_boundary = drift .* t - boundary;
     vector[num_elements(t)] exponent = -0.5 * square(drift_t_minus_boundary) ./ t;
@@ -34,8 +34,8 @@ functions {
 
   // Simplified ard_win_all using pre-calculated indices
   real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates,
-                   array[4, 3] int win_indices_all,
-                   array[4, 9] int lose_indices_all) {
+                   array[,] int win_indices_all,
+                   array[,] int lose_indices_all) {
     real t = RT - tau;
     if (t <= 0) {
       return log(1e-10);
@@ -68,9 +68,9 @@ functions {
       vector ev_init, int T,
       real sensitivity, real update, real wgt_pun, real wgt_rew,
       vector boundaries, vector taus, real urgency, real wd, real ws,
-      array[4, 3] int win_indices_all,
-      array[4, 9] int lose_indices_all,
-      array[4, 3] int other_indices) {
+      array[,] int win_indices_all,
+      array[,] int lose_indices_all,
+      array[,] int other_indices) {
 
     vector[4] local_ev = ev_init;
     real log_lik = 0.0;
@@ -106,8 +106,8 @@ functions {
                    array[] int Tsubj, array[,] int choice,
                    array[,] real wins, array[,] real losses, array[,] real RT,
                    // Pre-calculated indices
-                   array[4, 3] int win_indices_all, array[4, 9] int lose_indices_all,
-                   array[4, 3] int other_indices,
+                   array[,] int win_indices_all, array[,] int lose_indices_all,
+                   array[,] int other_indices,
                    // Parameters
                    array[] real boundary1, array[] real boundary,
                    array[] real tau1, array[] real tau,
@@ -187,6 +187,7 @@ transformed data {
 parameters {
   array[11] real mu_pr;
   array[11] real<lower=0> sigma;
+
   array[N] real<lower=-5, upper=5> boundary1_pr;
   array[N] real<lower=-5, upper=5> boundary_pr;
   array[N] real tau1_pr;
@@ -215,17 +216,17 @@ transformed parameters {
   array[N] real<lower=0, upper=1> update;
 
   // Hierarchical transformation for each subject
-  boundary1 = inv_logit(mu_pr[1] + sigma[1] * boundary1_pr) * 5 + 0.01;
-  boundary  = inv_logit(mu_pr[2] + sigma[2] * boundary_pr) * 5 + 0.01;
-  tau1      = inv_logit(mu_pr[3] + sigma[3] * tau1_pr) .* (to_array_1d(minRT) - RTbound - 1e-6) * 0.95 + RTbound;
-  tau       = inv_logit(mu_pr[4] + sigma[4] * tau_pr) .* (to_array_1d(minRT) - RTbound - 1e-6) * 0.95 + RTbound;
-  urgency   = log1p_exp(mu_pr[5] + sigma[5] * urgency_pr);
-  wd        = log1p_exp(mu_pr[6] + sigma[6] * wd_pr);
-  ws        = log1p_exp(mu_pr[7] + sigma[7] * ws_pr);
-  drift_con = inv_logit(mu_pr[8] + sigma[8] * drift_con_pr) * 5;
-  wgt_pun   = inv_logit(mu_pr[9] + sigma[9] * wgt_pun_pr);
-  wgt_rew   = inv_logit(mu_pr[10] + sigma[10] * wgt_rew_pr);
-  update    = inv_logit(mu_pr[11] + sigma[11] * update_pr);
+  boundary1 = to_array_1d(inv_logit(mu_pr[1] + sigma[1] * to_vector(boundary1_pr)) * 5 + 0.01);
+  boundary  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] * to_vector(boundary_pr)) * 5 + 0.01);
+  tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] * to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.95 + RTbound);
+  tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] * to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.95 + RTbound);
+  urgency   = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] * to_vector(urgency_pr)));
+  wd        = to_array_1d(log1p_exp(mu_pr[6] + sigma[6] * to_vector(wd_pr)));
+  ws        = to_array_1d(log1p_exp(mu_pr[7] + sigma[7] * to_vector(ws_pr)));
+  drift_con = to_array_1d(inv_logit(mu_pr[8] + sigma[8] * to_vector(drift_con_pr)) * 5);
+  wgt_pun   = to_array_1d(inv_logit(mu_pr[9] + sigma[9] * to_vector(wgt_pun_pr)));
+  wgt_rew   = to_array_1d(inv_logit(mu_pr[10] + sigma[10] * to_vector(wgt_rew_pr)));
+  update    = to_array_1d(inv_logit(mu_pr[11] + sigma[11] * to_vector(update_pr)));
 }
 
 //---
