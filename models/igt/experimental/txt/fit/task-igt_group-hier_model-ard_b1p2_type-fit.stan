@@ -144,15 +144,15 @@ parameters {
 
   array[N] real<lower=-5, upper=5> boundary1_pr;
   array[N] real<lower=-5, upper=5> boundary_pr;
-  array[N] real tau1_pr;
-  array[N] real tau_pr;
-  array[N] real urgency_pr;
-  array[N] real wd_pr;
-  array[N] real ws_pr;
-  array[N] real V1_pr;
-  array[N] real V2_pr;
-  array[N] real V3_pr;
-  array[N] real V4_pr;
+  array[N] real<lower=-3, upper=3> tau1_pr;
+  array[N] real<lower=-3, upper=3> tau_pr;
+  array[N] real<lower=-3, upper=3> urgency_pr;
+  array[N] real<lower=-3, upper=3> wd_pr;
+  array[N] real<lower=-3, upper=3> ws_pr;
+  array[N] real<lower=-3, upper=3> V1_pr;
+  array[N] real<lower=-3, upper=3> V2_pr;
+  array[N] real<lower=-3, upper=3> V3_pr;
+  array[N] real<lower=-3, upper=3> V4_pr;
 }
 //---
 transformed parameters {
