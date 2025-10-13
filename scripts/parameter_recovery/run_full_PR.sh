@@ -296,6 +296,28 @@ FULL_MODEL_NAME="${TASK}_${GROUP_TYPE}_${MODEL}"
 
 # Define file paths based on naming conventions
 PARAM_FILE="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-${N_SUBJECTS}.rds"
+PARAM_GLOB="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-*.rds"
+
+# Check if the specific parameter file exists
+if [ ! -f "$PARAM_FILE" ]; then
+    echo "Warning: Parameter file not found at $PARAM_FILE"
+    
+    # Check for any matching files
+    matches=( $PARAM_GLOB )
+
+    if [ ${#matches[@]} -eq 1 ]; then
+        PARAM_FILE="${matches[0]}"
+        echo "Using fallback parameter file: $PARAM_FILE"
+    elif [ ${#matches[@]} -gt 1 ]; then
+        echo "Error: Multiple possible parameter files found:"
+        printf '  %s\n' "${matches[@]}"
+        exit 1
+    else
+        echo "Error: No parameter files found matching pattern: $PARAM_GLOB"
+        exit 1
+    fi
+fi
+
 SIM_FILE="Outputs/${TASK}/simulation/data/rds/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-sim_desc-data.rds"
 
 # Show option lists for the different components
@@ -661,12 +683,6 @@ run_pr_simulate() {
     if [ "$DRY_RUN" = true ]; then
         print_simulate_options
         return
-    fi
-    
-    # Check if parameter file exists
-    if [ ! -f "$PARAM_FILE" ]; then
-        echo "Error: Parameter file not found at $PARAM_FILE"
-        exit 1
     fi
     
     # Build command arguments
