@@ -273,6 +273,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_ev_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$ard_b1p2, param_sets$ev), "con"),

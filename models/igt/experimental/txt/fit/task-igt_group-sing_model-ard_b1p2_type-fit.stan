@@ -195,10 +195,10 @@ model {
   vector[T] taus = append_row(rep_vector(tau1, 20), rep_vector(tau, T - 20));
     
   // Compute log-likelihood for the subject and add to the total
-  target += igt_ard_model_lp(
+  target += igt_ard_model(
         choice, RT, T,
         V_subj,
         boundaries, taus, urgency, wd, ws,
-	win_indices_all, lose_indices_all, other_indices);
+        win_indices_all, lose_indices_all, other_indices);
 
 }

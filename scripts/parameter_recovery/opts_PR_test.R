@@ -1,18 +1,18 @@
-opt_model = "ev_ard_b1p2"
+opt_model = "ard_b1p2"
 # =======
 #opt_model = "orl"
 
 opt_task = "igt"
 opt_cohort = "adb"
 opt_session = "00"
-opt_nsubs = 5#92
-opt_group = "hier"
+opt_nsubs = 1#92
+opt_group = "sing"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 opt_n_trials = 80
 
 opt_RTmin_ms = 50
-opt_RTmax_ms = 4000
+opt_RTmax_ms = Inf
 opt_n_warmup = 500
 opt_n_iter = 500
 opt_n_chains = 2

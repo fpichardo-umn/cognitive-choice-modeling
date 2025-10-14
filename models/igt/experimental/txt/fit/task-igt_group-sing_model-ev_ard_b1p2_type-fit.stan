@@ -208,7 +208,8 @@ model {
   vector[T] taus = append_row(rep_vector(tau1, 20), rep_vector(tau, T - 20));
   
   // Combined model computation
-  target += igt_ard_model_lp(choice, wins, losses, RT, ev, T, 
+  target += igt_ard_model(choice, wins, losses, RT, ev, T, 
                              sensitivity, update, wgt_pun, wgt_rew,
-                             boundaries, taus, urgency, wd, ws);
+                             boundaries, taus, urgency, wd, ws,
+                             win_indices_all, lose_indices_all, other_indices);
 }
