@@ -1,28 +1,23 @@
 // Hierarchical EV-ARD Model for the Iowa Gambling Task - FULLY UPDATED & ROBUST
 functions {
-  // --- Fortified Likelihood Functions ---
-
   // Defensive PDF for Racing Diffusion/Wald
   vector race_pdf_vec(vector t, vector boundary, vector drift) {
     int n = num_elements(t);
+  
+    // 1. Perform expensive math on whole vectors first
+    vector[n] sqrt_t = sqrt(t);
+    vector[n] denom = sqrt(2 * pi()) .* t .* sqrt_t;
+    vector[n] boundary_over = boundary ./ denom;
+    vector[n] drift_t_minus_boundary = drift .* t - boundary;
+    vector[n] exponent = -0.5 * square(drift_t_minus_boundary) ./ t;
+  
     vector[n] result;
-    
+    // 2. Now, loop ONLY for the conditional assignment
     for (i in 1:n) {
-      if (t[i] <= 0 || boundary[i] <= 0.001) {
+      if (exponent[i] < -30) {
         result[i] = 1e-10;
       } else {
-        real sqrt_t = sqrt(t[i]);
-        real denom = sqrt(2 * pi()) * t[i] * sqrt_t;
-        real boundary_over = boundary[i] / denom;
-        real drift_t_minus_boundary = drift[i] * t[i] - boundary[i];
-        real exponent = -0.5 * square(drift_t_minus_boundary) / t[i];
-        
-        // Prevent underflow
-        if (exponent < -30) {
-          result[i] = 1e-10;
-        } else {
-          result[i] = boundary_over * exp(exponent);
-        }
+        result[i] = boundary_over[i] * exp(exponent[i]);
       }
     }
     return result;
@@ -31,72 +26,46 @@ functions {
   // Defensive CDF for Racing Diffusion/Wald
   vector race_cdf_vec(vector t, vector boundary, vector drift) {
     int n = num_elements(t);
+  
+    // 1. Perform expensive math on whole vectors first
+    vector[n] sqrt_t = sqrt(t);
+    vector[n] term1 = (drift .* t - boundary) ./ sqrt_t;
+    vector[n] term2 = -(drift .* t + boundary) ./ sqrt_t;
+    vector[n] expo_arg = 2.0 * drift .* boundary;
+  
     vector[n] result;
-    
+    // 2. Loop for conditional logic and clamping
     for (i in 1:n) {
-      if (t[i] <= 0 || boundary[i] <= 0.001) {
-        result[i] = 1e-10;
+      if (expo_arg[i] > 30) {
+        result[i] = Phi_approx(term1[i]);
       } else {
-        real sqrt_t = sqrt(t[i]);
-        real term1 = (drift[i] * t[i] - boundary[i]) / sqrt_t;
-        real term2 = -(drift[i] * t[i] + boundary[i]) / sqrt_t;
-        real expo_arg = 2.0 * drift[i] * boundary[i];
-        
-        // Prevent overflow
-        if (expo_arg > 30) {
-          result[i] = Phi_approx(term1);
-        } else {
-          result[i] = Phi_approx(term1) + exp(expo_arg) * Phi_approx(term2);
-        }
-        
-        // Ensure result is in (0,1) to prevent log(0) errors
-        if (result[i] <= 0) result[i] = 1e-10;
-        if (result[i] >= 1) result[i] = 1 - 1e-10;
+        result[i] = Phi_approx(term1[i]) + exp(expo_arg[i]) * Phi_approx(term2[i]);
       }
+    
+      // Clamp values
+      if (result[i] <= 0) result[i] = 1e-10;
+      if (result[i] >= 1) result[i] = 1 - 1e-10;
     }
     return result;
   }
 
-  // "Safe" ard_win_all function with looped log-sums
+  // Simplified ard_win_all using pre-calculated indices
   real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates,
-                   array[,] int win_indices_all, array[,] int lose_indices_all) {
+                 array[,] int win_indices_all, array[,] int lose_indices_all) {
     real t = RT - tau;
-    
-    if (t <= 0.001) {
-      return -1e6;  // Large negative but not infinite
-    }
-    
+  
     array[3] int winning_indices = win_indices_all[choice];
     array[9] int losing_indices = lose_indices_all[choice];
-    
+  
     vector[3] pdf_winners = race_pdf_vec(
       rep_vector(t, 3), rep_vector(boundary, 3), drift_rates[winning_indices]
     );
     vector[9] cdf_losers = race_cdf_vec(
       rep_vector(t, 9), rep_vector(boundary, 9), drift_rates[losing_indices]
     );
-    
-    real log_pdf_winners = 0;
-    real log_survival_losers = 0;
-    
-    // Safe log computation to prevent log(0)
-    for (i in 1:3) {
-      if (pdf_winners[i] > 0) {
-        log_pdf_winners += log(pdf_winners[i]);
-      } else {
-        log_pdf_winners += log(1e-10);
-      }
-    }
-    
-    for (i in 1:9) {
-      if (cdf_losers[i] < 1) {
-        log_survival_losers += log1m(cdf_losers[i]);
-      } else {
-        log_survival_losers += log(1e-10);
-      }
-    }
-    
-    return log_pdf_winners + log_survival_losers;
+  
+    // Vectorized log-likelihood calculation is now safe and much faster
+    return sum(log(pdf_winners)) + sum(log1m(cdf_losers));
   }
 
   // EV-ARD trial-level function (logic remains the same)
@@ -155,13 +124,9 @@ functions {
 
       vector[Tsubj[n]] boundaries;
       vector[Tsubj[n]] taus;
-      if (Tsubj[n] > 20) {
-        boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
-        taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
-      } else {
-        boundaries = rep_vector(boundary1[n], Tsubj[n]);
-        taus = rep_vector(tau1[n], Tsubj[n]);
-      }
+
+      boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
+      taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
 
       log_lik += igt_ard_model(
           choice[n, 1:Tsubj[n]], wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
@@ -250,8 +215,8 @@ transformed parameters {
   boundary  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
   
   // More conservative tau constraints
-  tau1 = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* fmax(0.05, (to_vector(minRT) - RTbound - 0.02) * 0.95) + RTbound);
-  tau  = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* fmax(0.05, (to_vector(minRT) - RTbound - 0.02) * 0.95) + RTbound);
+  tau1 = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
+  tau  = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   
   // Ensure positive values with minimum thresholds
   urgency   = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) + 0.01);
@@ -294,8 +259,8 @@ model {
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
   real mu_boundary = inv_logit(mu_pr[2]) * 4.99 + 0.001;
-  real mu_tau1 = inv_logit(mu_pr[3]) * fmax(0.05, (mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_tau = inv_logit(mu_pr[4]) * fmax(0.05, (mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real mu_tau1 = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real mu_tau  = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_urgency = log1p_exp(mu_pr[5]) + 0.01;
   real mu_wd = log1p_exp(mu_pr[6]) + 0.01;
   real mu_ws = log1p_exp(mu_pr[7]) + 0.01;
