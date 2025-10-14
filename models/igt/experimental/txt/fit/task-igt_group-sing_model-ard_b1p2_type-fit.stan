@@ -185,6 +185,6 @@ model {
   target += igt_ard_model_lp(
         choice, RT, T,
         V_subj,
-        boundaries, taus, urgency, wd, ws
+        boundaries, taus, urgency, wd, ws);
 
 }

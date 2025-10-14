@@ -40,7 +40,7 @@ functions {
       // Update EV and EF based on valence
       if (wins[t] >= losses[t]) {
         // Update ef for all decks with fictive outcomes
-        local_ef += Apun * PEfreq_fic;
+        local_ef += PEfreq_fic * (1 - Dpun);
 
 	// Decay all
 	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Drew);
@@ -52,7 +52,7 @@ functions {
         local_ev[choice[t]] = PEval;
       } else {
         // Update ef for all decks with fictive outcomes
-        local_ef += Arew * PEfreq_fic;
+        local_ef += PEfreq_fic * (1 - Drew);
 
 	// Decay all
 	local_ef[choice[t]] = local_ef[choice[t]] * (1 - Dpun);
