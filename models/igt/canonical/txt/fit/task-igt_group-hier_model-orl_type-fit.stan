@@ -1,13 +1,15 @@
+// Optimized Hierarchical ORL Model for the Iowa Gambling Task
 functions {
-  vector igt_model_lp(
+  // Returns log-likelihood instead of modifying target
+  real igt_subject(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, vector ef, int Tsub,
         real Arew, real Apun, real K, real betaF, real betaP
         ) {
-    // Define values
+    real log_lik = 0.0;
     vector[4] local_ev = ev;
     vector[4] local_ef = ef;
-    vector[4] pers = rep_vector(0.0, 4);  // perseverance
+    vector[4] pers = rep_vector(0.0, 4);
     vector[4] util;
     real PEval;
     real PEfreq;
@@ -15,131 +17,124 @@ functions {
     array[Tsub] real sign_outcome;
     real K_tr = pow(3, K) - 1;
     
-    // Calculate sign for each trial
     for (t in 1:Tsub) {
       sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
     }
 
-    // For each trial
     for (t in 1:Tsub) {
-      // Calculate utility for decision
       util = local_ev + local_ef * betaF + pers * betaP;
+      log_lik += categorical_logit_lpmf(choice[t] | util);
       
-      // Choice probability
-      target += categorical_logit_lpmf(choice[t] | util);
-      
-      // Prediction errors for value and frequency
       PEval = wins[t] - losses[t] - local_ev[choice[t]];
       PEfreq = sign_outcome[t] - local_ef[choice[t]];
       
-      // Calculate fictive prediction errors for non-chosen decks
       for (d in 1:4) {
         PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
       }
       
-      // Update EV and EF based on valence
       if (wins[t] >= losses[t]) {
-        // Update ef for all decks with fictive outcomes
         local_ef += Apun * PEfreq_fic;
-        // Update chosen deck
         local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
-        // Update ef for all decks with fictive outcomes
         local_ef += Arew * PEfreq_fic;
-        // Update chosen deck
         local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
         local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
       }
       
-      // Perseverance updating
-      pers[choice[t]] = 1;  // set chosen deck perseverance
-      pers = pers / (1 + K_tr);  // decay perseverance
+      pers[choice[t]] = 1;
+      pers = pers / (1 + K_tr);
     }
     
-    return local_ev;
+    return log_lik;
+  }
+  
+  // Parallelization wrapper
+  real partial_sum_func(array[] int slice_n, int start, int end,
+                        array[,] int choice, array[,] real wins, array[,] real losses, 
+                        array[] int Tsubj,
+                        array[] real Arew, array[] real Apun, array[] real K,
+                        array[] real betaF, array[] real betaP) {
+    real log_lik = 0.0;
+    
+    for (n in start:end) {
+      vector[4] ev = rep_vector(0., 4);
+      vector[4] ef = rep_vector(0., 4);
+      
+      log_lik += igt_subject(choice[n, 1:Tsubj[n]],
+                             wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]],
+                             ev, ef, Tsubj[n], 
+                             Arew[n], Apun[n], K[n], 
+                             betaF[n], betaP[n]);
+    }
+    return log_lik;
   }
 }
 
 data {
-  int<lower=1> N;                              // Number of subjects
-  int<lower=1> T;                              // Maximum number of trials
-  array[N] int<lower=1> sid;      	       // Subject IDs
-  array[N] int<lower=1> Tsubj;                 // Number of trials for each subject
-  array[N, T] int<lower=1, upper=4> choice;   // Choices made at each trial (1-4)
-  array[N, T] real<lower=0> wins;             // Win amount at each trial
-  array[N, T] real<lower=0> losses;           // Loss amount at each trial
+  int<lower=1> N;
+  int<lower=1> T;
+  array[N] int<lower=1> Tsubj;
+  array[N, T] int<lower=1, upper=4> choice;
+  array[N, T] real<lower=0> wins;
+  array[N, T] real<lower=0> losses;
+}
+
+transformed data {
+  array[N] int subject_indices;
+  for (i in 1:N) {
+    subject_indices[i] = i;
+  }
 }
 
 parameters {
-  // Group-level hyperparameters
-  array[5] real mu_pr;                // Group means for all parameters
-  array[5] real<lower=0> sigma;       // Group standard deviations
+  array[5] real mu_pr;
+  array[5] real<lower=0> sigma;
 
-  // Subject-level raw parameters
-  array[N] real Arew_pr;              // Reward learning rate
-  array[N] real Apun_pr;              // Punishment learning rate
-  array[N] real K_pr;                 // Decay rate for perseverance
-  array[N] real betaF_pr;             // Weight for frequency (EF)
-  array[N] real betaP_pr;             // Weight for perseverance
+  array[N] real Arew_pr;
+  array[N] real Apun_pr;
+  array[N] real K_pr;
+  array[N] real betaF_pr;
+  array[N] real betaP_pr;
 }
 
 transformed parameters {
-  // Transform subject-level raw parameters
   array[N] real<lower=0, upper=1> Arew;
   array[N] real<lower=0, upper=1> Apun;
   array[N] real<lower=0, upper=5> K;
   array[N] real betaF;
   array[N] real betaP;
   
-  // Hierarchical transformation
-  for (n in 1:N) {
-    Arew[n]   = inv_logit(mu_pr[1] + sigma[1] * Arew_pr[n]);
-    Apun[n]   = inv_logit(mu_pr[2] + sigma[2] * Apun_pr[n]);
-    K[n]      = inv_logit(mu_pr[3] + sigma[3] * K_pr[n]) * 5;
-    betaF[n]  = mu_pr[4] + sigma[4] * betaF_pr[n];
-    betaP[n]  = mu_pr[5] + sigma[5] * betaP_pr[n];
-  }
+  Arew  = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(Arew_pr)));
+  Apun  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(Apun_pr)));
+  K     = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(K_pr)) * 5);
+  betaF = to_array_1d(mu_pr[4] + sigma[4] .* to_vector(betaF_pr));
+  betaP = to_array_1d(mu_pr[5] + sigma[5] .* to_vector(betaP_pr));
 }
 
 model {
-  // Hyperpriors
-  for (i in 1:5) {
-    mu_pr[i] ~ normal(0, 1);
-    sigma[i] ~ normal(0, 2);
-  }
+  mu_pr ~ normal(0, 1);
+  sigma ~ normal(0, 2);
 
-  // Subject-level priors
-  for (n in 1:N) {
-    Arew_pr[n]  ~ normal(0, 1);
-    Apun_pr[n]  ~ normal(0, 1);
-    K_pr[n]     ~ normal(0, 1);
-    betaF_pr[n] ~ normal(0, 1);
-    betaP_pr[n] ~ normal(0, 1);
-  }
+  Arew_pr  ~ normal(0, 1);
+  Apun_pr  ~ normal(0, 1);
+  K_pr     ~ normal(0, 1);
+  betaF_pr ~ normal(0, 1);
+  betaP_pr ~ normal(0, 1);
 
-  // Process each subject
-  for (n in 1:N) {
-    vector[4] ev = rep_vector(0., 4);  // Expected value
-    vector[4] ef = rep_vector(0., 4);  // Expected frequency
-    
-    // Use the same function as single-subject model
-    ev = igt_model_lp(choice[n, 1:Tsubj[n]],
-                      wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
-                      ev, ef, Tsubj[n], Arew[n], Apun[n], K[n], 
-                      betaF[n], betaP[n]);
-  }
+  int grainsize = max(1, N %/% 4);
+  target += reduce_sum(partial_sum_func, subject_indices, grainsize,
+                       choice, wins, losses, Tsubj,
+                       Arew, Apun, K, betaF, betaP);
 }
 
 generated quantities {
-  // Group-level parameters in interpretable scale
   real<lower=0, upper=1> mu_Arew;
   real<lower=0, upper=1> mu_Apun;
   real<lower=0, upper=5> mu_K;
   real mu_betaF;
   real mu_betaP;
   
-  // Compute interpretable group-level parameters
   mu_Arew  = inv_logit(mu_pr[1]);
   mu_Apun  = inv_logit(mu_pr[2]);
   mu_K     = inv_logit(mu_pr[3]) * 5;

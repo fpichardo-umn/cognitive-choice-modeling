@@ -1,7 +1,7 @@
 functions {
   vector igt_model_lp(
-        array[] int choice,    // 0=pass, 1=play
-        array[] int shown,     // Deck shown on trial t (1-4)
+        array[] int choice,
+        array[] int shown,
         array[] real outcome,
         vector ev,
         vector ef,
@@ -11,7 +11,6 @@ functions {
         real betaF,
         real betaB
         ) {
-    // Define values
     vector[4] local_ev = ev;
     vector[4] local_ef = ef;
     vector[Tsub] Info;
@@ -21,102 +20,68 @@ functions {
     vector[4] PEfreq_fic;
     real sign_outcome;
 
-    // For each trial
     for (t in 1:Tsub) {
-      // Deck presented to subject
       curDeck = shown[t];
-
-      // Calculate utility for decision (value of playing vs. passing [value=0])
-      // V(t) = EV(t) + EF(t)*βf + βb
       Info[t] = local_ev[curDeck] + local_ef[curDeck] * betaF + betaB;
 
-      // ---=== Learning only occurs if the participant chose to "play" ===---
       if (choice[t] == 1) {
-        // Calculate sign of the outcome for EF updates
-        sign_outcome = (wins[t] >= losses[t]) ? 1.0 : -1.0;
-
-        // Prediction errors for value and frequency of the CHOSEN deck
-        PEval = (wins[t] - losses[t]) - local_ev[curDeck];
+        sign_outcome = (outcome[t] > 0) ? 1.0 : -1.0;
+        PEval = outcome[t] - local_ev[curDeck];
         PEfreq = sign_outcome - local_ef[curDeck];
         
-        // Calculate fictive prediction errors for non-chosen decks
-        // -sgn(x(t))/3
         for (d in 1:4) {
           PEfreq_fic[d] = -sign_outcome / 3.0 - local_ef[d];
         }
         
-        // Update EV and EF based on valence (positive or negative outcome)
-        if (outcome[t] > 0) { // Net gain
-          // Update ef for all decks with fictive outcomes (using Apun for gains)
+        if (outcome[t] > 0) {
           local_ef += Apun * PEfreq_fic;
-          // Update chosen deck's ef and ev (using Arew for gains)
           local_ef[curDeck] += Arew * PEfreq;
           local_ev[curDeck] += Arew * PEval;
-        } else { // Net loss
-          // Update ef for all decks with fictive outcomes (using Arew for losses)
+        } else {
           local_ef += Arew * PEfreq_fic;
-          // Update chosen deck's ef and ev (using Apun for losses)
           local_ef[curDeck] += Apun * PEfreq;
           local_ev[curDeck] += Apun * PEval;
         }
-      } // End of learning block (if choice==1)
+      }
     }
     
-    // Bernoulli distribution to decide whether to play the current deck or not
     target += bernoulli_logit_lpmf(choice | Info);
-    
-    return local_ev; // Return is required by function but not used outside
+    return local_ev;
   }
 }
 
 data {
-  int<lower=1> 			 sid;     // Subject ID
-  int<lower=1> 			 T; 	  // Number of trials
-  array[T] int<lower=0, upper=1> choice;  // Binary choices made at each trial
-  array[T] int<lower=0, upper=4> shown;   // Deck shown at each trial
-  array[T] real 		 outcome; // Outcome at each trial
+  int<lower=1> sid;
+  int<lower=1> T;
+  array[T] int<lower=0, upper=1> choice;
+  array[T] int<lower=0, upper=4> shown;
+  array[T] real outcome;
 }
 
 parameters {
-  // Subject-level raw parameters
-  real Arew_pr;                       // Reward learning rate
-  real Apun_pr;                       // Punishment learning rate
-  real betaF;                      // Weight for frequency (EF)
-  real betaB;                      // Bias to play vs. pass
+  real Arew_pr;
+  real Apun_pr;
+  real betaF;
+  real betaB;
 }
 
 transformed parameters {
-  // Transform subject-level raw parameters
   real<lower=0, upper=1> Arew;
   real<lower=0, upper=1> Apun;
-  real betaF;
-  real betaB; // New bias parameter
 
-  Arew   = inv_logit(Arew_pr);
-  Apun   = inv_logit(Apun_pr);
+  Arew = inv_logit(Arew_pr);
+  Apun = inv_logit(Apun_pr);
 }
 
 model {
-  // Individual priors
-  Arew_pr  ~ normal(0, 1);
-  Apun_pr  ~ normal(0, 1);
-  betaF ~ normal(0, 1);
-  betaB ~ normal(0, 1);
+  Arew_pr ~ normal(0, 1);
+  Apun_pr ~ normal(0, 1);
+  betaF   ~ normal(0, 1);
+  betaB   ~ normal(0, 1);
 
-  vector[4] ev = rep_vector(0., 4);           // Expected value
-  vector[4] ef = rep_vector(0., 4);           // Expected frequency
+  vector[4] ev = rep_vector(0., 4);
+  vector[4] ef = rep_vector(0., 4);
     
-    // Call the Play/Pass ORL model function
-  ev = igt_model_lp(
-    choice,
-    shown,
-    outcome,
-    ev,
-    ef,
-    Arew,
-    Apun,
-    betaF,
-    betaB
-    );
-  }
+  ev = igt_model_lp(choice, shown, outcome, ev, ef, T,
+                    Arew, Apun, betaF, betaB);
 }

@@ -1,105 +1,106 @@
+// Optimized Hierarchical PVL-Decay Model for the Iowa Gambling Task
 functions {
-  vector igt_model_lp(
+  // Returns log-likelihood instead of modifying target
+  real igt_subject(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, int Tsub,
         real sensitivity, real gain, real loss, real decay
         ) {
-    // Define values
+    real log_lik = 0.0;
     real curUtil;
     vector[4] local_ev = ev;
     
-    // For each trial
     for (t in 1:Tsub) {
-      // Choice probability
-      target += categorical_logit_lpmf(choice[t] | sensitivity * local_ev);
+      log_lik += categorical_logit_lpmf(choice[t] | sensitivity * local_ev);
       
-      // Compute utility from wins and losses separately
       curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
-      
-      // Decay all deck values
       local_ev = local_ev * (1 - decay);
-      
-      // Add utility to chosen deck
       local_ev[choice[t]] += curUtil;
     }
     
-    return local_ev;
+    return log_lik;
+  }
+  
+  // Parallelization wrapper
+  real partial_sum_func(array[] int slice_n, int start, int end,
+                        array[,] int choice, array[,] real wins, array[,] real losses, 
+                        array[] int Tsubj,
+                        array[] real con, array[] real gain, 
+                        array[] real loss, array[] real decay) {
+    real log_lik = 0.0;
+    
+    for (n in start:end) {
+      vector[4] ev = rep_vector(0., 4);
+      real sensitivity = pow(3, con[n]) - 1;
+      
+      log_lik += igt_subject(choice[n, 1:Tsubj[n]],
+                             wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
+                             ev, Tsubj[n], sensitivity, gain[n], 
+                             loss[n], decay[n]);
+    }
+    return log_lik;
   }
 }
 
 data {
-  int<lower=1> N;                              // Number of subjects
-  int<lower=1> T;                              // Maximum number of trials
-  array[N] int<lower=1> sid;      	       // Subject IDs
-  array[N] int<lower=1> Tsubj;                 // Number of trials for each subject
-  array[N, T] int<lower=1, upper=4> choice;   // Choices made at each trial (1-4)
-  array[N, T] real<lower=0> wins;             // Win amount at each trial
-  array[N, T] real<lower=0> losses;           // Loss amount at each trial
+  int<lower=1> N;
+  int<lower=1> T;
+  array[N] int<lower=1> Tsubj;
+  array[N, T] int<lower=1, upper=4> choice;
+  array[N, T] real<lower=0> wins;
+  array[N, T] real<lower=0> losses;
+}
+
+transformed data {
+  array[N] int subject_indices;
+  for (i in 1:N) {
+    subject_indices[i] = i;
+  }
 }
 
 parameters {
-  // Group-level hyperparameters
-  array[4] real mu_pr;                // Group means for all parameters
-  array[4] real<lower=0> sigma;       // Group standard deviations
+  array[4] real mu_pr;
+  array[4] real<lower=0> sigma;
 
-  // Subject-level raw parameters
-  array[N] real con_pr;               // Consistency parameter
-  array[N] real gain_pr;              // Value sensitivity
-  array[N] real loss_pr;              // Loss aversion
-  array[N] real decay_pr;             // Decay rate
+  array[N] real con_pr;
+  array[N] real gain_pr;
+  array[N] real loss_pr;
+  array[N] real decay_pr;
 }
 
 transformed parameters {
-  // Transform subject-level raw parameters
   array[N] real<lower=0, upper=5> con;
   array[N] real<lower=0, upper=2> gain;
   array[N] real<lower=0, upper=10> loss;
   array[N] real<lower=0, upper=1> decay;
   
-  // Hierarchical transformation
-  for (n in 1:N) {
-    con[n]   = inv_logit(mu_pr[1] + sigma[1] * con_pr[n]) * 5;
-    gain[n]  = inv_logit(mu_pr[2] + sigma[2] * gain_pr[n]) * 2;
-    loss[n]  = inv_logit(mu_pr[3] + sigma[3] * loss_pr[n]) * 10;
-    decay[n] = inv_logit(mu_pr[4] + sigma[4] * decay_pr[n]);
-  }
+  con   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 5);
+  gain  = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(gain_pr)) * 2);
+  loss  = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(loss_pr)) * 10);
+  decay = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(decay_pr)));
 }
 
 model {
-  // Hyperpriors
-  for (i in 1:4) {
-    mu_pr[i] ~ normal(0, 1);
-    sigma[i] ~ normal(0, 2);
-  }
+  mu_pr ~ normal(0, 1);
+  sigma ~ normal(0, 2);
 
-  // Subject-level priors
-  for (n in 1:N) {
-    con_pr[n]   ~ normal(0, 1);
-    gain_pr[n]  ~ normal(0, 1);
-    loss_pr[n]  ~ normal(0, 1);
-    decay_pr[n] ~ normal(0, 1);
-  }
+  con_pr   ~ normal(0, 1);
+  gain_pr  ~ normal(0, 1);
+  loss_pr  ~ normal(0, 1);
+  decay_pr ~ normal(0, 1);
 
-  // Process each subject
-  for (n in 1:N) {
-    vector[4] ev = rep_vector(0., 4);
-    real sensitivity = pow(3, con[n]) - 1;
-    
-    // Use the same function as single-subject model
-    ev = igt_model_lp(choice[n, 1:Tsubj[n]],
-                      wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], ev, 
-                      Tsubj[n], sensitivity, gain[n], loss[n], decay[n]);
-  }
+  int grainsize = max(1, N %/% 4);
+  target += reduce_sum(partial_sum_func, subject_indices, grainsize,
+                       choice, wins, losses, Tsubj,
+                       con, gain, loss, decay);
 }
 
 generated quantities {
-  // Group-level parameters in interpretable scale
   real<lower=0, upper=5> mu_con;
   real<lower=0, upper=2> mu_gain;
   real<lower=0, upper=10> mu_loss;
   real<lower=0, upper=1> mu_decay;
   
-  // Compute interpretable group-level parameters
   mu_con   = inv_logit(mu_pr[1]) * 5;
   mu_gain  = inv_logit(mu_pr[2]) * 2;
   mu_loss  = inv_logit(mu_pr[3]) * 10;
