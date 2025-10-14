@@ -81,8 +81,6 @@ transformed parameters {
   real<lower=0, upper=1> Arew;
   real<lower=0, upper=1> Apun;
   real<lower=0, upper=5> K;
-  real betaF;
-  real betaP;
   
   Arew  = inv_logit(Arew_pr);
   Apun  = inv_logit(Apun_pr);

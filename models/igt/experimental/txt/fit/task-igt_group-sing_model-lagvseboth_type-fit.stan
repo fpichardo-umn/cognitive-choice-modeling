@@ -3,7 +3,7 @@ functions {
         array[] int choice, array[] real wins, array[] real losses,
         vector ev_exploit, vector choice_lag, int Tsub,
         real sensitivity, real gain, real loss,
-	real update, real phi
+	real update, real decay, real phi
         ) {
     // Define values
     real curUtil;

@@ -52,7 +52,7 @@ functions {
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
         // Update ef for all decks with fictive outcomes
-        local_ef += PEfreq_fic * (1 - decay_;
+        local_ef += PEfreq_fic * (1 - decay);
 
 	// Decay all
 	local_ef[choice[t]] = local_ef[choice[t]] * (1 - decay);
