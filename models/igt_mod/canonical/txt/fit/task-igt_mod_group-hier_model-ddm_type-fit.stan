@@ -62,7 +62,7 @@ generated quantities {
   real mu_drift = mu_pr[4];
 
   {
-    vector[4] mu_transformed = inv_logit(mu_pr);
+    array[N] real mu_transformed = inv_logit(mu_pr);
     real RTlowerbound = (mean(minRT) - RTbound) + RTbound;
 
     mu_boundary = exp(mu_transformed[1] * 10 - 5);
