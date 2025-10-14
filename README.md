@@ -1,6 +1,6 @@
 # Cognitive Choice Modeling Pipeline for Decision-Making Tasks
 
-### 🚧 Work in Progress 🚧
+### Work in Progress
 
 Please note that this pipeline and its documentation are currently under active development. The structure and functionality may change, and some sections of this README may be incomplete. Feedback and contributions are welcome!
 
