@@ -107,7 +107,7 @@ model {
     real sensitivity = pow(3, con[n]) - 1;
     
     ev_exploit = igt_model_lp(choice[n, 1:Tsubj[n]], 
-                              wins[n, 1:Tsubj[n]], abs(losses[n, 1:Tsubj[n]]),
+                              wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]],
                               ev_exploit, ev_explore, Tsubj[n], 
                               sensitivity, gain[n], loss[n],
                               update[n], decay[n], phi[n]);

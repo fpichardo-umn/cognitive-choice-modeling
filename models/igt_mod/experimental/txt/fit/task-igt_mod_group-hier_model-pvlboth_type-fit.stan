@@ -21,7 +21,11 @@ functions {
       Info[t] = sensitivity[t] * local_ev[curDeck];
 
       // Compute utility
-      curUtil = pow(abs(outcome[t]), gain) * (outcome[t] > 0 ? 1 : -1 * loss);
+      if (outcome[t] > 0) {
+        curUtil = pow(outcome[t], gain);
+      } else {
+        curUtil = -loss * pow(-outcome[t], gain);
+      }
 
       // Update expected values
       local_ev -= decay * local_ev; // Decay every deck

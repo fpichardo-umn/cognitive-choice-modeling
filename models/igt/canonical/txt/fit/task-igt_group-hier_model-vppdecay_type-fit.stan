@@ -121,7 +121,7 @@ model {
     
     // Use the same function as single-subject model
     ev = igt_model_lp(choice[n, 1:Tsubj[n]],
-                      wins[n, 1:Tsubj[n]], abs(losses[n, 1:Tsubj[n]]), 
+                      wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
                       ev, pers, Tsubj[n], sensitivity, decay[n], gain[n], loss[n], 
                       epP[n], epN[n], K[n], w[n]);
   }

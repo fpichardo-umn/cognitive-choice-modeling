@@ -56,7 +56,7 @@ functions {
       // Call the single-subject function and accumulate the log-likelihood
       log_lik += igt_subject(choice[n, 1:Tsubj[n]],
                                   wins[n, 1:Tsubj[n]],
-                                  abs(losses[n, 1:Tsubj[n]]),
+                                  losses[n, 1:Tsubj[n]],
                                   Tsubj[n],
                                   sensitivity, gain[n], loss[n], decay[n], phi[n]);
     }

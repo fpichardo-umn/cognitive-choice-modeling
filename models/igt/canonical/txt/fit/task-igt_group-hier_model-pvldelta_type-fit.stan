@@ -84,7 +84,7 @@ model {
     
     // Use the same function as single-subject model
     ev = igt_model_lp(choice[n, 1:Tsubj[n]],
-                      wins[n, 1:Tsubj[n]], abs(losses[n, 1:Tsubj[n]]), ev, 
+                      wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], ev, 
                       Tsubj[n], sensitivity, gain[n], loss[n], update[n]);
   }
 }

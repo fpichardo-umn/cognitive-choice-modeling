@@ -116,6 +116,6 @@ model {
   vector[4] ef = rep_vector(0., 4);  // Expected frequency
   
   // Run model
-  ev = igt_model_lp(choice, wins, abs(losses), ev, ef, T, 
+  ev = igt_model_lp(choice, wins, losses, ev, ef, T, 
 			Arew, Apun, decay, K, betaF, betaP);
 }

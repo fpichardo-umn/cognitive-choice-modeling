@@ -88,7 +88,7 @@ model {
   real sensitivity = pow(3, con) - 1;
   
   // Run model
-  ev_exploit = igt_model_lp(choice, wins, abs(losses), 
+  ev_exploit = igt_model_lp(choice, wins, losses, 
 				ev_exploit, ev_explore, T, 
                            	sensitivity, gain, loss, update, 
 				explore_alpha, explore_bonus);

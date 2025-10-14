@@ -78,7 +78,7 @@ functions {
       
       log_lik += igt_subject(choice[n, 1:Tsubj[n]],
                              wins[n, 1:Tsubj[n]], 
-                             abs(losses[n, 1:Tsubj[n]]),
+                             losses[n, 1:Tsubj[n]],
                              ev, ef, Tsubj[n], 
                              Drew[n], Dpun[n], K[n], 
                              betaF[n], betaP[n]);
