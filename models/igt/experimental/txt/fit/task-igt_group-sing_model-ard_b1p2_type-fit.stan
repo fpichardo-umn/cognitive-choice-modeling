@@ -169,17 +169,8 @@ model {
   vector[4] V_subj = [V1, V2, V3, V4]';
 
   // Create trial-varying boundary and tau vectors for this subject
-  vector[T] boundaries;
-  vector[T] taus;
-    
-  // Check if the subject has more than 20 trials to avoid errors
-  if (Tsubj > 20) {
-      boundaries = append_row(rep_vector(boundary1, 20), rep_vector(boundary, Tsubj - 20));
-      taus = append_row(rep_vector(tau1, 20), rep_vector(tau, Tsubj - 20));
-  } else {
-      boundaries = rep_vector(boundary1, Tsubj);
-      taus = rep_vector(tau1, Tsubj);
-  }
+  vector[T] boundaries = append_row(rep_vector(boundary1, 20), rep_vector(boundary, T - 20));
+  vector[T] taus = append_row(rep_vector(tau1, 20), rep_vector(tau, T - 20));
     
   // Compute log-likelihood for the subject and add to the total
   target += igt_ard_model_lp(
