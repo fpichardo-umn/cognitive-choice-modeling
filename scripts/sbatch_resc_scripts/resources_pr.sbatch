@@ -1,8 +1,8 @@
 #!/bin/bash -l
 #SBATCH -J pipeline
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --ntasks-per-node=4
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=64gb
 #SBATCH --tmp=64gb
 #SBATCH -t 96:00:00
@@ -15,6 +15,10 @@ module load R/4.2.0-rocky8
 module load gcc/13.1.0-mptekim
 module load cmake/3.29.2-rocky8 
 module load boost/1.82.0-gcc-13.1.0-sox6zlc
+
+# Set the number of threads for Stan's reduce_sum
+# This MUST match the value of --cpus-per-task
+export STAN_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # Get environment variables passed from submission script
 # Required variables
