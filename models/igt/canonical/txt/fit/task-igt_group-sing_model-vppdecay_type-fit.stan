@@ -96,7 +96,7 @@ model {
   // Initialize values
   vector[4] ev = rep_vector(0., 4);
   vector[4] pers = rep_vector(0., 4);
-  real sensitivity = pow(3, con) - 1;
+  real sensitivity = expm1(log(3) * con);
   
   // Run model
   ev = igt_model_lp(choice, wins, losses, ev, pers, T, sensitivity, decay, gain, loss, epP, epN, K, w);
