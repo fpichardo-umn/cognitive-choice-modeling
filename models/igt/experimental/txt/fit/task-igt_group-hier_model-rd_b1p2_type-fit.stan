@@ -61,9 +61,9 @@ functions {
 
   // Trial-level function for the simpler model
   real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
-                    vector boundaries, vector taus, real urgency, real drift_scale) {
+                    vector boundaries, vector taus, real urgency, real drift_con) {
     real log_lik = 0.0;
-    vector[4] drift_rates = urgency + drift_scale * V_subj;
+    vector[4] drift_rates = urgency + drift_con * V_subj;
 
     for (t in 1:T) {
       if (RT[t] != 999) {
@@ -79,7 +79,7 @@ functions {
                    array[] real V1, array[] real V2, array[] real V3, array[] real V4,
                    array[] real boundary1, array[] real boundary,
                    array[] real tau1, array[] real tau,
-                   array[] real urgency, array[] real drift_scale) {
+                   array[] real urgency, array[] real drift_con) {
     real log_lik = 0.0;
     for (n in start:end) {
       vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
@@ -93,7 +93,7 @@ functions {
       
       log_lik += igt_rd_model(
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-          V_subj, boundaries, taus, urgency[n], drift_scale[n]
+          V_subj, boundaries, taus, urgency[n], drift_con[n]
       );
     }
     return log_lik;
@@ -122,7 +122,7 @@ parameters {
   array[N] real<lower=-5, upper=5> tau1_pr;
   array[N] real<lower=-5, upper=5> tau_pr;
   array[N] real<lower=-5, upper=5> urgency_pr;
-  array[N] real<lower=-5, upper=5> drift_scale_pr;
+  array[N] real<lower=-5, upper=5> drift_con_pr;
   array[N] real<lower=-5, upper=5> V1_pr;
   array[N] real<lower=-5, upper=5> V2_pr;
   array[N] real<lower=-5, upper=5> V3_pr;
@@ -134,7 +134,7 @@ transformed parameters {
   array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
   array[N] real<lower=0.001> urgency;
-  array[N] real<lower=0.001> drift_scale;
+  array[N] real<lower=0.001> drift_con;
   array[N] real V1;
   array[N] real V2;
   array[N] real V3;
@@ -145,7 +145,7 @@ transformed parameters {
   tau1        = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   tau         = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   urgency     = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) + 0.01);
-  drift_scale = to_array_1d(log1p_exp(mu_pr[6] + sigma[6] .* to_vector(drift_scale_pr)) + 0.01);
+  drift_con = to_array_1d(log1p_exp(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) + 0.01);
   V1          = to_array_1d(mu_pr[7]  + sigma[7]  .* to_vector(V1_pr));
   V2          = to_array_1d(mu_pr[8]  + sigma[8]  .* to_vector(V2_pr));
   V3          = to_array_1d(mu_pr[9]  + sigma[9] .* to_vector(V3_pr));
@@ -160,7 +160,7 @@ model {
   tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   urgency_pr ~ normal(0, 1);
-  drift_scale_pr ~ normal(0, 1);
+  drift_con_pr ~ normal(0, 1);
   V1_pr ~ normal(0, 1);
   V2_pr ~ normal(0, 1);
   V3_pr ~ normal(0, 1);
@@ -172,7 +172,7 @@ model {
                        Tsubj, choice, RT,
                        V1, V2, V3, V4,
                        boundary1, boundary, tau1, tau,
-                       urgency, drift_scale);
+                       urgency, drift_con);
 }
 
 generated quantities {
@@ -181,7 +181,7 @@ generated quantities {
   real mu_tau1 = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_tau  = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_urgency = log1p_exp(mu_pr[5]) + 0.01;
-  real mu_drift_scale = log1p_exp(mu_pr[6]) + 0.01;
+  real mu_drift_con = log1p_exp(mu_pr[6]) + 0.01;
   real mu_V1 = mu_pr[7];
   real mu_V2 = mu_pr[8];
   real mu_V3 = mu_pr[9];
