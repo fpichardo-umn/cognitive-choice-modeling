@@ -42,7 +42,7 @@ functions {
   // Simplified likelihood for a 4-way "win-first" race
   real win_first_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {
     real t = RT - tau;
-    if (t <= 1e-5) return -infinity(); // Use a small threshold for safety
+    if (t <= 1e-5) return negative_infinity(); // Use a small threshold for safety
 
     array[3] int loser_indices;
     int k = 1;
@@ -67,7 +67,7 @@ functions {
 
     for (t in 1:T) {
       if (RT[t] != 999) {
-        log_lik += win_first_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
+        log_lik += win_first_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
       }
     }
     return log_lik;
