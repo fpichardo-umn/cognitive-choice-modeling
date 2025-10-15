@@ -23,7 +23,9 @@ functions {
       target += categorical_logit_lpmf(choice[t] | sensitivity * combined_value);
       
       // Calculate utility (using value sensitivity for wins and losses)
-      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+curUtil = win_component - loss * loss_component;
       
       // Exploitation: Update chosen deck
       local_ev_exploit[choice[t]] += curUtil + update * (curUtil - local_ev_exploit[choice[t]]);;

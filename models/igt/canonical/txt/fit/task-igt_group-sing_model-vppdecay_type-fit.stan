@@ -24,7 +24,9 @@ functions {
       
       // Calculate utility & update perseverance
       // Use separate values for wins and losses
-      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+curUtil = win_component - loss * loss_component;
       
       // Update perseverance based on net outcome
       if (wins[t] >= losses[t]) {

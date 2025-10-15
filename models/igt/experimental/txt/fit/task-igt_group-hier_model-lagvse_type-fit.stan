@@ -24,7 +24,9 @@ functions {
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * combined_value);
       
       // Calculate utility
-      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+      real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+      curUtil = win_component - loss * loss_component;
       
       // Exploitation: Decay all deck values
       local_ev_exploit *= (1 - decay);
@@ -51,7 +53,7 @@ functions {
 
     for (n in start:end) {
       // Calculate sensitivity for this subject
-      real sensitivity = pow(3, con[n]) - 1;
+      real sensitivity = expm1(log(3) * con[n]);
       
       // Call the single-subject function and accumulate the log-likelihood
       log_lik += igt_subject(choice[n, 1:Tsubj[n]],

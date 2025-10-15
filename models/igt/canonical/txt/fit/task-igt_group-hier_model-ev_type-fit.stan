@@ -30,7 +30,7 @@ functions {
     
     for (n in start:end) {
       vector[4] ev = rep_vector(0., 4);
-      real sensitivity = pow(3, con[n]) - 1;
+      real sensitivity = expm1(log(3) * con[n]);
       
       log_lik += igt_subject(choice[n, 1:Tsubj[n]],
                              wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 

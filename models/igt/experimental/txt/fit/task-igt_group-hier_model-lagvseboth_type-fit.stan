@@ -18,7 +18,9 @@ functions {
       combined_value = local_ev_exploit + phi * local_choice_lag;
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * combined_value);
       
-      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+curUtil = win_component - loss * loss_component;
       local_ev_exploit = local_ev_exploit * (1 - decay);
       local_ev_exploit[choice[t]] += curUtil + update * (curUtil - local_ev_exploit[choice[t]]);
       local_choice_lag[choice[t]] = 0;
@@ -38,7 +40,7 @@ functions {
     for (n in start:end) {
       vector[4] ev_exploit = rep_vector(0., 4);
       vector[4] ev_explore = rep_vector(0., 4);
-      real sensitivity = pow(3, con[n]) - 1;
+      real sensitivity = expm1(log(3) * con[n]);
       
       log_lik += igt_subject(choice[n, 1:Tsubj[n]], 
                              wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]],

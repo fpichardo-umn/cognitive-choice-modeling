@@ -18,7 +18,9 @@ functions {
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * V);
       
       local_pers = local_pers * K;
-      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+curUtil = win_component - loss * loss_component;
       
       if (wins[t] >= losses[t]) {
         local_pers[choice[t]] += epP;
@@ -45,7 +47,7 @@ functions {
     for (n in start:end) {
       vector[4] ev = rep_vector(0., 4);
       vector[4] pers = rep_vector(0., 4);
-      real sensitivity = pow(3, con[n]) - 1;
+      real sensitivity = expm1(log(3) * con[n]);
       
       log_lik += igt_subject(choice[n, 1:Tsubj[n]],
                              wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 

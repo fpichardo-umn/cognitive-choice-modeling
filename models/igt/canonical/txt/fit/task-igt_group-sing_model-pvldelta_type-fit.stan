@@ -14,7 +14,9 @@ functions {
       target += categorical_logit_lpmf(choice[t] | sensitivity * local_ev);
       
       // Compute utility from wins and losses separately
-      curUtil = pow(wins[t], gain) - loss * pow(losses[t], gain);
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+curUtil = win_component - loss * loss_component;
       
       // Update expected value using delta rule
       local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
