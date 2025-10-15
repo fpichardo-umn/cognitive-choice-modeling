@@ -36,12 +36,6 @@ preprocess_data <- function(data, task, RTbound_min_ms, RTbound_max_ms = NULL, r
   } else if (rt_method == "mark") {
     # Mark trials with RT < RTbound_min as 999
     data$RT[data$RT < RTbound_min] <- 999
-    
-    # Mark trials with RT > RTbound_max as 999 (if max bound provided)
-    if (!is.null(RTbound_max_ms)) {
-      RTbound_max <- as.numeric(RTbound_max_ms) / 1000
-      data$RT[data$RT > RTbound_max] <- 999
-    }
   } else if (rt_method == "force") {
     # Force RTs below bound to be equal to bound
     data$RT[data$RT < RTbound_min] <- RTbound_min
@@ -58,6 +52,12 @@ preprocess_data <- function(data, task, RTbound_min_ms, RTbound_max_ms = NULL, r
       
       # Remove trials with RT > RTbound_max
       data <- data[data$RT <= RTbound_max, ]
+    } else if (rt_method == "mark") {
+      # Mark trials with RT > RTbound_max as 999 (if max bound provided)
+      if (!is.null(RTbound_max_ms)) {
+        RTbound_max <- as.numeric(RTbound_max_ms) / 1000
+        data$RT[data$RT > RTbound_max] <- 999
+      }
     } else if (rt_method == "force") {
       # Force RTs above bound to be equal to bound
       data$RT[data$RT > RTbound_max] <- RTbound_max

@@ -1,11 +1,11 @@
-opt_model = "orlboth"
+opt_model = "rd_b1p2"
 # =======
 #opt_model = "orl"
 
 opt_task = "igt"
-opt_cohort = "luc"
+opt_cohort = "adb"
 opt_session = "00"
-opt_nsubs = 182#92
+opt_nsubs = 92#182#92
 opt_group = "hier"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
