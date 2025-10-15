@@ -1,17 +1,14 @@
 // Single-Subject RL-RD Model for the Iowa Gambling Task
 functions {
-  // Defensive PDF for the Wald (Inverse Gaussian) distribution
+  // Defensive PDF for Racing Diffusion/Wald
   vector race_pdf_vec(vector t, vector boundary, vector drift) {
     int n = num_elements(t);
-    // 1. Perform expensive math on whole vectors first
     vector[n] sqrt_t = sqrt(t);
     vector[n] denom = sqrt(2 * pi()) .* t .* sqrt_t;
     vector[n] boundary_over = boundary ./ denom;
     vector[n] drift_t_minus_boundary = drift .* t - boundary;
     vector[n] exponent = -0.5 * square(drift_t_minus_boundary) ./ t;
-  
     vector[n] result;
-    // 2. Now, loop ONLY for the conditional assignment to prevent underflow
     for (i in 1:n) {
       if (exponent[i] < -30) {
         result[i] = 1e-10;
@@ -22,35 +19,30 @@ functions {
     return result;
   }
 
-  // Defensive CDF for the Wald (Inverse Gaussian) distribution
+  // Defensive CDF for Racing Diffusion/Wald
   vector race_cdf_vec(vector t, vector boundary, vector drift) {
     int n = num_elements(t);
-    // 1. Perform expensive math on whole vectors first
     vector[n] sqrt_t = sqrt(t);
     vector[n] term1 = (drift .* t - boundary) ./ sqrt_t;
     vector[n] term2 = -(drift .* t + boundary) ./ sqrt_t;
     vector[n] expo_arg = 2.0 * drift .* boundary;
-  
     vector[n] result;
-    // 2. Loop for conditional logic and clamping to prevent overflow/underflow
     for (i in 1:n) {
       if (expo_arg[i] > 30) {
         result[i] = Phi_approx(term1[i]);
       } else {
         result[i] = Phi_approx(term1[i]) + exp(expo_arg[i]) * Phi_approx(term2[i]);
       }
-    
-      // Clamp values
       if (result[i] <= 0) result[i] = 1e-10;
       if (result[i] >= 1) result[i] = 1 - 1e-10;
     }
     return result;
   }
 
-  [cite_start]// Likelihood for a 4-way "win-first" race on a single trial [cite: 14]
+  // Simplified likelihood for a 4-way "win-first" race
   real win_first_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {
     real t = RT - tau;
-    if (t <= 1e-5) return negative_infinity(); [cite_start]// RT must be greater than non-decision time [cite: 15]
+    if (t <= 1e-5) return negative_infinity(); // Use a small threshold for safety
 
     array[3] int loser_indices;
     int k = 1;
@@ -61,23 +53,36 @@ functions {
       }
     }
 
-    // Calculate log prob of winner and sum of log prob of losers not finishing
-    [cite_start]real log_pdf_winner = log(race_pdf_vec(rep_vector(t, 1), rep_vector(boundary, 1), drift_rates[choice:choice])[1]); [cite: 17]
-    [cite_start]vector[3] cdf_losers = race_cdf_vec(rep_vector(t, 3), rep_vector(boundary, 3), drift_rates[loser_indices]); [cite: 18]
+    real log_pdf_winner = log(race_pdf_vec(rep_vector(t, 1), rep_vector(boundary, 1), drift_rates[choice:choice])[1]);
+    vector[3] cdf_losers = race_cdf_vec(rep_vector(t, 3), rep_vector(boundary, 3), drift_rates[loser_indices]);
     
-    [cite_start]return log_pdf_winner + sum(log1m(cdf_losers)); [cite: 19]
+    return log_pdf_winner + sum(log1m(cdf_losers));
+  }
+
+  // Trial-level function for the simpler model
+  real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
+                    vector boundaries, vector taus, real urgency, real drift_con) {
+    real log_lik = 0.0;
+    vector[4] drift_rates = urgency + drift_con * V_subj;
+
+    for (t in 1:T) {
+      if (RT[t] != 999) {
+        log_lik += win_first_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+      }
+    }
+    return log_lik;
   }
 
   // Trial-level function for the RD model
   real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
                     vector boundaries, vector taus, real urgency, real drift_con) {
     real log_lik = 0.0;
-    [cite_start]// Drift rates are constant across trials for this model [cite: 20]
-    [cite_start]vector[4] drift_rates = urgency + drift_con * V_subj; [cite: 20]
+    // Drift rates are constant across trials for this model
+    vector[4] drift_rates = urgency + drift_con * V_subj;
 
     for (t in 1:T) {
       if (RT[t] != 999) { // Skip missed trials
-        [cite_start]log_lik += win_first_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates); [cite: 21]
+        log_lik += win_first_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
       }
     }
     return log_lik;
@@ -89,10 +94,10 @@ functions {
 data {
   int<lower=1> sid;                         // Subject ID
   int<lower=1> T;                           // Number of trials
-  real<lower=0> minRT;                      [cite_start]// Minimum RT for this subject [cite: 29]
-  real<lower=0> RTbound;                    [cite_start]// Lower bound of RT across all subjects [cite: 29]
-  array[T] int<lower=1, upper=4> choice;    [cite_start]// Choices made at each trial (1-4) [cite: 29]
-  array[T] real<lower=0> RT;                [cite_start]// Response times [cite: 29]
+  real<lower=0> minRT;                      // Minimum RT for this subject
+  real<lower=0> RTbound;                    // Lower bound of RT across all subjects
+  array[T] int<lower=1, upper=4> choice;    // Choices made at each trial (1-4)
+  array[T] real<lower=0> RT;                // Response times
 }
 
 //---

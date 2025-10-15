@@ -36,8 +36,7 @@ functions {
 
     vector[n] z1 = (b - t .* drift_mean) / sv;
     vector[n] z2 = (b_minus_A - t .* drift_mean) / sv;
-    
-    // CORRECTED: A loop is required because std_normal_cdf is not element-wise.
+
     vector[n] cdf_z1;
     vector[n] cdf_z2;
     for (i in 1:n) {

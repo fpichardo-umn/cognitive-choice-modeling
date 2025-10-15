@@ -1,49 +1,59 @@
 // Single-Subject RL-ALBA Model for the Iowa Gambling Task
 functions {
-  // Optimized PDF for the Linear Ballistic Accumulator
+  // Computationally cheaper PDF for the Linear Ballistic Accumulator
   vector lba_pdf_vec(vector t, real boundary, vector drift_mean, real sv, real A) {
     int n = num_elements(t);
     real local_A = fmax(A, 1e-10);
 
     vector[n] b_minus_A = rep_vector(boundary - local_A, n);
     vector[n] b = rep_vector(boundary, n);
+
     vector[n] z1 = (b - t .* drift_mean) / sv;
     vector[n] z2 = (b_minus_A - t .* drift_mean) / sv;
     
-    // Vectorized standard normal PDF is more efficient
-    vector[n] pdf_z1 = std_normal_pdf(z1);
-    vector[n] pdf_z2 = std_normal_pdf(z2);
+    vector[n] pdf_z1;
+    vector[n] pdf_z2;
+    for (i in 1:n) {
+        pdf_z1[i] = exp(normal_lpdf(z1[i] | 0, 1));
+        pdf_z2[i] = exp(normal_lpdf(z2[i] | 0, 1));
+    }
 
     vector[n] term1 = drift_mean .* (std_normal_cdf(z1) - std_normal_cdf(z2));
     vector[n] term2 = sv * (pdf_z2 - pdf_z1);
     
     vector[n] pdf = (term1 + term2) / local_A;
-    // Defensive clamping for stability
     for(i in 1:n) if(pdf[i] < 1e-10) pdf[i] = 1e-10;
     return pdf;
   }
 
-  // Optimized CDF for the Linear Ballistic Accumulator
+  // Computationally cheaper CDF for the Linear Ballistic Accumulator
   vector lba_cdf_vec(vector t, real boundary, vector drift_mean, real sv, real A) {
     int n = num_elements(t);
     real local_A = fmax(A, 1e-10);
     
     vector[n] b_minus_A = rep_vector(boundary - local_A, n);
     vector[n] b = rep_vector(boundary, n);
+
     vector[n] z1 = (b - t .* drift_mean) / sv;
     vector[n] z2 = (b_minus_A - t .* drift_mean) / sv;
+
+    vector[n] cdf_z1;
+    vector[n] cdf_z2;
+    for (i in 1:n) {
+        cdf_z1[i] = std_normal_cdf(z1[i]);
+        cdf_z2[i] = std_normal_cdf(z2[i]);
+    }
     
-    // Vectorized standard normal CDF is more efficient
-    vector[n] cdf_z1 = std_normal_cdf(z1);
-    vector[n] cdf_z2 = std_normal_cdf(z2);
-    
-    vector[n] pdf_z1 = std_normal_pdf(z1);
-    vector[n] pdf_z2 = std_normal_pdf(z2);
+    vector[n] pdf_z1;
+    vector[n] pdf_z2;
+    for (i in 1:n) {
+        pdf_z1[i] = exp(normal_lpdf(z1[i] | 0, 1));
+        pdf_z2[i] = exp(normal_lpdf(z2[i] | 0, 1));
+    }
 
     vector[n] cdf = 1 + ( (b - t .* drift_mean) .* cdf_z1 - 
                           (b_minus_A - t .* drift_mean) .* cdf_z2 - 
                           sv * (pdf_z1 - pdf_z2) ) / local_A;
-    // Defensive clamping for stability
     for (i in 1:n) {
       if (cdf[i] <= 0) cdf[i] = 1e-10;
       if (cdf[i] >= 1) cdf[i] = 1 - 1e-10;
@@ -51,19 +61,19 @@ functions {
     return cdf;
   }
   
-  // Likelihood function calling the LBA pdf/cdf for a single trial
+  // Likelihood function calling the LBA pdf/cdf
   real alba_win_all_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates,
                          real A, real sv,
                          array[,] int win_indices_all, array[,] int lose_indices_all) {
     real t = RT - tau;
-    if (t <= 1e-5) return negative_infinity(); // Return -inf if RT is less than non-decision time
+    if (t <= 1e-5) return negative_infinity();
 
     array[3] int winning_indices = win_indices_all[choice];
     array[9] int losing_indices = lose_indices_all[choice];
-    
+
     vector[3] pdf_winners = lba_pdf_vec(rep_vector(t, 3), boundary, drift_rates[winning_indices], sv, A);
     vector[9] cdf_losers = lba_cdf_vec(rep_vector(t, 9), boundary, drift_rates[losing_indices], sv, A);
-    
+
     return sum(log(pdf_winners)) + sum(log1m(cdf_losers));
   }
   
