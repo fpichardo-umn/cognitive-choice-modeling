@@ -275,7 +275,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"),
+    params = setdiff(c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -289,7 +289,7 @@ get_igt_defaults = function() {
   
   models[["igt_hier_ard_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
-    params = c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"),
+    params = setdiff(c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -586,7 +586,7 @@ get_igt_defaults = function() {
   
   models[["igt_hier_orlboth"]] <- list(
     data = data_types$basic_hier_igt,
-    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_decay, param_sets$orl_igt),
+    params = c(param_sets$orl_base, param_sets$orl_delta, "decay", param_sets$orl_igt),
     non_pr_params = NULL,
     exclude_params = NULL
   )

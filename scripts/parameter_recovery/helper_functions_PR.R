@@ -27,7 +27,7 @@ setup_directories <- function(task, create_missing = TRUE) {
   MODELS_DIR <- get_models_dir(task)
   
   # SIM dirs
-  PARAMS_DIR <- file.path(SIM_OUT_DIR, "params")
+  PARAMS_DIR <- file.path(SIM_OUT_DIR, "parameters")
   TXT_SIM_DIR <- file.path(SIM_OUT_DIR, "data", "txt")
   RDS_SIM_DIR <- file.path(SIM_OUT_DIR, "data", "rds")
   PPC_DIR <- file.path(SIM_OUT_DIR, "ppc")

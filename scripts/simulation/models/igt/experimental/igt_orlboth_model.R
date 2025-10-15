@@ -24,8 +24,7 @@ igtORLBOTHModel <- R6::R6Class("igtORLBOTHModel",
       return(list(
         Arew = list(range = c(0, 1)),
         Apun = list(range = c(0, 1)),
-        Drew = list(range = c(0, 1)),
-        Dpun = list(range = c(0, 1)),
+        decay = list(range = c(0, 1)),
         K = list(range = c(0, 5)),
         betaF = list(range = c(-10, 10)),
         betaP = list(range = c(-10, 10))
@@ -47,8 +46,7 @@ igtORLBOTHModel <- R6::R6Class("igtORLBOTHModel",
       # Extract parameters
       Arew <- parameters$Arew
       Apun <- parameters$Apun
-      Drew <- parameters$Drew
-      Dpun <- parameters$Dpun
+      decay <- parameters$decay
       K <- parameters$K
       betaF <- parameters$betaF
       betaP <- parameters$betaP
@@ -91,24 +89,22 @@ igtORLBOTHModel <- R6::R6Class("igtORLBOTHModel",
         # Update EV and EF based on valence
         if (wins[t] >= losses[t]) {
           # Net gain
-          # Update ef for all decks with fictive outcomes (using 1-Dpun as weight)
-          self$ef <- self$ef + PEfreq_fic * (1 - Dpun)
+          self$ef <- self$ef + PEfreq_fic * (1 - decay)
           
           # Decay chosen deck BEFORE applying learning update
-          self$ef[choices[t]] <- self$ef[choices[t]] * (1 - Drew)
-          self$ev[choices[t]] <- self$ev[choices[t]] * (1 - Drew)
+          self$ef[choices[t]] <- self$ef[choices[t]] * (1 - decay)
+          self$ev[choices[t]] <- self$ev[choices[t]] * (1 - decay)
           
           # Update chosen deck with learning rates
           self$ef[choices[t]] <- self$ef[choices[t]] + Arew * PEfreq
           self$ev[choices[t]] <- self$ev[choices[t]] + Arew * PEval
         } else {
           # Net loss
-          # Update ef for all decks with fictive outcomes (using 1-Drew as weight)
-          self$ef <- self$ef + PEfreq_fic * (1 - Drew)
+          self$ef <- self$ef + PEfreq_fic * (1 - decay)
           
           # Decay chosen deck BEFORE applying learning update
-          self$ef[choices[t]] <- self$ef[choices[t]] * (1 - Dpun)
-          self$ev[choices[t]] <- self$ev[choices[t]] * (1 - Dpun)
+          self$ef[choices[t]] <- self$ef[choices[t]] * (1 - decay)
+          self$ev[choices[t]] <- self$ev[choices[t]] * (1 - decay)
           
           # Update chosen deck with learning rates
           self$ef[choices[t]] <- self$ef[choices[t]] + Apun * PEfreq
@@ -146,8 +142,7 @@ igtORLBOTHModel <- R6::R6Class("igtORLBOTHModel",
       # Extract parameters
       Arew <- parameters$Arew
       Apun <- parameters$Apun
-      Drew <- parameters$Drew
-      Dpun <- parameters$Dpun
+      decay <- parameters$decay
       K <- parameters$K
       betaF <- parameters$betaF
       betaP <- parameters$betaP
@@ -189,15 +184,15 @@ igtORLBOTHModel <- R6::R6Class("igtORLBOTHModel",
         
         # Update based on valence
         if (win >= lose) {
-          ef <- ef + PEfreq_fic * (1 - Dpun)
-          ef[choice] <- ef[choice] * (1 - Drew)
-          ev[choice] <- ev[choice] * (1 - Drew)
+          ef <- ef + PEfreq_fic * (1 - decay)
+          ef[choice] <- ef[choice] * (1 - decay)
+          ev[choice] <- ev[choice] * (1 - decay)
           ef[choice] <- ef[choice] + Arew * PEfreq
           ev[choice] <- ev[choice] + Arew * PEval
         } else {
-          ef <- ef + PEfreq_fic * (1 - Drew)
-          ef[choice] <- ef[choice] * (1 - Dpun)
-          ev[choice] <- ev[choice] * (1 - Dpun)
+          ef <- ef + PEfreq_fic * (1 - decay)
+          ef[choice] <- ef[choice] * (1 - decay)
+          ev[choice] <- ev[choice] * (1 - decay)
           ef[choice] <- ef[choice] + Apun * PEfreq
           ev[choice] <- ev[choice] + Apun * PEval
         }
