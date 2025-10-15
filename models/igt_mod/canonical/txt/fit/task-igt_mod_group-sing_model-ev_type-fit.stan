@@ -55,7 +55,7 @@ model {
   update_pr  ~ normal(0, 1);
 
   vector[4] ev = rep_vector(0., 4);
-  real sensitivity = pow(3, con) - 1;
+  real sensitivity = expm1(log(3) * con);
 
   ev = igt_model_lp(choice, shown, outcome, ev, T, sensitivity,
                     update, wgt_pun, wgt_rew);

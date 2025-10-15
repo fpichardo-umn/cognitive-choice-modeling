@@ -14,10 +14,12 @@ functions {
       Info[t] = sensitivity * local_ev[curDeck];
 
       if (outcome[t] > 0) {
-        curUtil = pow(outcome[t], gain);
-      } else {
-        curUtil = -loss * pow(-outcome[t], gain);
-      }
+  curUtil = exp(gain * log(outcome[t]));
+} else if (outcome[t] < 0) {
+  curUtil = -loss * exp(gain * log(-outcome[t]));
+} else {
+  curUtil = 0;
+}
 
       local_ev[curDeck] += (curUtil - local_ev[curDeck]) * update * choice[t];
     }
@@ -61,7 +63,7 @@ model {
   update_pr ~ normal(0, 1);
 
   vector[4] ev = rep_vector(0., 4);
-  real sensitivity = pow(3, con) - 1;
+  real sensitivity = expm1(log(3) * con);
 
   ev = igt_model_lp(choice, shown, outcome, ev, T, sensitivity,
                     gain, loss, update);
