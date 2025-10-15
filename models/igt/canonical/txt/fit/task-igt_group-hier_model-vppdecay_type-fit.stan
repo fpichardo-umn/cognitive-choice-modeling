@@ -108,7 +108,7 @@ transformed parameters {
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 2);
+  sigma ~ normal(0, 1);
 
   con_pr   ~ normal(0, 1);
   decay_pr ~ normal(0, 1);
