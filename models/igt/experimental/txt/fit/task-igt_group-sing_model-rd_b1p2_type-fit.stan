@@ -59,20 +59,6 @@ functions {
     return log_pdf_winner + sum(log1m(cdf_losers));
   }
 
-  // Trial-level function for the simpler model
-  real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
-                    vector boundaries, vector taus, real urgency, real drift_con) {
-    real log_lik = 0.0;
-    vector[4] drift_rates = urgency + drift_con * V_subj;
-
-    for (t in 1:T) {
-      if (RT[t] != 999) {
-        log_lik += win_first_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
-      }
-    }
-    return log_lik;
-  }
-
   // Trial-level function for the RD model
   real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
                     vector boundaries, vector taus, real urgency, real drift_con) {
@@ -82,7 +68,7 @@ functions {
 
     for (t in 1:T) {
       if (RT[t] != 999) { // Skip missed trials
-        log_lik += win_first_lpdf(RT[t], choice[t], taus[t], boundaries[t], drift_rates);
+        log_lik += win_first_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
       }
     }
     return log_lik;
