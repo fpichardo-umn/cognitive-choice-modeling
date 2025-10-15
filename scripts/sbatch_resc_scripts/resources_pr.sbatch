@@ -95,10 +95,13 @@ CMD_ARGS+=("--subs-file" "$SUBS_FILE")
 CMD_ARGS+=("--n-trials" "$N_TRIALS")
 CMD_ARGS+=("--n-iter" "$n_iter")
 CMD_ARGS+=("--check-iter" "$check_iter")
+CMD_ARGS+=("--n-warmup" "$n_warmup")
 CMD_ARGS+=("--fit-config" "$FIT_CONFIG")
 CMD_ARGS+=("--data-config" "$DATA_CONFIG")
 CMD_ARGS+=("--method" "$METHOD")
-CMD_ARGS+=("--n-warmup" "$n_warmup")
+CMD_ARGS+=("--rt_method" "$rt_method")
+CMD_ARGS+=("--rt_min" "$RTbound_min_ms")
+CMD_ARGS+=("--rt_max" "$RTbound_max_ms")
 
 # Add no-indiv flag if enabled
 if [ "$NO_INDIV" = true ]; then

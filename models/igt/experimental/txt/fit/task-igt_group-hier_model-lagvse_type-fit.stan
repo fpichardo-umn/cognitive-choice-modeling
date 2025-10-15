@@ -117,7 +117,7 @@ transformed parameters {
 model {
   // Hyperpriors (vectorized for efficiency)
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ normal(0, 0.2);
 
   // Subject-level priors (vectorized for efficiency)
   con_pr   ~ normal(0, 1);

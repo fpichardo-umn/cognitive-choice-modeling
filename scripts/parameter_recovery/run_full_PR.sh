@@ -34,6 +34,9 @@ CHECK_ITER=1000
 INDIV=true
 RENDER=true
 EXCLUDE_FILE=""
+RTMETHOD="mark"
+RTBOUND_MIN_MS=50
+RTBOUND_MAX_MS=4000
 
 # Help message
 show_help() {
@@ -82,6 +85,9 @@ show_help() {
     echo "  --check-iter N       - Checkpoint iteration interval (default: 1000)"
     echo "                         Note: Only applies to hierarchical modes (group/hier);"
     echo "                         for batch mode (sing), set in config files"
+    echo "  --rt_method N        - Method dealing with trials with invalid RTs (default: marks; remove)"
+    echo "  --rt_max N           - RT lower bound in milliseconds (default: 50)"
+    echo "  --rt_min N           - RT upper bound in milliseconds (default: 4000)"
     echo ""
     echo "Parameter generation options:"
     echo "  --method METHOD      - Parameter generation method (default: mbSPSepse)"
@@ -208,6 +214,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --max-treedepth|--max_treedepth)
             MAX_TREEDEPTH="$2"
+            shift 2
+            ;;
+        --rt_method|--rt-method)
+            RTMETHOD="$2"
+            shift 2
+            ;;
+        --rt_max|--rt-max)
+            RTBOUND_MAX_MS="$2"
+            shift 2
+            ;;
+        --rt_min|--rt-min)
+            RTBOUND_MIN_MS="$2"
             shift 2
             ;;
         --check-iter|--check_iter)
@@ -570,6 +588,13 @@ print_recovery_options() {
 # Function to run model fitting (batch or hierarchical based on group type)
 run_fit() {
     echo "Running $FIT_APPROACH model fitting for $FULL_MODEL_NAME..."
+    # SOURCE config files to get MCMC and data parameters
+    CONFIG_DIR="./scripts/configs"
+    FIT_CONFIG_FILE="${CONFIG_DIR}/fit_params_${FIT_CONFIG}.conf"
+    DATA_CONFIG_FILE="${CONFIG_DIR}/data_params_${DATA_CONFIG}.conf"
+
+    source "$FIT_CONFIG_FILE"
+    source "$DATA_CONFIG_FILE"
     
     if [ "$DRY_RUN" = true ]; then
         print_fit_options
@@ -590,6 +615,7 @@ run_fit() {
             "--fit_config $FIT_CONFIG"
             "--data_config $DATA_CONFIG"
             "--subjects $SUBJECTS"
+            "--n_trials ${N_TRIALS:-120}"
             "--subs_file $SUBS_FILE"
             "--n_warmup $N_WARMUP"
             "--n_iter $N_ITER"
@@ -598,6 +624,9 @@ run_fit() {
             "--max_treedepth $MAX_TREEDEPTH"
             "--check_iter $CHECK_ITER"
             "--seed $SEED"
+            "--rt_method $RTMETHOD"
+            "--RTbound_min_ms $RTBOUND_MIN_MS"
+            "--RTbound_max_ms $RTBOUND_MAX_MS"
         )
         if [ "$PARALLEL" = true ]; then
             CMD_ARGS+=(
@@ -630,6 +659,9 @@ run_fit() {
             "--max_treedepth $MAX_TREEDEPTH"
             "--check_iter $CHECK_ITER"
             "--seed $SEED"
+            "--rt_method $RTMETHOD"
+            "--RTbound_min_ms $RTBOUND_MIN_MS"
+            "--RTbound_max_ms $RTBOUND_MAX_MS"
         )
         
         Rscript "scripts/fit/fit_hierarchical_models_cmdSR.R" ${CMD_ARGS[@]}

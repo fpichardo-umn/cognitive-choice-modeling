@@ -90,8 +90,8 @@ igtLAGVSEModel <- R6::R6Class("igtLAGVSEModel",
                                  choices = choices,
                                  wins = wins,
                                  losses = losses,
-                                 choice_lag_history = choice_lag_history,
-                                 ev_explore_history = ev_explore_history
+                                 ev_exploit_history = ev_exploit_history,
+                                 choice_lag_history = choice_lag_history
                                ))
                              },
                              
