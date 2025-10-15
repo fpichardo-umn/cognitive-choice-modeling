@@ -69,7 +69,7 @@ param_sets <- list(
   ),
   
   # SSM parameters
-  ssm_only = c("V1", "V2", "V3", "V4"),
+  ssm_only = c(param_sets$ssm_only),
   rdm_base = c("boundary", "tau", "urgency"),
   rdm_simple = c("boundary", "tau", "drift_A", "drift_B", "drift_C", "drift_D"),
   rdm_b1p2 = c(
@@ -663,7 +663,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$ssm_only), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -677,7 +677,7 @@ get_igt_defaults = function() {
   
   models[["igt_hier_ard_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
-    params = setdiff(c(param_sets$ard_b1p2, "V1", "V2", "V3", "V4"), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$ssm_only), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -689,16 +689,30 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_alba_b1p2"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
+    params = setdiff(c(param_sets$alba_b1p2, param_sets$ssm_only), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_hier_alba_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
-    params = setdiff(c(param_sets$alba_b1p2, "V1", "V2", "V3", "V4"), "con"),
+    params = setdiff(c(param_sets$alba_b1p2, param_sets$ssm_only), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_rd_b1p2"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$ssm_only), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_hier_rd_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
-    params = setdiff(c(param_sets$rd_b1p2, "V1", "V2", "V3", "V4"), "con"),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$ssm_only), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
