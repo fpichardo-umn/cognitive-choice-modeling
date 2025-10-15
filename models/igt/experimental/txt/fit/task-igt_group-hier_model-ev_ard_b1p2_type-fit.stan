@@ -231,7 +231,7 @@ transformed parameters {
 //---
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ normal(0, 0.5);
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
