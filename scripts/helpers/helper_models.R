@@ -690,14 +690,14 @@ get_igt_defaults = function() {
   )
   
   models[["igt_hier_alba_b1p2"]] <- list(
-    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt))),
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
     params = setdiff(c(param_sets$alba_b1p2, "V1", "V2", "V3", "V4"), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_hier_rd_b1p2"]] <- list(
-    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt))),
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
     params = setdiff(c(param_sets$rd_b1p2, "V1", "V2", "V3", "V4"), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
