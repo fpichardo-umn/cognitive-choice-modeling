@@ -50,6 +50,14 @@ option_list <- list(
               help="Iteration interval for checkpoint runs"),
   make_option(c("--hier_subs_file"), type="character", default=NULL, 
               help="Path to hierarchical subject list file"),
+  make_option(c("--fitting_method"), type="character", default="mcmc",
+              help="Fitting method: mcmc or pathfinder (default: mcmc)"),
+  make_option(c("--pf_num_paths"), type="integer", default=4,
+              help="Pathfinder: number of paths (default: 4)"),
+  make_option(c("--pf_draws"), type="integer", default=1000,
+              help="Pathfinder: number of final draws after PSIS (default: 1000)"),
+  make_option(c("--pf_single_path_draws"), type="integer", default=250,
+              help="Pathfinder: draws per single path (default: 250)"),
   make_option(c("--dry_run"), action="store_true", default=FALSE, 
               help="Perform a dry run")
 )
@@ -234,7 +242,11 @@ fit <- fit_and_save_model(
   init_params = NULL,
   cohort_sub_dir = FALSE,
   model_status = opt$model_status,
-  data_filt_list = data_filt
+  data_filt_list = data_filt,
+  fitting_method = opt$fitting_method,
+  pf_num_paths = opt$pf_num_paths,
+  pf_draws = opt$pf_draws,
+  pf_single_path_draws = opt$pf_single_path_draws
 )
 
 if (!opt$dry_run) {

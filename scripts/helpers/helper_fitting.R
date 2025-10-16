@@ -39,25 +39,33 @@ fix_duplicate_cohort_path <- function(file_path, cohort) {
 #' @param data_list List of data to fit the model to
 #' @param n_subs Integer number of subjects
 #' @param n_trials Integer number of trials
-#' @param n_warmup Integer number of warmup iterations
-#' @param n_iter Integer number of sampling iterations
-#' @param n_chains Integer number of chains
-#' @param adapt_delta Numeric adaptation delta parameter
-#' @param max_treedepth Integer maximum tree depth
+#' @param n_warmup Integer number of warmup iterations (MCMC only)
+#' @param n_iter Integer number of sampling iterations (MCMC only)
+#' @param n_chains Integer number of chains (MCMC) or paths (Pathfinder)
+#' @param adapt_delta Numeric adaptation delta parameter (MCMC only)
+#' @param max_treedepth Integer maximum tree depth (MCMC only)
 #' @param model_params Character vector of model parameters
 #' @param dry_run Boolean to perform a dry run without actual sampling
-#' @param checkpoint_interval Integer number of iterations between checkpoints
+#' @param checkpoint_interval Integer number of iterations between checkpoints (MCMC only)
 #' @param output_dir Optional character string with output directory path
 #' @param emp_bayes Boolean indicating whether this is an empirical Bayes model
 #' @param informative_priors Optional list of informative priors
 #' @param init_params Optional list of parameter initializations
+#' @param fitting_method Character string specifying method: "mcmc" or "pathfinder" (default: "mcmc")
+#' @param pf_num_paths Integer number of pathfinder paths (default: 4)
+#' @param pf_draws Integer number of final draws after PSIS (default: 1000)
+#' @param pf_single_path_draws Integer draws per single path (default: 250)
+#' @param pf_psis_resample Boolean whether to use PSIS resampling (default: TRUE)
+#' @param pf_calculate_lp Boolean whether to calculate log probability (default: TRUE)
 #' @return List with fitted model results or NULL for dry run
 fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_type, data_list, 
                               n_subs, n_trials, n_warmup, n_iter, n_chains, adapt_delta, max_treedepth, 
                               model_params, dry_run = FALSE, checkpoint_interval = 1000, 
                               output_dir = NULL, emp_bayes = FALSE, informative_priors = NULL,
                               init_params = NULL, cohort_sub_dir = TRUE, model_status = NULL,
-                              is_simulation = FALSE, index = NULL, data_filt_list = NULL) {
+                              is_simulation = FALSE, index = NULL, data_filt_list = NULL,
+                              fitting_method = "mcmc", pf_num_paths = 4, pf_draws = 1000,
+                              pf_single_path_draws = 250, pf_psis_resample = TRUE, pf_calculate_lp = TRUE) {
   
   # Create the model string and get the model path
   model_str <- paste(task, group_type, model_name, sep="_")
@@ -118,15 +126,22 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   # Dry run only prints information without fitting
   if (dry_run) {
     cat("Dry run for model:", model_str, "\n")
+    cat("Fitting method:", fitting_method, "\n")
     cat("Data list:\n")
     print(str(data_list))
     cat("Parameters:\n")
     cat("n_subs =", n_subs, "\n")
-    cat("n_warmup =", n_warmup, "\n")
-    cat("n_iter =", n_iter, "\n")
-    cat("n_chains =", n_chains, "\n")
-    cat("adapt_delta =", adapt_delta, "\n")
-    cat("max_treedepth =", max_treedepth, "\n")
+    if (fitting_method == "mcmc") {
+      cat("n_warmup =", n_warmup, "\n")
+      cat("n_iter =", n_iter, "\n")
+      cat("n_chains =", n_chains, "\n")
+      cat("adapt_delta =", adapt_delta, "\n")
+      cat("max_treedepth =", max_treedepth, "\n")
+    } else if (fitting_method == "pathfinder") {
+      cat("num_paths =", pf_num_paths, "\n")
+      cat("draws =", pf_draws, "\n")
+      cat("single_path_draws =", pf_single_path_draws, "\n")
+    }
     if (!is.null(informative_priors)) {
       cat("Using informative priors\n")
     }
@@ -139,12 +154,28 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   }
   
   cat("Fitting model:", model_str, "\n")
+  cat("Fitting method:", fitting_method, "\n")
   
   # Add informative priors to data_list if provided
   if (!is.null(informative_priors)) {
     data_list$pr_mu <- unname(sapply(model_params, function(param) informative_priors[[param]][1]))
     data_list$pr_sigma <- unname(sapply(model_params, function(param) informative_priors[[param]][2]))
   }
+  
+  # Branch based on fitting method
+  if (fitting_method == "pathfinder") {
+    # === Pathfinder Fitting (No Checkpointing) ===
+    
+    fit_result <- run_pathfinder_and_process(
+      stanmodel_arg, data_list, pf_num_paths, pf_draws, pf_single_path_draws,
+      pf_psis_resample, pf_calculate_lp, model_str, task, n_subs, model_params, 
+      output_file, init_params
+    )
+    
+  } else if (fitting_method != "mcmc") {
+    stop("Invalid fitting_method: must be 'mcmc' or 'pathfinder'")
+  } else {
+    # === MCMC Fitting with Checkpointing ===
   
   # Initialize or load checkpoint state
   checkpoint_state <- initialize_or_load_checkpoint(checkpoint_file)
@@ -213,6 +244,8 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
     accumulated_samples, accumulated_diagnostics, n_warmup, n_iter, n_chains,
     adapt_delta, max_treedepth, model_str, task, n_subs, model_params, output_file
   )
+  
+  }  # End of MCMC branch
   
   # Add additional metadata
   fit_result$cmdstan_version <- cmdstan_version()
@@ -589,6 +622,136 @@ validate_empirical_bayes <- function(hier_fit, emp_fit, model_params, subs_df, n
 }
 
 
+
+#' Run Pathfinder and process results
+#' @param stanmodel_arg Stan model object
+#' @param data_list List of data for the model
+#' @param num_paths Integer number of pathfinder paths
+#' @param draws Integer number of final draws after PSIS
+#' @param single_path_draws Integer draws per single path
+#' @param psis_resample Boolean whether to use PSIS resampling
+#' @param calculate_lp Boolean whether to calculate log probability
+#' @param model_str Character string with model name
+#' @param task Character string with task name
+#' @param n_subs Integer number of subjects
+#' @param model_params Character vector of model parameters
+#' @param output_file Character string with output file path
+#' @param init_params Optional initialization
+#' @return List with processed pathfinder results
+run_pathfinder_and_process <- function(stanmodel_arg, data_list, num_paths, draws, 
+                                      single_path_draws, psis_resample, calculate_lp,
+                                      model_str, task, n_subs, model_params, 
+                                      output_file, init_params) {
+  
+  cat("Running Pathfinder with", num_paths, "paths...\n")
+  
+  # Run Pathfinder
+  fit <- stanmodel_arg$pathfinder(
+    data = data_list,
+    num_paths = num_paths,
+    draws = draws,
+    single_path_draws = single_path_draws,
+    psis_resample = psis_resample,
+    calculate_lp = calculate_lp,
+    init = if (!is.null(init_params)) init_params else NULL,
+    refresh = 100
+  )
+  
+  cat("Pathfinder complete. Processing results...\n")
+  
+  # Extract draws
+  all_samples <- fit$draws()
+  
+  # Get parameter names
+  param_names <- dimnames(all_samples)[[3]]
+  
+  # Calculate summary statistics
+  summary_stats <- posterior::summarize_draws(all_samples)
+  
+  # Calculate parameter diagnostics
+  diagnostics <- calculate_param_diagnostics_batch(all_samples, param_names)
+  
+  # Extract Pathfinder-specific diagnostics
+  pf_diagnostics <- list(
+    num_paths = num_paths,
+    total_draws = draws,
+    method = "pathfinder"
+  )
+  
+  # Extract diagnostic draws (lp__ and lp_approx__)
+  diagnostic_vars <- c("lp__", "lp_approx__")
+  available_diagnostics <- diagnostic_vars[diagnostic_vars %in% param_names]
+  
+  if (length(available_diagnostics) > 0) {
+    # Create a diagnostics draws object similar to MCMC's sampler_diagnostics
+    pf_sampler_diagnostics <- all_samples[, , available_diagnostics, drop = FALSE]
+  } else {
+    pf_sampler_diagnostics <- NULL
+  }
+  
+  # Extract summary statistics for diagnostics
+  if ("lp__" %in% param_names) {
+    lp_draws <- all_samples[,,"lp__"]
+    pf_diagnostics$lp_mean <- mean(lp_draws)
+    pf_diagnostics$lp_sd <- sd(lp_draws)
+    pf_diagnostics$lp_min <- min(lp_draws)
+    pf_diagnostics$lp_max <- max(lp_draws)
+  }
+  
+  # Extract ELBO statistics (lp_approx__ is the ELBO from Pathfinder)
+  if ("lp_approx__" %in% param_names) {
+    lp_approx_draws <- all_samples[,,"lp_approx__"]
+    pf_diagnostics$elbo_mean <- mean(lp_approx_draws)
+    pf_diagnostics$elbo_sd <- sd(lp_approx_draws)
+    pf_diagnostics$elbo_min <- min(lp_approx_draws)
+    pf_diagnostics$elbo_max <- max(lp_approx_draws)
+  }
+  
+  # Create fit result structure compatible with MCMC output
+  fit_result <- list(
+    draws = all_samples,
+    sampler_diagnostics = pf_sampler_diagnostics,  # Pathfinder diagnostic draws (lp__, lp_approx__)
+    n_warmup = 0,  # No warmup in Pathfinder
+    n_iter = draws,
+    n_params = dim(all_samples)[3],
+    n_chains = num_paths,  # Treat paths as "chains" for compatibility
+    tss = dim(all_samples)[1],
+    all_params = param_names,
+    list_params = unique(gsub("\\[.*?\\]", "", param_names)),
+    summary_stats = summary_stats,
+    diagnostic_summary = pf_diagnostics,
+    diagnostics = diagnostics,
+    model_name = model_str,
+    task = task,
+    fitting_method = "pathfinder",
+    filename = output_file
+  )
+  
+  # Extract parameters for diagnostics
+  cat("Extracting parameters\n")
+  fit_result$params <- extract_params(fit_result$all_params, n_subs = n_subs, main_params_vec = model_params)
+  fit_result$params <- unname(fit_result$params)
+  fit_result$model_params = model_params
+  
+  # Print convergence info
+  cat("\nPathfinder Diagnostics:\n")
+  cat("  Num paths:", num_paths, "\n")
+  cat("  Total draws:", draws, "\n")
+  if (!is.null(pf_diagnostics$lp_mean)) {
+    cat("  Log probability (lp__):\n")
+    cat("    Mean:", round(pf_diagnostics$lp_mean, 2), "\n")
+    cat("    SD:", round(pf_diagnostics$lp_sd, 2), "\n")
+    cat("    Range: [", round(pf_diagnostics$lp_min, 2), ",", round(pf_diagnostics$lp_max, 2), "]\n")
+  }
+  if (!is.null(pf_diagnostics$elbo_mean)) {
+    cat("  ELBO (lp_approx__):\n")
+    cat("    Mean:", round(pf_diagnostics$elbo_mean, 2), "\n")
+    cat("    SD:", round(pf_diagnostics$elbo_sd, 2), "\n")
+    cat("    Range: [", round(pf_diagnostics$elbo_min, 2), ",", round(pf_diagnostics$elbo_max, 2), "]\n")
+  }
+  
+  return(fit_result)
+}
 
 create_param_init_list <- function(model_params, no_suffix = NULL, exclude = NULL, default_value = 0) {
   # Remove excluded parameters

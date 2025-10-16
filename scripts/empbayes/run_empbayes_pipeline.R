@@ -59,6 +59,16 @@ option_list <- list(
   make_option(c("--check_iter"), type="integer", default=1000, 
               help="Checkpoint interval"),
   
+  # Fitting method parameters
+  make_option(c("--fitting_method"), type="character", default="mcmc",
+              help="Fitting method for hierarchical model: mcmc or pathfinder (default: mcmc)"),
+  make_option(c("--pf_num_paths"), type="integer", default=4,
+              help="Pathfinder: number of paths (default: 4)"),
+  make_option(c("--pf_draws"), type="integer", default=1000,
+              help="Pathfinder: number of final draws (default: 1000)"),
+  make_option(c("--pf_single_path_draws"), type="integer", default=250,
+              help="Pathfinder: draws per path (default: 250)"),
+  
   # Other parameters
   make_option(c("--seed"), type="integer", default=29518, 
               help="Random seed"),
@@ -206,7 +216,11 @@ if (2 %in% steps_to_run) {
     "--n_chains", as.character(opt$n_chains),
     "--adapt_delta", as.character(opt$adapt_delta),
     "--max_treedepth", as.character(opt$max_treedepth),
-    "--check_iter", as.character(opt$check_iter)
+    "--check_iter", as.character(opt$check_iter),
+    "--fitting_method", opt$fitting_method,
+    "--pf_num_paths", as.character(opt$pf_num_paths),
+    "--pf_draws", as.character(opt$pf_draws),
+    "--pf_single_path_draws", as.character(opt$pf_single_path_draws)
   )
   
   if (!is.null(opt$hier_subs_file)) {
