@@ -69,7 +69,7 @@ param_sets <- list(
   ),
   
   # SSM parameters
-  ssm_only = c(param_sets$ssm_only),
+  ssm_only = c("V1", "V2", "V3", "V4"),
   rdm_base = c("boundary", "tau", "urgency"),
   rdm_simple = c("boundary", "tau", "drift_A", "drift_B", "drift_C", "drift_D"),
   rdm_b1p2 = c(
