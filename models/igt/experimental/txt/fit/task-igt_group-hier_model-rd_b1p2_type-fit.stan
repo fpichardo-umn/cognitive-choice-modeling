@@ -41,7 +41,7 @@ functions {
 
   // Simplified likelihood for a 4-way "win-first" race
   real win_first_lpdf(real RT, int choice, real tau, real boundary, vector drift_rates) {
-    real t = RT - tau;
+    real t = fmax(RT - tau, 1e-3); // clamp for numerical stability
     if (t <= 1e-5) return negative_infinity(); // Use a small threshold for safety
 
     array[3] int loser_indices;
