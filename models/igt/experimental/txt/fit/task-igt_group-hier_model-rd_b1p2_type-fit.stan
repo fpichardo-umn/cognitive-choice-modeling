@@ -133,23 +133,23 @@ transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary;
   array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
-  array[N] real<lower=0.001> urgency;
-  array[N] real<lower=0.001> drift_con;
-  array[N] real V1;
-  array[N] real V2;
-  array[N] real V3;
-  array[N] real V4;
+  array[N] real<lower=0.001, upper=20> urgency;
+  array[N] real<lower=0.001, upper=20> drift_con;
+  array[N] real<lower=-10, upper=10> V1;
+  array[N] real<lower=-10, upper=10> V2;
+  array[N] real<lower=-10, upper=10> V3;
+  array[N] real<lower=-10, upper=10> V4;
 
   boundary1   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
   boundary    = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
   tau1        = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   tau         = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  urgency     = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) + 0.01);
-  drift_con = to_array_1d(log1p_exp(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) + 0.01);
-  V1          = to_array_1d(mu_pr[7]  + sigma[7]  .* to_vector(V1_pr));
-  V2          = to_array_1d(mu_pr[8]  + sigma[8]  .* to_vector(V2_pr));
-  V3          = to_array_1d(mu_pr[9]  + sigma[9] .* to_vector(V3_pr));
-  V4          = to_array_1d(mu_pr[10] + sigma[10] .* to_vector(V4_pr));
+  urgency     = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) * 19.999 + 0.001);
+  drift_con   = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) * 19.999 + 0.001);
+  V1          = to_array_1d((inv_logit(mu_pr[7]  + sigma[7]  .* to_vector(V1_pr)) - 0.5) * 20);
+  V2          = to_array_1d((inv_logit(mu_pr[8]  + sigma[8]  .* to_vector(V2_pr)) - 0.5) * 20);
+  V3          = to_array_1d((inv_logit(mu_pr[9]  + sigma[9]  .* to_vector(V3_pr)) - 0.5) * 20);
+  V4          = to_array_1d((inv_logit(mu_pr[10] + sigma[10] .* to_vector(V4_pr)) - 0.5) * 20);
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -177,13 +177,13 @@ model {
 
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
-  real mu_boundary = inv_logit(mu_pr[2]) * 4.99 + 0.001;
-  real mu_tau1 = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_tau  = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_urgency = log1p_exp(mu_pr[5]) + 0.01;
-  real mu_drift_con = log1p_exp(mu_pr[6]) + 0.01;
-  real mu_V1 = mu_pr[7];
-  real mu_V2 = mu_pr[8];
-  real mu_V3 = mu_pr[9];
-  real mu_V4 = mu_pr[10];
+  real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
+  real mu_tau1 	    = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real mu_tau       = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001);
+  real mu_drift_con = inv_logit(mu_pr[6]) * 19.999 + 0.001);
+  real mu_V1        = (inv_logit(mu_pr[7]) - 0.5) * 20;
+  real mu_V2        = (inv_logit(mu_pr[8]) - 0.5) * 20;
+  real mu_V3        = (inv_logit(mu_pr[9]) - 0.5) * 20;
+  real mu_V4        = (inv_logit(mu_pr[10]) - 0.5) * 20;
 }
