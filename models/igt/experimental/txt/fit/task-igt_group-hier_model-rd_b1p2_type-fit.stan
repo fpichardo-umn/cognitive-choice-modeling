@@ -180,8 +180,8 @@ generated quantities {
   real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
   real mu_tau1 	    = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_tau       = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001);
-  real mu_drift_con = inv_logit(mu_pr[6]) * 19.999 + 0.001);
+  real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001;
+  real mu_drift_con = inv_logit(mu_pr[6]) * 19.999 + 0.001;
   real mu_V1        = (inv_logit(mu_pr[7]) - 0.5) * 20;
   real mu_V2        = (inv_logit(mu_pr[8]) - 0.5) * 20;
   real mu_V3        = (inv_logit(mu_pr[9]) - 0.5) * 20;
