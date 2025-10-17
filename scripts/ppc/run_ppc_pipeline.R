@@ -78,7 +78,11 @@ output_dir <- if(!is.null(opt$output_dir)) opt$output_dir else get_ppc_dir(opt$t
 # Determine which steps to run
 steps_to_run <- opt$steps
 if (steps_to_run == "all") {
-  steps_to_run <- c("simulate", "stats", "loglik", "report")
+  # Run loglik before stats since:
+  # 1. Both only depend on simulation (independent)
+  # 2. Loglik is fast, stats is slow
+  # 3. Get IC results quickly while stats runs
+  steps_to_run <- c("simulate", "loglik", "stats", "report")
 } else {
   steps_to_run <- strsplit(steps_to_run, ",")[[1]]
 }
@@ -150,17 +154,53 @@ if (!is.null(opt$exclude_file)) {
   run_stats_args <- paste0(run_stats_args, " --exclude_file \"", opt$exclude_file, "\"")
 }
 
-run_loglik_args <- paste0(
-  " --model ", opt$model,
-  " --task ", opt$task,
-  " --cohort ", opt$cohort,
-  " --group ", group_for_output_files,  # Use group_for_output_files for output file naming
-  " --sim_file \"", sim_file, "\"",
-  " --ic_method ", opt$ic_method,
-  " --rt_method ", opt$rt_method,
-  " --RTbound_min_ms ", opt$RTbound_min_ms,
-  " --RTbound_max_ms ", opt$RTbound_max_ms
-)
+# Build loglik args - use sim_file if it exists, otherwise use fit_file
+if (file.exists(sim_file)) {
+  run_loglik_args <- paste0(
+    " --model ", opt$model,
+    " --task ", opt$task,
+    " --cohort ", opt$cohort,
+    " --group ", group_for_output_files,
+    " --sim_file \"", sim_file, "\"",
+    " --ic_method ", opt$ic_method,
+    " --rt_method ", opt$rt_method,
+    " --RTbound_min_ms ", opt$RTbound_min_ms,
+    " --RTbound_max_ms ", opt$RTbound_max_ms
+  )
+  message("Log-likelihood will use simulation file (if running)")
+} else {
+  # Use fit_file for direct data loading
+  if (!is.null(opt$fit_file)) {
+    fit_file_to_use <- opt$fit_file
+  } else {
+    # Construct fit file path
+    fit_dir <- get_fits_output_dir(opt$task, "fit", opt$cohort, opt$ses)
+    group_identifier <- if(opt$group == "hier") "hier" else opt$group_name
+    fit_file_to_use <- file.path(fit_dir, 
+                                 generate_bids_filename(NULL, opt$task, group_identifier, opt$model,
+                                                       ext = "rds", cohort = opt$cohort, ses = opt$ses,
+                                                       additional_tags = list("type" = "fit", "desc" = "output")))
+  }
+  
+  run_loglik_args <- paste0(
+    " --model ", opt$model,
+    " --task ", opt$task,
+    " --cohort ", opt$cohort,
+    " --group ", group_for_output_files,
+    " --fit_file \"", fit_file_to_use, "\"",
+    " --ic_method ", opt$ic_method,
+    " --rt_method ", opt$rt_method,
+    " --RTbound_min_ms ", opt$RTbound_min_ms,
+    " --RTbound_max_ms ", opt$RTbound_max_ms,
+    " --n_samples ", opt$n_sims
+  )
+  message("Log-likelihood will use fit file directly (no simulation needed)")
+}
+
+# Add exclude_file to loglik args if provided
+if (!is.null(opt$exclude_file)) {
+  run_loglik_args <- paste0(run_loglik_args, " --exclude_file \"", opt$exclude_file, "\"")
+}
 
 # Add session if provided
 if (!is.null(opt$ses)) {
@@ -207,7 +247,29 @@ if ("simulate" %in% steps_to_run) {
   message("Skipping simulation step as requested.")
 }
 
-# Step 2: Calculate statistics
+# Step 2: Calculate log-likelihood (independent of simulation!)
+if ("loglik" %in% steps_to_run) {
+  if (file.exists(loglik_file) && !opt$force) {
+    message("Log-likelihood output already exists. Skipping log-likelihood step. Use --force to override.")
+  } else {
+    # Loglik can run with or without simulation file
+    # It will use sim_file if available, otherwise load data directly from fit_file
+    
+    message("Step 2: Calculating log-likelihood")
+    loglik_script <- file.path(script_dir, "ppc", "run_loglik.R")
+    cmd <- paste0("Rscript \"", loglik_script, "\"", run_loglik_args)
+    message("Executing command: ", cmd)
+    system(cmd)
+    
+    if (!file.exists(loglik_file)) {
+      stop("Log-likelihood calculation failed. Output file not found: ", loglik_file)
+    }
+  }
+} else {
+  message("Skipping log-likelihood step as requested.")
+}
+
+# Step 3: Calculate statistics (can be slow, so runs after loglik)
 if ("stats" %in% steps_to_run) {
   if (file.exists(stats_file) && !opt$force) {
     message("Statistics output already exists. Skipping statistics step. Use --force to override.")
@@ -217,7 +279,7 @@ if ("stats" %in% steps_to_run) {
       stop("Simulation output not found. Run simulation step first: ", sim_file)
     }
     
-    message("Step 2: Calculating statistics")
+    message("Step 3: Calculating statistics")
     stats_script <- file.path(script_dir, "ppc", "run_stats.R")
     cmd <- paste0("Rscript \"", stats_script, "\"", run_stats_args)
     message("Executing command: ", cmd)
@@ -231,29 +293,7 @@ if ("stats" %in% steps_to_run) {
   message("Skipping statistics step as requested.")
 }
 
-# Step 3: Calculate log-likelihood
-if ("loglik" %in% steps_to_run) {
-  if (file.exists(loglik_file) && !opt$force) {
-    message("Log-likelihood output already exists. Skipping log-likelihood step. Use --force to override.")
-  } else {
-    # Check if simulation file exists
-    if (!file.exists(sim_file)) {
-      stop("Simulation output not found. Run simulation step first: ", sim_file)
-    }
-    
-    message("Step 3: Calculating log-likelihood")
-    loglik_script <- file.path(script_dir, "ppc", "run_loglik.R")
-    cmd <- paste0("Rscript \"", loglik_script, "\"", run_loglik_args)
-    message("Executing command: ", cmd)
-    system(cmd)
-    
-    if (!file.exists(loglik_file)) {
-      stop("Log-likelihood calculation failed. Output file not found: ", loglik_file)
-    }
-  }
-} else {
-  message("Skipping log-likelihood step as requested.")
-}
+
 
 # Step 4: Generate report
 if ("report" %in% steps_to_run) {

@@ -19,7 +19,9 @@ option_list = list(
   make_option(c("-g", "--group"), type="character", default="batch_001", help="Group identifier for file naming"),
   make_option(c("--ses"), type="character", default=NULL, help="Session identifier"),
   make_option(c("-s", "--sim_file"), type="character", default=NULL, 
-              help="Path to simulation file (optional, built from task, group, model if not provided)"),
+              help="Path to simulation file (optional - if not provided, loads data directly)"),
+  make_option(c("-f", "--fit_file"), type="character", default=NULL,
+              help="Path to fit file (optional - required if sim_file not provided)"),
   make_option(c("-e", "--exclude_file"), type="character", default=NULL, 
               help="File with subject IDs to exclude"),
   make_option(c("-o", "--output_dir"), type="character", default=NULL, 
@@ -27,11 +29,13 @@ option_list = list(
   make_option(c("-i", "--ic_method"), type="character", default="loo", 
               help="Information criterion method: loo or waic"),
   make_option(c("-r", "--rt_method"), type="character", default="remove", 
-              help="RT handling method: all, remove, force, adaptive"),
+              help="RT handling method: all, remove, force, adaptive, mark"),
   make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
               help="RT lower bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
-              help="RT upper bound in milliseconds")
+              help="RT upper bound in milliseconds"),
+  make_option(c("--n_samples"), type="integer", default=100,
+              help="Number of posterior samples to use for loglik calculation")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -54,20 +58,38 @@ directory_info <- ensure_ppc_dirs(opt$task, opt$cohort, opt$ses)
 # Set output directory
 output_dir <- if(!is.null(opt$output_dir)) opt$output_dir else get_ppc_loglik_dir(opt$task, opt$cohort, opt$ses)
 
-# Build simulation file path if not provided
-if (is.null(opt$sim_file)) {
-  # Use helper function to get the PPC simulation file path
+# Determine data loading mode
+use_simulation_file <- !is.null(opt$sim_file)
+use_direct_load <- !is.null(opt$fit_file)
+
+if (!use_simulation_file && !use_direct_load) {
+  # Try to find simulation file with standard path
   sim_file <- get_ppc_sim_file_path(opt$task, opt$model, opt$group, opt$cohort, opt$ses)
-  message("Using simulation file: ", sim_file)
-} else {
-  sim_file <- opt$sim_file
+  if (file.exists(sim_file)) {
+    message("Found simulation file, using that: ", sim_file)
+    use_simulation_file <- TRUE
+    opt$sim_file <- sim_file
+  } else {
+    # Try to find fit file with standard path
+    fit_dir <- get_fits_output_dir(opt$task, "fit", opt$cohort, opt$ses)
+    group_identifier <- if(opt$group == "hier") "hier" else opt$group
+    fit_file <- file.path(fit_dir, 
+                         generate_bids_filename(NULL, opt$task, group_identifier, opt$model,
+                                               ext = "rds", cohort = opt$cohort, ses = opt$ses,
+                                               additional_tags = list("type" = "fit", "desc" = "output")))
+    if (file.exists(fit_file)) {
+      message("Found fit file, using direct data loading: ", fit_file)
+      use_direct_load <- TRUE
+      opt$fit_file <- fit_file
+    } else {
+      stop("Neither simulation file nor fit file provided or found. Specify --sim_file or --fit_file")
+    }
+  }
 }
 
-# Load simulation data with error handling
-message("Loading simulation data...")
-simulation_data <- load_rds_safe(sim_file, "PPC simulation data")
-if (is.null(simulation_data)) {
-  stop("Failed to load simulation data from: ", sim_file)
+if (use_simulation_file && use_direct_load) {
+  message("Both simulation file and fit file provided. Using simulation file.")
+  use_direct_load <- FALSE
 }
 
 # Load exclude list if provided
@@ -77,29 +99,97 @@ if (!is.null(opt$exclude_file) && file.exists(opt$exclude_file)) {
   message(paste("Excluding", length(exclude_subjects), "subjects"))
 }
 
-# Extract observed data and parameter sets from simulation results
-message("Extracting data from simulation results...")
+# Extract observed data and parameter sets
 observed_data_list <- list()
 parameter_sets_by_subject <- list()
 
-for (subject_id in names(simulation_data)) {
-  if (is.null(exclude_subjects) || !subject_id %in% exclude_subjects) {
-    subject_sim <- simulation_data[[subject_id]]
-    
-    # Get observed data
-    observed_data_list[[subject_id]] <- subject_sim$observed_data
-    
-    # Extract parameter sets from first few simulations
-    param_sets <- list()
-    n_param_sets <- min(100, length(subject_sim$simulations))  # Use up to 100 parameter sets
-    
-    for (i in 1:n_param_sets) {
-      param_sets[[i]] <- subject_sim$simulations[[i]]$parameters
+if (use_simulation_file) {
+  # MODE A: Load from simulation file (existing behavior)
+  message("Loading observed data and parameters from simulation file...")
+  simulation_data <- load_rds_safe(opt$sim_file, "PPC simulation data")
+  if (is.null(simulation_data)) {
+    stop("Failed to load simulation data from: ", opt$sim_file)
+  }
+  
+  for (subject_id in names(simulation_data)) {
+    if (is.null(exclude_subjects) || !subject_id %in% exclude_subjects) {
+      subject_sim <- simulation_data[[subject_id]]
+      
+      # Get observed data
+      observed_data_list[[subject_id]] <- subject_sim$observed_data
+      
+      # Extract parameter sets from simulations
+      param_sets <- list()
+      n_param_sets <- min(opt$n_samples, length(subject_sim$simulations))
+      
+      for (i in 1:n_param_sets) {
+        param_sets[[i]] <- subject_sim$simulations[[i]]$parameters
+      }
+      
+      # Convert to data frame
+      param_df <- do.call(rbind, lapply(param_sets, as.data.frame))
+      parameter_sets_by_subject[[subject_id]] <- param_df
     }
+  }
+  
+} else if (use_direct_load) {
+  # MODE B: Load observed data and extract parameters from fitted models (new behavior)
+  message("Loading observed data directly and extracting parameters from fitted models...")
+  
+  # Load observed data
+  message("Loading observed data...")
+  all_data <- load_data(opt$task, opt$cohort, opt$ses)
+  
+  # Load fitted models
+  message("Loading fitted models from: ", opt$fit_file)
+  fits <- load_rds_safe(opt$fit_file, "fitted models")
+  if (is.null(fits)) {
+    stop("Failed to load fitted models from: ", opt$fit_file)
+  }
+  
+  # Get model info
+  task_config <- get_task_config(opt$task)
+  group_type <- if(opt$group == "hier") "hier" else "sing"
+  full_model_name <- paste(opt$task, group_type, opt$model, sep="_")
+  model_defaults <- get_model_defaults(opt$task)
+  model_params <- model_defaults[[full_model_name]]$params
+  
+  # Extract parameter sets from posterior
+  message("Extracting posterior parameter samples...")
+  parameter_sets_by_subject <- extract_posterior_draws(
+    fit_file = opt$fit_file,
+    model_key = full_model_name,
+    model_params = model_params,
+    n_samples = opt$n_samples,
+    exclude_subjects = exclude_subjects,
+    sampling_method = "random",  # For loglik, random sampling is fine
+    width_control = 0.95
+  )
+  
+  # Extract observed data for each subject
+  subject_ids <- names(parameter_sets_by_subject)
+  message("Extracting observed data for ", length(subject_ids), " subjects...")
+  
+  for (subject_id in subject_ids) {
+    subject_data <- all_data[all_data$subjID == subject_id, ]
     
-    # Convert to data frame
-    param_df <- do.call(rbind, lapply(param_sets, as.data.frame))
-    parameter_sets_by_subject[[subject_id]] <- param_df
+    # Convert to list format expected by loglik functions
+    if (opt$task == "igt_mod") {
+      observed_data_list[[subject_id]] <- list(
+        choice = subject_data$choice,
+        shown = subject_data$deck,
+        deck = subject_data$deck,
+        outcome = subject_data$outcome,
+        RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
+      )
+    } else if (opt$task == "igt") {
+      observed_data_list[[subject_id]] <- list(
+        choice = subject_data$choice,
+        wins = subject_data$wins,
+        losses = subject_data$losses,
+        RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
+      )
+    }
   }
 }
 
