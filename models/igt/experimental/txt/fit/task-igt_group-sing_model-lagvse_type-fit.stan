@@ -62,13 +62,13 @@ transformed parameters {
   real<lower=0, upper=1> gain;
   real<lower=0, upper=10> loss;
   real<lower=0, upper=1> decay;
-  real<lower=-10, upper=10> phi;
+  real<lower=-1, upper=1> phi;
   
   con = inv_logit(con_pr) * 5;
   gain = inv_logit(gain_pr);
   loss = inv_logit(con_pr) * 10;
   decay = inv_logit(decay_pr);
-  phi = -10 + inv_logit(phi_pr) * 20;
+  phi = -1 + inv_logit(phi_pr) * 2;
 }
 
 model {
