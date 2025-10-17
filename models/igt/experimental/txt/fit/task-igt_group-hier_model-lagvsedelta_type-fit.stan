@@ -113,11 +113,11 @@ generated quantities {
   real<lower=0, upper=1> mu_gain;
   real<lower=0, upper=10> mu_loss;
   real<lower=0, upper=1> mu_update;
-  real<lower=-10, upper=10> mu_phi;
+  real<lower=-1, upper=1> mu_phi;
   
   mu_con    = inv_logit(mu_pr[1]) * 5;
   mu_gain   = inv_logit(mu_pr[2]);
   mu_loss   = inv_logit(mu_pr[3]) * 10;
   mu_update = inv_logit(mu_pr[4]);
-  mu_phi    = -10 + inv_logit(mu_pr[5]) * 20;
+  mu_phi    = -1 + inv_logit(mu_pr[5]) * 2;
 }
