@@ -37,11 +37,9 @@ if (is.null(opt$model) || is.null(opt$task) || is.null(opt$cohort)) {
   stop("Model name, task name, and cohort are all required.")
 }
 
-# Source helper functions
+# Source helper functions - use unified helper entry point
 script_dir <- file.path(here::here(), "scripts")
-source(file.path(script_dir, "helpers", "helper_functions_cmdSR.R"))
-source(file.path(script_dir, "ppc", "helpers", "helper_ppc_dirs.R"))
-source(file.path(script_dir, "ppc", "helpers", "task_config.R"))
+source(file.path(script_dir, "ppc", "helpers", "helper_functions_ppc.R"))
 source(file.path(script_dir, "ppc", "statistics_functions.R"))  # For backward compatibility
 
 # Ensure PPC directories exist
@@ -70,14 +68,12 @@ if (is.null(opt$sim_file)) {
   message("Using provided simulation file: ", sim_file)
 }
 
-# Check if simulation file exists
-if (!file.exists(sim_file)) {
-  stop("Simulation file not found: ", sim_file)
-}
-
-# Load simulation results
+# Load simulation results with error handling
 message("Loading simulation results...")
-simulation_results <- readRDS(sim_file)
+simulation_results <- load_rds_safe(sim_file, "PPC simulation results")
+if (is.null(simulation_results)) {
+  stop("Failed to load simulation results from: ", sim_file)
+}
 subject_ids <- names(simulation_results)
 message("Found ", length(subject_ids), " subjects in simulation results")
 
@@ -99,11 +95,23 @@ block_stats_file <- file.path(SAFE_DATA_DIR, opt$cohort,
                                                      ext = "csv", cohort = opt$cohort, ses = opt$ses)
                               )
 
-if (file.exists(session_stats_file) && file.exists(block_stats_file)) {
+# Check if pre-computed stats exist and can be loaded
+stats_exist <- file.exists(session_stats_file) && file.exists(block_stats_file)
+stats_loaded <- FALSE
+
+if (stats_exist) {
   message("Loading pre-computed observed statistics...")
-  observed_stats$session <- read.csv(session_stats_file)
-  observed_stats$blocks <- read.csv(block_stats_file)
-} else {
+  observed_stats$session <- load_csv_safe(session_stats_file, "session statistics")
+  observed_stats$blocks <- load_csv_safe(block_stats_file, "block statistics")
+  
+  if (!is.null(observed_stats$session) && !is.null(observed_stats$blocks)) {
+    stats_loaded <- TRUE
+  } else {
+    message("Failed to load pre-computed stats, will regenerate from raw data")
+  }
+}
+
+if (!stats_loaded) {
   # Fall back to generating from raw data using proper load_data function
   message("Pre-computed stats not found, generating from raw data...")
   
@@ -121,9 +129,9 @@ if (file.exists(session_stats_file) && file.exists(block_stats_file)) {
   # Align with expected format
   observed_stats <- create_observed_stats_from_temp(observed_stats_temp)
   
-  # Save observed data
-  write.csv(observed_stats$session, file = session_stats_file, row.names = F)
-  write.csv(observed_stats$blocks, file = block_stats_file, row.names = F)
+  # Save observed data with error handling
+  save_csv_safe(observed_stats$session, session_stats_file, "session statistics")
+  save_csv_safe(observed_stats$blocks, block_stats_file, "block statistics")
 }
 
 # Load exclude list if provided
@@ -152,11 +160,13 @@ simulation_stats <- calculate_simulation_statistics(
 message("Calculating posterior predictive p-values...")
 ppc_stats <- calculate_ppc_statistics(observed_stats, simulation_stats)
 
-# Save results using updated file path function
+# Save results with error handling
 stats_file <- get_ppc_stats_file_path(opt$task, opt$model, opt$group, opt$cohort, opt$ses)
 
-saveRDS(ppc_stats, stats_file)
-message("PPC statistics saved to: ", stats_file)
+success <- save_rds_safe(ppc_stats, stats_file, "PPC statistics")
+if (!success) {
+  warning("Failed to save PPC statistics, but continuing...")
+}
 
 # Generate summary statistics
 ppc_summary <- summarize_ppc_statistics(ppc_stats)

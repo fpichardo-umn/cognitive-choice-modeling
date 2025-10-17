@@ -57,13 +57,10 @@ if (!opt$group %in% c("sing", "hier")) {
   stop("Invalid --group parameter. Must be 'sing' (individual) or 'hier' (hierarchical).")
 }
 
-# Set up environment
+# Set up environment - use unified helper entry point
 script_dir <- file.path(here::here(), "scripts")
-source(file.path(script_dir, "helpers", "helper_functions_cmdSR.R"))
-source(file.path(script_dir, "simulation", "helper_functions_sim.R"))
+source(file.path(script_dir, "ppc", "helpers", "helper_functions_ppc.R"))
 source(file.path(script_dir, "ppc", "simulation_functions.R"))
-source(file.path(script_dir, "ppc", "helpers", "helper_ppc_dirs.R"))
-source(file.path(script_dir, "ppc", "helpers", "task_config.R"))
 
 # Set output directory
 if (is.null(opt$output_dir)) {
@@ -112,8 +109,11 @@ if (is.null(opt$fit_file)) {
 
 message("Using fit file: ", fit_file)
 
-# Load fits
-fits <- readRDS(fit_file)
+# Load fits with error handling
+fits <- load_rds_safe(fit_file, "fitted model")
+if (is.null(fits)) {
+  stop("Failed to load fitted model from: ", fit_file)
+}
 
 # Get task configuration
 task_config <- get_task_config(opt$task)
@@ -191,13 +191,16 @@ simulation_results <- generate_simulation_data(
   task_params = task_params
 )
 
-# Save results
+# Save results with error handling and verification
 # Output file naming should reflect the source of parameters:
 # - For hierarchical fits: use "hier" (even though we simulate individuals)
 # - For individual fits: use group_name (batch identifier)
 group_for_output_files <- if(opt$group == "hier") "hier" else opt$group_name
 output_file <- get_ppc_sim_file_path(opt$task, opt$model, group_for_output_files, opt$cohort, opt$ses)
-message("Saving simulation results to: ", output_file)
-saveRDS(simulation_results, output_file)
+
+success <- save_rds_safe(simulation_results, output_file, "PPC simulation results")
+if (!success) {
+  stop("Failed to save simulation results to: ", output_file)
+}
 
 message("Simulation complete.")

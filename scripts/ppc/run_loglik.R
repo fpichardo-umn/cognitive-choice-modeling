@@ -42,11 +42,9 @@ if (is.null(opt$model) || is.null(opt$task) || is.null(opt$cohort)) {
   stop("Model name, task name, and cohort are all required.")
 }
 
-# Import helper modules
-source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
+# Import helper modules - use unified helper entry point
+source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_functions_ppc.R"))
 source(file.path(here::here(), "scripts", "parameter_recovery", "helper_functions_PR.R"))
-source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_ppc_dirs.R"))
-source(file.path(here::here(), "scripts", "ppc", "helpers", "task_config.R"))
 source(file.path(here::here(), "scripts", "ppc", "loglik_functions.R"))
 source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_ppc_simulation.R"))
 
@@ -65,14 +63,12 @@ if (is.null(opt$sim_file)) {
   sim_file <- opt$sim_file
 }
 
-# Check if simulation file exists
-if (!file.exists(sim_file)) {
-  stop("Simulation file not found: ", sim_file)
-}
-
-# Load simulation data
+# Load simulation data with error handling
 message("Loading simulation data...")
-simulation_data <- readRDS(sim_file)
+simulation_data <- load_rds_safe(sim_file, "PPC simulation data")
+if (is.null(simulation_data)) {
+  stop("Failed to load simulation data from: ", sim_file)
+}
 
 # Load exclude list if provided
 exclude_subjects <- NULL
@@ -125,6 +121,51 @@ task_params <- list(
 
 message("Using RT bounds: [", task_params$RTbound_min, ", ", 
         task_params$RTbound_max, "] seconds")
+message("Using RT method: ", opt$rt_method)
+
+# CRITICAL: Preprocess observed data with rt_method to match how model was fitted
+message("Preprocessing observed data with rt_method=", opt$rt_method, "...")
+for (subject_id in names(observed_data_list)) {
+  obs_data <- observed_data_list[[subject_id]]
+  
+  # Check if RT data exists
+  if ("RT" %in% names(obs_data)) {
+    # Convert to data frame format expected by preprocess_data
+    obs_df <- data.frame(
+      subjID = subject_id,
+      RT = obs_data$RT,
+      choice = obs_data$choice,
+      shown = if ("shown" %in% names(obs_data)) obs_data$shown else NULL,
+      deck = if ("deck" %in% names(obs_data)) obs_data$deck else NULL,
+      outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL
+    )
+    
+    # Apply RT preprocessing
+    processed_df <- preprocess_data(
+      data = obs_df,
+      task = opt$task,
+      RTbound_min_ms = opt$RTbound_min_ms,
+      RTbound_max_ms = opt$RTbound_max_ms,
+      rt_method = opt$rt_method,
+      return_dropped_indices = FALSE
+    )
+    
+    # Update the observed data with preprocessed RTs
+    observed_data_list[[subject_id]]$RT <- processed_df$RT
+    
+    # If rt_method="remove", we also need to filter other columns
+    if (opt$rt_method == "remove" && nrow(processed_df) < nrow(obs_df)) {
+      message("  Subject ", subject_id, ": removed ", nrow(obs_df) - nrow(processed_df), 
+              " trials with invalid RTs")
+      # Filter all columns to match the kept trials
+      for (col in names(observed_data_list[[subject_id]])) {
+        if (length(observed_data_list[[subject_id]][[col]]) == nrow(obs_df)) {
+          observed_data_list[[subject_id]][[col]] <- observed_data_list[[subject_id]][[col]][1:nrow(processed_df)]
+        }
+      }
+    }
+  }
+}
 
 # Calculate log-likelihood
 message("Calculating log-likelihood...")

@@ -43,10 +43,9 @@ if (is.null(opt$model) || is.null(opt$task) || is.null(opt$cohort)) {
   stop("Model name, task name, and cohort are all required.")
 }
 
-# Import helper modules
+# Import helper modules - use unified helper entry point
 script_dir <- file.path(here::here(), "scripts")
-source(file.path(script_dir, "helpers", "helper_functions_cmdSR.R"))
-source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_ppc_dirs.R"))
+source(file.path(script_dir, "ppc", "helpers", "helper_functions_ppc.R"))
 source(file.path(here::here(), "scripts", "ppc", "helpers", "helper_ppc_report.R"))
 
 # Ensure PPC directories exist
@@ -66,9 +65,10 @@ if (is.null(opt$stats_file)) {
   stats_file <- opt$stats_file
 }
 
-# Check if statistics file exists
-if (!file.exists(stats_file)) {
-  stop("Statistics file not found: ", stats_file)
+# Load statistics file with error handling
+stats_data <- load_csv_safe(stats_file, "PPC statistics")
+if (is.null(stats_data)) {
+  stop("Failed to load statistics from: ", stats_file)
 }
 
 # Build log-likelihood file path if specified
