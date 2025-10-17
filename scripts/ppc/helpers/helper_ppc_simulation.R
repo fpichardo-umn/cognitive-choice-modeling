@@ -26,7 +26,17 @@ sample_posterior <- function(posterior_draws, n_samples, params,
                              width_control = 0.95) {
   
   method <- match.arg(method)
+  
+  # Validate inputs
+  if (!is.data.frame(posterior_draws) && !is.matrix(posterior_draws)) {
+    stop("posterior_draws must be a data frame or matrix")
+  }
+  
   n_draws <- nrow(posterior_draws)
+  
+  if (is.null(n_draws) || length(n_draws) == 0 || n_draws == 0) {
+    stop("posterior_draws has 0 rows or nrow() returned NULL. Check the input data frame.")
+  }
   
   if (n_draws <= n_samples) {
     # If we have fewer or equal draws than requested samples, use all draws
@@ -121,8 +131,20 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
     # Hierarchical fit - handle population and subject-level parameters
     fit_obj <- fits
     
+    # Check if fit object has draws
+    if (is.null(fit_obj$draws)) {
+      stop("Fit object does not contain 'draws' component. Check the fitted model structure.")
+    }
+    
     # Get posterior draws
     posterior_draws <- as_draws_df(fit_obj$draws)
+    
+    message("Loaded posterior with ", nrow(posterior_draws), " draws")
+    message("Parameter names in posterior: ", paste(head(names(posterior_draws), 10), collapse=", "))
+    
+    if (nrow(posterior_draws) == 0) {
+      stop("Posterior draws data frame is empty. Check the fitted model.")
+    }
     
     # Find subject-specific parameters
     subject_params <- list()
