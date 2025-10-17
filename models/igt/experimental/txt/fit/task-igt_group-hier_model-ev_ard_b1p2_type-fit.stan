@@ -203,10 +203,10 @@ transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary;
   array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
-  array[N] real<lower=0.001> urgency;
-  array[N] real<lower=0.001> wd;
-  array[N] real<lower=0.001> ws;
-  array[N] real<lower=0, upper=5> drift_con;
+  array[N] real<lower=0.001, upper=20> urgency;
+  array[N] real<lower=0.001, upper=10> wd;
+  array[N] real<lower=0.001, upper=20> ws;
+  array[N] real<lower=0, upper=2> drift_con;
   array[N] real<lower=0, upper=1> wgt_pun;
   array[N] real<lower=0, upper=1> wgt_rew;
   array[N] real<lower=0, upper=1> update;
@@ -219,11 +219,11 @@ transformed parameters {
   tau  = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   
   // Ensure positive values with minimum thresholds
-  urgency   = to_array_1d(log1p_exp(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) + 0.01);
-  wd        = to_array_1d(log1p_exp(mu_pr[6] + sigma[6] .* to_vector(wd_pr)) + 0.01);
-  ws        = to_array_1d(log1p_exp(mu_pr[7] + sigma[7] .* to_vector(ws_pr)) + 0.01);
+  urgency = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) * 19.999 + 0.001);
+  wd = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(wd_pr)) * 9.999 + 0.001);
+  ws = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(ws_pr)) * 9.999 + 0.001);
   
-  drift_con = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(drift_con_pr)) * 5);
+  drift_con = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(drift_con_pr)) * 2);
   wgt_pun   = to_array_1d(inv_logit(mu_pr[9] + sigma[9] .* to_vector(wgt_pun_pr)));
   wgt_rew   = to_array_1d(inv_logit(mu_pr[10] + sigma[10] .* to_vector(wgt_rew_pr)));
   update    = to_array_1d(inv_logit(mu_pr[11] + sigma[11] .* to_vector(update_pr)));
@@ -261,10 +261,10 @@ generated quantities {
   real mu_boundary = inv_logit(mu_pr[2]) * 4.99 + 0.001;
   real mu_tau1 = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_tau  = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_urgency = log1p_exp(mu_pr[5]) + 0.01;
-  real mu_wd = log1p_exp(mu_pr[6]) + 0.01;
-  real mu_ws = log1p_exp(mu_pr[7]) + 0.01;
-  real mu_drift_con = inv_logit(mu_pr[8]) * 5;
+  real mu_urgency = inv_logit(mu_pr[5]) * 19.999 + 0.001;
+  real mu_wd = inv_logit(mu_pr[6]) * 9.999 + 0.001;
+  real mu_ws = inv_logit(mu_pr[7]) * 9.999 + 0.001;
+  real mu_drift_con = inv_logit(mu_pr[8]) * 2;
   real mu_wgt_pun = inv_logit(mu_pr[9]);
   real mu_wgt_rew = inv_logit(mu_pr[10]);
   real mu_update = inv_logit(mu_pr[11]);
