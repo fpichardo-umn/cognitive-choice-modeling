@@ -162,7 +162,7 @@ if (use_simulation_file) {
     model_params = model_params,
     n_samples = opt$n_samples,
     exclude_subjects = exclude_subjects,
-    sampling_method = "random",  # For loglik, random sampling is fine
+    sampling_method = "weighted",  # For loglik, random sampling is fine
     width_control = 0.95
   )
   
@@ -194,14 +194,14 @@ if (use_simulation_file) {
 }
 
 # Initialize task and model
-PR_DIR <- file.path(here::here(), "scripts", "parameter_recovery")
+SIM_DIR <- file.path(here::here(), "scripts", "simulation")
 
 # Source required base files first
-source_required_files(PR_DIR)
+source_required_files(SIM_DIR)
 
 # Initialize task and model
-task <- initialize_task(opt$task, PR_DIR)
-model <- initialize_model(toupper(opt$model), tolower(opt$task), task, PR_DIR)
+task <- initialize_task(opt$task, SIM_DIR)
+model <- initialize_model(toupper(opt$model), tolower(opt$task), task, SIM_DIR)
 
 # Build task_params from command line RT bounds
 task_params <- list(
