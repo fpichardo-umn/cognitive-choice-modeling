@@ -206,7 +206,7 @@ source_required_files(SIM_DIR)
 
 # Initialize task and model
 task <- initialize_task(opt$task, SIM_DIR)
-model <- initialize_model(toupper(opt$model), tolower(opt$task), task, SIM_DIR)
+model <- initialize_model(opt$model, opt$task, task, SIM_DIR)
 
 # Build task_params from command line RT bounds
 task_params <- list(
