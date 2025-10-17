@@ -7,11 +7,11 @@
 #' - For individual scripts: "batch_001" or "hier" (file naming)
 
 # ========== CONFIGURATION ==========
-opt_model = "ev"
+opt_model = "lagvsedelta"
 opt_task = "igt" 
 opt_cohort = "luc"
 opt_ses = "00"  # or "ses-01"
-opt_group_name = "batch_001"  # for individual fits
+opt_group_name = "hier"  # for individual fits
 
 # ========== PIPELINE SCRIPTS ==========
 
