@@ -41,6 +41,11 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+# Set default for n_samples if NULL (optparse sometimes doesn't apply defaults)
+if (is.null(opt$n_samples)) {
+  opt$n_samples <- 100
+}
+
 # Check required arguments
 if (is.null(opt$model) || is.null(opt$task) || is.null(opt$cohort)) {
   stop("Model name, task name, and cohort are all required.")
