@@ -174,21 +174,21 @@ transformed data {
 //---
 parameters {
   // --- Hard Constraints on All Hyperparameters ---
-  array[11] realmu_pr;
+  array[11] real mu_pr;
   array[11] real<lower=0.001, upper=5> sigma;
 
   // --- Hard Constraints on All Raw Individual Parameters ---
-  array[N] realboundary1_pr;
-  array[N] realboundary_pr;
-  array[N] realtau1_pr;
-  array[N] realtau_pr;
-  array[N] realurgency_pr;
-  array[N] realwd_pr;
-  array[N] realws_pr;
-  array[N] realdrift_con_pr;
-  array[N] realwgt_pun_pr;
-  array[N] realwgt_rew_pr;
-  array[N] realupdate_pr;
+  array[N] real boundary1_pr;
+  array[N] real boundary_pr;
+  array[N] real tau1_pr;
+  array[N] real tau_pr;
+  array[N] real urgency_pr;
+  array[N] real wd_pr;
+  array[N] real ws_pr;
+  array[N] real drift_con_pr;
+  array[N] real wgt_pun_pr;
+  array[N] real wgt_rew_pr;
+  array[N] real update_pr;
 }
 //---
 transformed parameters {
