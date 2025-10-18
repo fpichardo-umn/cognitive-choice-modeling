@@ -81,14 +81,14 @@ parameters {
 }
 
 transformed parameters {
-  array[N] real<lower=0, upper=5> con;
+  array[N] real<lower=0, upper=3> con;
   array[N] real<lower=0, upper=1> gain;
   array[N] real<lower=0, upper=10> loss;
   array[N] real<lower=0, upper=1> update;
   array[N] real<lower=0, upper=1> decay;
   array[N] real<lower=-1, upper=1> phi;
   
-  con    = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 5);
+  con    = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 3);
   gain   = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(gain_pr)));
   loss   = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(loss_pr)) * 10);
   update = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(update_pr)));
@@ -121,7 +121,7 @@ generated quantities {
   real<lower=0, upper=1> mu_decay;
   real<lower=-1, upper=1> mu_phi;
   
-  mu_con    = inv_logit(mu_pr[1]) * 5;
+  mu_con    = inv_logit(mu_pr[1]) * 3;
   mu_gain   = inv_logit(mu_pr[2]);
   mu_loss   = inv_logit(mu_pr[3]) * 10;
   mu_update = inv_logit(mu_pr[4]);
