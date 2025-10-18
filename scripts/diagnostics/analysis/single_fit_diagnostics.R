@@ -138,14 +138,20 @@ analyze_convergence <- function(fit, thresholds) {
         median = median(ess_bulk, na.rm = TRUE),
         min_ratio = min(ess_bulk_ratio, na.rm = TRUE),
         median_ratio = median(ess_bulk_ratio, na.rm = TRUE),
-        n_problematic = sum(ess_bulk_ratio < thresholds$thresholds$ess_ratio$problematic, na.rm = TRUE),
-        n_acceptable = sum(ess_bulk_ratio >= thresholds$thresholds$ess_ratio$problematic & 
-                          ess_bulk_ratio < thresholds$thresholds$ess_ratio$acceptable, na.rm = TRUE),
-        n_good = sum(ess_bulk_ratio >= thresholds$thresholds$ess_ratio$good, na.rm = TRUE),
-        problematic_params = names(ess_bulk_ratio)[ess_bulk_ratio < thresholds$thresholds$ess_ratio$problematic],
-        status = if (min(ess_bulk_ratio, na.rm = TRUE) >= thresholds$thresholds$ess_ratio$good) "PASS"
-                 else if (min(ess_bulk_ratio, na.rm = TRUE) >= thresholds$thresholds$ess_ratio$acceptable) "WARN"
-                 else "FAIL"
+        # Classify based on absolute ESS, not ratio
+        n_critical = sum(ess_bulk < thresholds$thresholds$ess_bulk$critical, na.rm = TRUE),
+        n_acceptable = sum(ess_bulk >= thresholds$thresholds$ess_bulk$critical & 
+                          ess_bulk < thresholds$thresholds$ess_bulk$acceptable, na.rm = TRUE),
+        n_good = sum(ess_bulk >= thresholds$thresholds$ess_bulk$good, na.rm = TRUE),
+        problematic_params = names(ess_bulk)[ess_bulk < thresholds$thresholds$ess_bulk$critical],
+        # Status based on absolute ESS counts
+        status = if (min(ess_bulk, na.rm = TRUE) >= thresholds$thresholds$ess_bulk$good) "PASS"
+                 else if (min(ess_bulk, na.rm = TRUE) >= thresholds$thresholds$ess_bulk$acceptable) "WARN"
+                 else "FAIL",
+        # Add efficiency note
+        efficiency_note = if (min(ess_bulk_ratio, na.rm = TRUE) < thresholds$thresholds$ess_ratio$very_inefficient) {
+          sprintf("Very inefficient sampling (%.1f%% efficiency)", min(ess_bulk_ratio, na.rm = TRUE) * 100)
+        } else NULL
       )
     }
     
@@ -166,7 +172,16 @@ analyze_convergence <- function(fit, thresholds) {
         median = median(ess_tail, na.rm = TRUE),
         min_ratio = min(ess_tail_ratio, na.rm = TRUE),
         median_ratio = median(ess_tail_ratio, na.rm = TRUE),
-        n_problematic = sum(ess_tail_ratio < thresholds$thresholds$ess_ratio$problematic, na.rm = TRUE)
+        # Classify based on absolute ESS, not ratio
+        n_critical = sum(ess_tail < thresholds$thresholds$ess_tail$critical, na.rm = TRUE),
+        n_acceptable = sum(ess_tail >= thresholds$thresholds$ess_tail$critical & 
+                          ess_tail < thresholds$thresholds$ess_tail$acceptable, na.rm = TRUE),
+        n_good = sum(ess_tail >= thresholds$thresholds$ess_tail$good, na.rm = TRUE),
+        problematic_params = names(ess_tail)[ess_tail < thresholds$thresholds$ess_tail$critical],
+        # Status based on absolute ESS counts
+        status = if (min(ess_tail, na.rm = TRUE) >= thresholds$thresholds$ess_tail$good) "PASS"
+                 else if (min(ess_tail, na.rm = TRUE) >= thresholds$thresholds$ess_tail$acceptable) "WARN"
+                 else "FAIL"
       )
     }
   }
@@ -346,6 +361,7 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
     ess_bulk_status = rep(NA_character_, n_params),
     ess_tail = rep(NA_real_, n_params),
     ess_tail_ratio = rep(NA_real_, n_params),
+    ess_tail_status = rep(NA_character_, n_params),
     mcse = rep(NA_real_, n_params),
     mcse_ratio = rep(NA_real_, n_params),
     mcse_status = rep(NA_character_, n_params),
@@ -371,8 +387,9 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
       # Total post-warmup samples: n_iter (per chain) * n_chains
       total_samples <- fit$n_iter * fit$n_chains
       param_df$ess_bulk_ratio <- param_df$ess_bulk / total_samples
-      param_df$ess_bulk_status <- sapply(param_df$ess_bulk_ratio, function(x) {
-        classify_diagnostic(x, thresholds, "ess_ratio")
+      # Use ABSOLUTE ESS for status, not ratio
+      param_df$ess_bulk_status <- sapply(param_df$ess_bulk, function(x) {
+        classify_diagnostic(x, thresholds, "ess_bulk")
       })
     }
     
@@ -383,6 +400,10 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
       # Total post-warmup samples: n_iter (per chain) * n_chains
       total_samples <- fit$n_iter * fit$n_chains
       param_df$ess_tail_ratio <- param_df$ess_tail / total_samples
+      # Use ABSOLUTE ESS for status, not ratio
+      param_df$ess_tail_status <- sapply(param_df$ess_tail, function(x) {
+        classify_diagnostic(x, thresholds, "ess_tail")
+      })
     }
   }
   

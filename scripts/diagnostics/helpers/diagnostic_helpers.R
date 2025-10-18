@@ -82,7 +82,7 @@ load_report_config <- function(config_file = NULL) {
 #' Classify diagnostic value based on thresholds
 #' @param value Numeric value to classify
 #' @param thresholds List with threshold levels
-#' @param metric_type Type of metric ("rhat", "ess_ratio", "divergence_rate", "mcse_ratio", "ebfmi")
+#' @param metric_type Type of metric ("rhat", "ess_bulk", "ess_tail", "ess_ratio", "divergence_rate", "mcse_ratio", "ebfmi")
 #' @return Character string: "PASS", "WARN", or "FAIL"
 classify_diagnostic <- function(value, thresholds, metric_type) {
   if (is.na(value) || !is.finite(value)) {
@@ -95,10 +95,17 @@ classify_diagnostic <- function(value, thresholds, metric_type) {
     if (value <= metric_thresholds$excellent) return("PASS")
     if (value <= metric_thresholds$acceptable) return("WARN")
     return("FAIL")
-  } else if (metric_type == "ess_ratio") {
+  } else if (metric_type == "ess_bulk" || metric_type == "ess_tail") {
+    # Use absolute ESS counts (not ratios) for validity assessment
     if (value >= metric_thresholds$good) return("PASS")
     if (value >= metric_thresholds$acceptable) return("WARN")
-    return("FAIL")
+    return("FAIL")  # < critical threshold
+  } else if (metric_type == "ess_ratio") {
+    # Ratio is for efficiency info only - don't use for PASS/FAIL
+    # Just return informational status
+    if (value >= metric_thresholds$efficient) return("PASS")
+    if (value >= metric_thresholds$inefficient) return("WARN")
+    return("INFO")  # Very inefficient but not invalid
   } else if (metric_type == "divergence_rate") {
     if (value <= metric_thresholds$acceptable) return("PASS")
     if (value <= metric_thresholds$borderline) return("WARN")
@@ -290,14 +297,45 @@ create_single_fit_summary <- function(fit, subject_id = NULL, thresholds = NULL)
       summary$rhat_status <- classify_diagnostic(summary$worst_rhat, thresholds, "rhat")
     }
     
-    # ESS
+    # ESS_bulk - use absolute counts for validity, ratio for efficiency info
     if ("ess_bulk" %in% colnames(diagnostics)) {
-      ess_values <- diagnostics[, "ess_bulk"]
-      total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
-      ess_ratios <- ess_values / total_samples
-      summary$min_ess_ratio <- min(ess_ratios, na.rm = TRUE)
-      summary$median_ess_ratio <- median(ess_ratios, na.rm = TRUE)
-      summary$ess_status <- classify_diagnostic(summary$min_ess_ratio, thresholds, "ess_ratio")
+      ess_bulk <- diagnostics[, "ess_bulk"]
+      total_samples <- if (!is.null(fit$tss)) fit$tss else fit$n_iter * fit$n_chains
+      ess_bulk_ratio <- ess_bulk / total_samples
+      
+      # Store both absolute and ratio
+      summary$min_ess_bulk <- min(ess_bulk, na.rm = TRUE)
+      summary$median_ess_bulk <- median(ess_bulk, na.rm = TRUE)
+      summary$min_ess_bulk_ratio <- min(ess_bulk_ratio, na.rm = TRUE)
+      summary$median_ess_bulk_ratio <- median(ess_bulk_ratio, na.rm = TRUE)
+      
+      # Status based on ABSOLUTE ESS, not ratio
+      summary$ess_bulk_status <- classify_diagnostic(summary$min_ess_bulk, thresholds, "ess_bulk")
+    }
+    
+    # ESS_tail
+    if ("ess_tail" %in% colnames(diagnostics)) {
+      ess_tail <- diagnostics[, "ess_tail"]
+      total_samples <- if (!is.null(fit$tss)) fit$tss else fit$n_iter * fit$n_chains
+      ess_tail_ratio <- ess_tail / total_samples
+      
+      # Store both absolute and ratio
+      summary$min_ess_tail <- min(ess_tail, na.rm = TRUE)
+      summary$median_ess_tail <- median(ess_tail, na.rm = TRUE)
+      summary$min_ess_tail_ratio <- min(ess_tail_ratio, na.rm = TRUE)
+      summary$median_ess_tail_ratio <- median(ess_tail_ratio, na.rm = TRUE)
+      
+      # Status based on ABSOLUTE ESS, not ratio
+      summary$ess_tail_status <- classify_diagnostic(summary$min_ess_tail, thresholds, "ess_tail")
+    }
+    
+    # Overall ESS status is worst of bulk/tail
+    if (!is.null(summary$ess_bulk_status) && !is.null(summary$ess_tail_status)) {
+      summary$ess_status <- aggregate_status(c(summary$ess_bulk_status, summary$ess_tail_status))
+    } else if (!is.null(summary$ess_bulk_status)) {
+      summary$ess_status <- summary$ess_bulk_status
+    } else if (!is.null(summary$ess_tail_status)) {
+      summary$ess_status <- summary$ess_tail_status
     }
   }
   

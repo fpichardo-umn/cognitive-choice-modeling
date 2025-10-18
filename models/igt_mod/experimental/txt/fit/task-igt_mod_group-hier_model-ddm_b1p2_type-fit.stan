@@ -10,12 +10,16 @@ data {
   array[N, T] int<lower=0, upper=1> choice;
 }
 
+transformed data {
+  int block = 20; 
+}
+
 parameters {
   array[6] real mu_pr;
   array[6] real<lower=0> sigma;
 
-  array[N] real<lower=-5, upper=5> boundary1_pr;
-  array[N] real<lower=-5, upper=5> boundary_pr;
+  array[N] real boundary1_pr;
+  array[N] real boundary_pr;
   array[N] real tau1_pr;
   array[N] real tau_pr;
   array[N] real beta_pr;
@@ -34,11 +38,28 @@ transformed parameters {
   tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   beta      = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(beta_pr)));
+
+  // Build per-subject boundary/tau vectors
+  array[N] vector[T] boundary_subj;
+  array[N] vector[T] tau_subj;
+  
+  for (n in 1:N) {
+    int Tsubj_n = Tsubj[n];
+    
+    // First block
+    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
+    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
+    
+    // Rest of blocks
+    int rest_len = Tsubj_n - block;
+    boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
+    tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
+  }
 }
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr  ~ normal(0, 1);
@@ -52,19 +73,8 @@ model {
     array[Tsubj[n]] int pass_indices;
     int play_count = 0;
     int pass_count = 0;
-    
-    vector[Tsubj[n]] boundaries;
-    vector[Tsubj[n]] nondt;
-    
+
     for (t in 1:Tsubj[n]) {
-      if (t <= 20) {
-        boundaries[t] = boundary1[n];
-        nondt[t] = tau1[n];
-      } else {
-        boundaries[t] = boundary[n];
-        nondt[t] = tau[n];
-      }
-      
       if (RT[n, t] != 999) {
         if (choice[n, t] == 1) {
           play_count += 1;
@@ -76,8 +86,8 @@ model {
       }
     }
     
-    RT[n, play_indices[:play_count]] ~ wiener(boundaries[play_indices[:play_count]], nondt[play_indices[:play_count]], beta[n], drift[n]);
-    RT[n, pass_indices[:pass_count]] ~ wiener(boundaries[pass_indices[:pass_count]], nondt[pass_indices[:pass_count]], 1-beta[n], -drift[n]);
+    RT[n, play_indices[:play_count]] ~ wiener(boundary_subj[n][play_indices[:play_count]], tau_subj[n][play_indices[:play_count]], beta[n], drift[n]);
+    RT[n, pass_indices[:pass_count]] ~ wiener(boundary_subj[n][pass_indices[:pass_count]], tau_subj[n][pass_indices[:pass_count]], 1-beta[n], -drift[n]);
   }
 }
 

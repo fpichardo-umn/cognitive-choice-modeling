@@ -134,7 +134,7 @@ transformed parameters {
 model {
   // Vectorized priors
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   Drew_pr  ~ normal(0, 1);
   Dpun_pr  ~ normal(0, 1);

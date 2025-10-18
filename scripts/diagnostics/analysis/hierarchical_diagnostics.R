@@ -148,19 +148,29 @@ analyze_subject_level_parameters <- function(hier_fit, param_structure, threshol
             subject_id = if (!is.null(hier_fit$subject_list)) hier_fit$subject_list[i] else as.character(i),
             worst_rhat = max(subj_i_diag[, "rhat"], na.rm = TRUE),
             median_rhat = median(subj_i_diag[, "rhat"], na.rm = TRUE),
-            min_ess_ratio = if ("ess_bulk" %in% colnames(subj_i_diag)) {
-              # n_iter is already post-warmup samples per chain
+            # Store both absolute ESS and ratio
+            min_ess_bulk = if ("ess_bulk" %in% colnames(subj_i_diag)) {
+              min(subj_i_diag[, "ess_bulk"], na.rm = TRUE)
+            } else NA_real_,
+            min_ess_bulk_ratio = if ("ess_bulk" %in% colnames(subj_i_diag)) {
               total_samples <- hier_fit$n_iter * hier_fit$n_chains
               min(subj_i_diag[, "ess_bulk"] / total_samples, na.rm = TRUE)
+            } else NA_real_,
+            min_ess_tail = if ("ess_tail" %in% colnames(subj_i_diag)) {
+              min(subj_i_diag[, "ess_tail"], na.rm = TRUE)
             } else NA_real_,
             status = "PASS"  # Will be updated based on classifications
           )
           
-          # Classify status
+          # Classify status based on ABSOLUTE ESS, not ratio
           rhat_status <- classify_diagnostic(subject_summaries[[i]]$worst_rhat, thresholds, "rhat")
-          ess_status <- if (!is.na(subject_summaries[[i]]$min_ess_ratio)) {
-            classify_diagnostic(subject_summaries[[i]]$min_ess_ratio, thresholds, "ess_ratio")
+          ess_bulk_status <- if (!is.na(subject_summaries[[i]]$min_ess_bulk)) {
+            classify_diagnostic(subject_summaries[[i]]$min_ess_bulk, thresholds, "ess_bulk")
           } else "PASS"
+          ess_tail_status <- if (!is.na(subject_summaries[[i]]$min_ess_tail)) {
+            classify_diagnostic(subject_summaries[[i]]$min_ess_tail, thresholds, "ess_tail")
+          } else "PASS"
+          ess_status <- aggregate_status(c(ess_bulk_status, ess_tail_status))
           
           subject_summaries[[i]]$status <- aggregate_status(c(rhat_status, ess_status))
           subject_summaries[[i]]$problem_score <- calculate_problem_score(subject_summaries[[i]], thresholds)
@@ -179,10 +189,16 @@ analyze_subject_level_parameters <- function(hier_fit, param_structure, threshol
           n_problematic = sum(sapply(subject_summaries, function(x) x$worst_rhat > thresholds$thresholds$rhat$problematic), na.rm = TRUE)
         ),
         
-        ess = list(
-          min = min(sapply(subject_summaries, function(x) x$min_ess_ratio), na.rm = TRUE),
-          median = median(sapply(subject_summaries, function(x) x$min_ess_ratio), na.rm = TRUE),
-          n_problematic = sum(sapply(subject_summaries, function(x) x$min_ess_ratio < thresholds$thresholds$ess_ratio$problematic), na.rm = TRUE)
+        ess_bulk = list(
+          min = min(sapply(subject_summaries, function(x) x$min_ess_bulk), na.rm = TRUE),
+          median = median(sapply(subject_summaries, function(x) x$min_ess_bulk), na.rm = TRUE),
+          n_critical = sum(sapply(subject_summaries, function(x) x$min_ess_bulk < thresholds$thresholds$ess_bulk$critical), na.rm = TRUE)
+        ),
+        
+        ess_tail = list(
+          min = min(sapply(subject_summaries, function(x) x$min_ess_tail), na.rm = TRUE),
+          median = median(sapply(subject_summaries, function(x) x$min_ess_tail), na.rm = TRUE),
+          n_critical = sum(sapply(subject_summaries, function(x) x$min_ess_tail < thresholds$thresholds$ess_tail$critical), na.rm = TRUE)
         ),
         
         status = list(

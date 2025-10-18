@@ -42,7 +42,7 @@ transformed parameters {
 
 model {
   mu_pr ~ normal(0, 5);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   boundary_pr ~ normal(0, 5);
   tau_pr      ~ normal(0, 2.5);

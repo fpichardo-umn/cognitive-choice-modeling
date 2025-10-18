@@ -81,7 +81,7 @@ transformed parameters {
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   con_pr     ~ normal(0, 1);
   wgt_pun_pr ~ normal(0, 1);

@@ -119,7 +119,7 @@ transformed parameters {
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   decay_pr ~ normal(0, 1);
   K_pr     ~ normal(0, 1);

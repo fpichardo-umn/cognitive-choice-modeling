@@ -1,43 +1,37 @@
-// Optimized Hierarchical PVL-Delta-DDM b1p2 Model for IGT_MOD
+// Optimized Hierarchical PVL-Delta-DDM b1p2 Model for IGT_MOD with Parallelization
 functions {
-  vector igt_model_lp(
-      array[] int choice, array[] int shown, array[] real outcome,
-      array[] real RT, vector ev, int Tsub,
-      real boundary1, real boundary, real tau1, real tau, real beta,
-      real sensitivity, real gain, real loss, real update
+  real igt_model_lp(
+      array[] int choice, array[] int shown,
+      array[] real outcome, array[] real RT, 
+      vector ev, int Tsub,
+      vector boundaries, vector taus,
+      real beta, real sensitivity,
+      real gain, real loss, real update
       ) {
     real curUtil;
     int curDeck;
-    vector[Tsub] drift_rates;
-    vector[Tsub] boundaries;
-    vector[Tsub] nondt;
+    real log_lik = 0.0;
     vector[4] local_ev = ev;
 
     array[Tsub] int play_indices;
     array[Tsub] int pass_indices;
+    vector[Tsub] drift_rates;
     int play_count = 0;
     int pass_count = 0;
 
     for (t in 1:Tsub) {
-      if (t <= 20) {
-        boundaries[t] = boundary1;
-        nondt[t] = tau1;
-      } else {
-        boundaries[t] = boundary;
-        nondt[t] = tau;
-      }
-      
       curDeck = shown[t];
       drift_rates[t] = local_ev[curDeck] * sensitivity;
 
+      // Update EV
       if (outcome[t] >= 0) {
         curUtil = pow(outcome[t], gain);
       } else {
         curUtil = -loss * pow(abs(outcome[t]), gain);
       }
-
       local_ev[curDeck] += update * (curUtil - local_ev[curDeck]) * choice[t];
 
+      // Build indices for vectorized likelihood
       if (RT[t] != 999) {
         if (choice[t] == 1) {
           play_count += 1;
@@ -49,10 +43,52 @@ functions {
       }
     }
 
-    target += wiener_lpdf(RT[play_indices[:play_count]] | boundaries[play_indices[:play_count]], nondt[play_indices[:play_count]], beta, drift_rates[play_indices[:play_count]]);
-    target += wiener_lpdf(RT[pass_indices[:pass_count]] | boundaries[pass_indices[:pass_count]], nondt[pass_indices[:pass_count]], 1-beta, -drift_rates[pass_indices[:pass_count]]);
+    // Vectorized likelihood computation
+    if (play_count > 0) {
+      log_lik += wiener_lpdf(RT[play_indices[:play_count]] | 
+                             boundaries[play_indices[:play_count]], 
+                             taus[play_indices[:play_count]], 
+                             beta, 
+                             drift_rates[play_indices[:play_count]]);
+    }
 
-    return local_ev;
+    if (pass_count > 0) {
+      log_lik += wiener_lpdf(RT[pass_indices[:pass_count]] | 
+                             boundaries[pass_indices[:pass_count]], 
+                             taus[pass_indices[:pass_count]], 
+                             1-beta, 
+                             -drift_rates[pass_indices[: pass_count]]);
+    }
+
+    return log_lik;
+  }
+
+  // Main parallelization function
+  real partial_sum(array[] int slice_n, int start, int end,
+                   array[] int Tsubj, 
+                   array[,] int choice, array[,] int shown, 
+                   array[,] real outcome, array[,] real RT,
+                   array[] vector boundary_subj,
+                   array[] vector tau_subj,
+                   array[] real beta, array[] real drift_con,
+                   array[] real gain, array[] real loss, array[] real update) {
+    real log_lik = 0.0;
+    
+    for (n in start:end) {
+      vector[4] ev = rep_vector(0., 4);
+      real sensitivity = pow(3, drift_con[n]) - 1;
+      
+      log_lik += igt_model_lp(
+          choice[n, 1:Tsubj[n]], shown[n, 1:Tsubj[n]], 
+          outcome[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], 
+          ev, Tsubj[n],
+          boundary_subj[n][1:Tsubj[n]],
+	  tau_subj[n][1:Tsubj[n]], 
+          beta[n], sensitivity,
+	  gain[n], loss[n], update[n]
+      );
+    }
+    return log_lik;
   }
 }
 
@@ -68,12 +104,19 @@ data {
   array[N, T] real outcome;
 }
 
+transformed data {
+  int block = 20;
+  array[N] int subject_indices;
+  for (i in 1:N) subject_indices[i] = i;
+}
+
 parameters {
   array[9] real mu_pr;
   array[9] real<lower=0> sigma;
 
-  array[N] real<lower=-5, upper=5> boundary1_pr;
-  array[N] real<lower=-5, upper=5> boundary_pr;
+  // Removed hard bounds on _pr parameters
+  array[N] real boundary1_pr;
+  array[N] real boundary_pr;
   array[N] real tau1_pr;
   array[N] real tau_pr;
   array[N] real beta_pr;
@@ -103,11 +146,30 @@ transformed parameters {
   gain      = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(gain_pr)) * 2);
   loss      = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(loss_pr)) * 10);
   update    = to_array_1d(inv_logit(mu_pr[9] + sigma[9] .* to_vector(update_pr)));
+
+  // Build per-subject boundary/tau vectors
+  array[N] vector[T] boundary_subj;
+  array[N] vector[T] tau_subj;
+  
+  for (n in 1:N) {
+    int Tsubj_n = Tsubj[n];
+    
+    // First block
+    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
+    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
+    
+    // Rest of blocks
+    if (block < Tsubj_n) {
+      int rest_len = Tsubj_n - block;
+      boundary_subj[n][(block+1):Tsubj_n] = rep_vector(boundary[n], rest_len);
+      tau_subj[n][(block+1):Tsubj_n]      = rep_vector(tau[n], rest_len);
+    }
+  }
 }
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr  ~ normal(0, 1);
@@ -119,15 +181,15 @@ model {
   loss_pr      ~ normal(0, 1);
   update_pr    ~ normal(0, 1);
 
-  for (n in 1:N) {
-    vector[4] ev = rep_vector(0., 4);
-    real sensitivity = pow(3, drift_con[n]) - 1;
-    
-    ev = igt_model_lp(choice[n, 1:Tsubj[n]], shown[n, 1:Tsubj[n]], outcome[n, 1:Tsubj[n]],
-                      RT[n, 1:Tsubj[n]], ev, Tsubj[n],
-                      boundary1[n], boundary[n], tau1[n], tau[n], beta[n],
-                      sensitivity, gain[n], loss[n], update[n]);
-  }
+  int grainsize = max(1, N %/% 4);
+  target += reduce_sum(partial_sum,
+                       subject_indices, grainsize,
+                       Tsubj,
+		       choice, shown,
+		       outcome, RT,
+                       boundary_subj, tau_subj,
+                       beta, drift_con,
+		       gain, loss, update);
 }
 
 generated quantities {

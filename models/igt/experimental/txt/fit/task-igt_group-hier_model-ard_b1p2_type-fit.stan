@@ -1,71 +1,66 @@
 // Hierarchical SSM-Only ARD Model for the Iowa Gambling Task - FIXED INITIALIZATION
 functions {
-  // Defensive PDF for Racing Diffusion/Wald
-  vector race_pdf_vec(vector t, vector boundary, vector drift) {
+  // Log PDF for Racing Diffusion/Wald (numerically stable)
+  vector race_log_pdf_vec(vector t, vector boundary, vector drift) {
     int n = num_elements(t);
-  
-    // 1. Perform expensive math on whole vectors first
+    vector[n] log_t = log(t);
     vector[n] sqrt_t = sqrt(t);
-    vector[n] denom = sqrt(2 * pi()) .* t .* sqrt_t;
-    vector[n] boundary_over = boundary ./ denom;
-    vector[n] drift_t_minus_boundary = drift .* t - boundary;
-    vector[n] exponent = -0.5 * square(drift_t_minus_boundary) ./ t;
-  
-    vector[n] result;
-    // 2. Now, loop ONLY for the conditional assignment
-    for (i in 1:n) {
-      if (exponent[i] < -30) {
-        result[i] = 1e-10;
-      } else {
-        result[i] = boundary_over[i] * exp(exponent[i]);
-      }
-    }
-    return result;
+    
+    // Compute log(boundary / (sqrt(2*pi) * t^(3/2)))
+    vector[n] log_coef = log(boundary) - (0.5*log(2*pi()) + 1.5*log_t);
+    
+    // Exponent: -0.5 * (drift*t - boundary)^2 / t
+    vector[n] exponent = -0.5 * square(drift .* t - boundary) ./ t;
+    
+    vector[n] log_pdf = log_coef + exponent;
+    
+    // Soft floor instead of hard threshold
+    return fmax(log_pdf, -50);  // fmax is differentiable
   }
 
-  // Defensive CDF for Racing Diffusion/Wald
+  // CDF for Racing Diffusion/Wald (numerically stable)
   vector race_cdf_vec(vector t, vector boundary, vector drift) {
     int n = num_elements(t);
-  
-    // 1. Perform expensive math on whole vectors first
     vector[n] sqrt_t = sqrt(t);
     vector[n] term1 = (drift .* t - boundary) ./ sqrt_t;
     vector[n] term2 = -(drift .* t + boundary) ./ sqrt_t;
     vector[n] expo_arg = 2.0 * drift .* boundary;
-  
     vector[n] result;
-    // 2. Loop for conditional logic and clamping
+    
     for (i in 1:n) {
+      // For numerical safety when expo_arg is huge
       if (expo_arg[i] > 30) {
         result[i] = Phi_approx(term1[i]);
       } else {
         result[i] = Phi_approx(term1[i]) + exp(expo_arg[i]) * Phi_approx(term2[i]);
       }
-    
-      // Clamp values
-      if (result[i] <= 0) result[i] = 1e-10;
-      if (result[i] >= 1) result[i] = 1 - 1e-10;
     }
-    return result;
+    
+    // Clamp using differentiable functions
+    return fmin(fmax(result, 1e-10), 1 - 1e-10);
   }
 
-  // Simplified ard_win_all using pre-calculated indices
+  // ARD likelihood: all 3 accumulators for chosen deck must win
   real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates,
-                 array[,] int win_indices_all, array[,] int lose_indices_all) {
-    real t = RT - tau;
+                   array[,] int win_indices_all, array[,] int lose_indices_all) {
+    real t = fmax(RT - tau, 1e-3);
+    if (t <= 1e-5) return negative_infinity();
   
     array[3] int winning_indices = win_indices_all[choice];
     array[9] int losing_indices = lose_indices_all[choice];
   
-    vector[3] pdf_winners = race_pdf_vec(
+    // Get log-PDFs for winners (no log() wrapper needed)
+    vector[3] log_pdf_winners = race_log_pdf_vec(
       rep_vector(t, 3), rep_vector(boundary, 3), drift_rates[winning_indices]
     );
+    
+    // Get CDFs for losers
     vector[9] cdf_losers = race_cdf_vec(
       rep_vector(t, 9), rep_vector(boundary, 9), drift_rates[losing_indices]
     );
   
-    // Vectorized log-likelihood calculation is now safe and much faster
-    return sum(log(pdf_winners)) + sum(log1m(cdf_losers));
+    // Vectorized log-likelihood calculation
+    return sum(log_pdf_winners) + sum(log1m(cdf_losers));
   }
 
   // Optimized trial-level function
@@ -100,22 +95,17 @@ functions {
                    array[,] int win_indices_all, array[,] int lose_indices_all,
                    array[,] int other_indices,
                    array[] real V1, array[] real V2, array[] real V3, array[] real V4,
-                   array[] real boundary1, array[] real boundary,
-                   array[] real tau1, array[] real tau,
+                   array[] vector boundary_subj,
+                   array[] vector tau_subj,
                    array[] real urgency, array[] real wd, array[] real ws) {
     real log_lik = 0.0;
     
     for (n in start:end) {
       vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
-      vector[Tsubj[n]] boundaries;
-      vector[Tsubj[n]] taus;
-
-      boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
-      taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
       
       real subj_lik = igt_ard_model(
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-          V_subj, boundaries, taus, urgency[n], wd[n], ws[n],
+          V_subj, boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n], wd[n], ws[n],
           win_indices_all, lose_indices_all, other_indices
       );
       
@@ -137,6 +127,7 @@ data {
 }
 //---
 transformed data {
+  int block = 20; 
   array[N] int subject_indices;
   for (i in 1:N) {
     subject_indices[i] = i;
@@ -212,12 +203,29 @@ transformed parameters {
   V2 = to_array_1d((inv_logit(mu_pr[9] + sigma[9] .* to_vector(V2_pr)) - 0.5) * 20);
   V3 = to_array_1d((inv_logit(mu_pr[10] + sigma[10] .* to_vector(V3_pr)) - 0.5) * 20);
   V4 = to_array_1d((inv_logit(mu_pr[11] + sigma[11] .* to_vector(V4_pr)) - 0.5) * 20);
+
+  // Build per-subject boundary/tau vectors
+  array[N] vector[T] boundary_subj;
+  array[N] vector[T] tau_subj;
+  
+  for (n in 1:N) {
+    int Tsubj_n = Tsubj[n];
+    
+    // First block
+    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
+    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
+    
+    // Rest of blocks
+    int rest_len = Tsubj_n - block;
+    boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
+    tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
+  }
 }
 //---
 model {
   // Tighter priors
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 0.2);
+  sigma ~ student_t(3, 0, 1);
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
@@ -237,7 +245,7 @@ model {
                        Tsubj, choice, RT,
                        win_indices_all, lose_indices_all, other_indices,
                        V1, V2, V3, V4,
-                       boundary1, boundary, tau1, tau,
+                       boundary_subj, tau_subj,
                        urgency, wd, ws);
 }
 //---

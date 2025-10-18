@@ -114,7 +114,7 @@ transformed parameters {
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
 
   Arew_pr  ~ normal(0, 1);
   Apun_pr  ~ normal(0, 1);
