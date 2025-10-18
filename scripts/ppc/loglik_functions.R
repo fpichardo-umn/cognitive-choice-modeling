@@ -77,8 +77,8 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name, 
     # Add RT if available for SSM models
     if ("RT" %in% names(subject_data)) {
       data$RT <- subject_data$RT
-      data$RTbound_min = RTbound_min
-      data$RTbound_max = RTbound_max
+      data$RTbound_min = task_params$RTbound_min
+      data$RTbound_max = task_params$RTbound_max
     }
     
     # Use new format
