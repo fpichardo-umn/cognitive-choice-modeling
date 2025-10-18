@@ -132,7 +132,7 @@ transformed parameters {
   array[N] real<lower=RTbound, upper=max(minRT)> tau1;
   array[N] real<lower=RTbound, upper=max(minRT)> tau;
   array[N] real<lower=0, upper=1> beta;
-  array[N] real<lower=0, upper=5> drift_con;
+  array[N] real<lower=0, upper=3> drift_con;
   array[N] real<lower=0, upper=2> gain;
   array[N] real<lower=0, upper=10> loss;
   array[N] real<lower=0, upper=1> update;
@@ -142,7 +142,7 @@ transformed parameters {
   tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   beta      = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(beta_pr)));
-  drift_con = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) * 5);
+  drift_con = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) * 3);
   gain      = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(gain_pr)) * 2);
   loss      = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(loss_pr)) * 10);
   update    = to_array_1d(inv_logit(mu_pr[9] + sigma[9] .* to_vector(update_pr)));
@@ -208,7 +208,7 @@ generated quantities {
   mu_tau1      = inv_logit(mu_pr[3]) * (mean(minRT) - RTbound) * 0.99 + RTbound;
   mu_tau       = inv_logit(mu_pr[4]) * (mean(minRT) - RTbound) * 0.99 + RTbound;
   mu_beta      = inv_logit(mu_pr[5]);
-  mu_drift_con = inv_logit(mu_pr[6]) * 5;
+  mu_drift_con = inv_logit(mu_pr[6]) * 3;
   mu_gain      = inv_logit(mu_pr[7]) * 2;
   mu_loss      = inv_logit(mu_pr[8]) * 10;
   mu_update    = inv_logit(mu_pr[9]);

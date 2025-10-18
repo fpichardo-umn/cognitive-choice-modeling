@@ -87,7 +87,7 @@ transformed parameters {
   real<lower=RTbound, upper=minRT> tau1;
   real<lower=RTbound, upper=minRT> tau;
   real<lower=0, upper=1> beta;
-  real<lower=0, upper=5> drift_con;
+  real<lower=0, upper=3> drift_con;
   real<lower=0, upper=2> gain;
   real<lower=0, upper=10> loss;
   real<lower=0, upper=1> decay;
@@ -97,7 +97,7 @@ transformed parameters {
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   beta      = inv_logit(beta_pr);
-  drift_con = inv_logit(drift_con_pr) * 5;
+  drift_con = inv_logit(drift_con_pr) * 3;
   gain      = inv_logit(gain_pr) * 2;
   loss      = inv_logit(loss_pr) * 10;
   decay     = inv_logit(decay_pr);

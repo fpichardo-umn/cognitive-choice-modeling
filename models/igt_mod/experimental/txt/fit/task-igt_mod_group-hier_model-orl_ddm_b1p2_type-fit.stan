@@ -148,7 +148,7 @@ transformed parameters {
   array[N] real<lower=RTbound, upper=max(minRT)> tau1;
   array[N] real<lower=RTbound, upper=max(minRT)> tau;
   array[N] real<lower=0, upper=1> beta;
-  array[N] real<lower=0, upper=5> drift_con;
+  array[N] real<lower=0, upper=3> drift_con;
   array[N] real<lower=0, upper=1> Apun;
   array[N] real<lower=0, upper=1> Arew;
   array[N] real betaF;
@@ -158,7 +158,7 @@ transformed parameters {
   tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   beta      = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(beta_pr)));
-  drift_con = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) * 5);
+  drift_con = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(drift_con_pr)) * 3);
   Apun      = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(Apun_pr)));
   Arew      = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(Arew_pr)));
   betaF     = to_array_1d(mu_pr[9] + sigma[9] .* to_vector(betaF_pr));
@@ -222,7 +222,7 @@ generated quantities {
   mu_tau1      = inv_logit(mu_pr[3]) * (mean(minRT) - RTbound) * 0.99 + RTbound;
   mu_tau       = inv_logit(mu_pr[4]) * (mean(minRT) - RTbound) * 0.99 + RTbound;
   mu_beta      = inv_logit(mu_pr[5]);
-  mu_drift_con = inv_logit(mu_pr[6]) * 5;
+  mu_drift_con = inv_logit(mu_pr[6]) * 3;
   mu_Apun      = inv_logit(mu_pr[7]);
   mu_Arew      = inv_logit(mu_pr[8]);
   mu_betaF     = mu_pr[9];
