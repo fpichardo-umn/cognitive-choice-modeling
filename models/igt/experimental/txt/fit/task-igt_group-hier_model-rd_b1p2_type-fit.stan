@@ -28,7 +28,6 @@ functions {
   vector[n] result;
   
   for (i in 1:n) {
-    // For numerical safety when expo_arg is huge
     if (expo_arg[i] > 30) {
       result[i] = Phi_approx(term1[i]);
     } else {
@@ -36,7 +35,8 @@ functions {
     }
   }
   
-  return result;
+  // Clamp using differentiable functions
+  return fmin(fmax(result, 1e-10), 1 - 1e-10);
 }
 
   // Simplified likelihood for a 4-way "win-first" race
