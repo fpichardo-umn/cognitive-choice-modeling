@@ -90,7 +90,11 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name, 
     
     # Use new format
     loglik_result <- model$calculate_loglik(
-      data = as.data.frame(data),
+      data = as.data.frame(data)%>%
+        dplyr::rename(
+          gain = wins,
+          loss = losses
+        ), # Expect gain/loss rather than wins/losses
       parameters = parameters,
       task_params = task_params
     )

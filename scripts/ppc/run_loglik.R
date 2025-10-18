@@ -172,6 +172,7 @@ if (use_simulation_file) {
   )
   
   # Extract observed data for each subject
+  names(parameter_sets_by_subject) = fits$subject_list
   subject_ids <- names(parameter_sets_by_subject)
   message("Extracting observed data for ", length(subject_ids), " subjects...")
   
