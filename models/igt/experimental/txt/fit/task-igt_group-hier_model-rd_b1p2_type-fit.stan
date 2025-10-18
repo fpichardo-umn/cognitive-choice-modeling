@@ -71,7 +71,7 @@ functions {
 
   // Trial-level function for the simpler model
   real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
-                    array[] real boundaries, array[] real taus, real urgency, real drift_con) {
+                    vector boundaries, vector taus, real urgency, real drift_con) {
     real log_lik = 0.0;
     vector[4] drift_rates = urgency + drift_con * V_subj;
 
@@ -87,8 +87,8 @@ functions {
   real partial_sum(array[] int slice_n, int start, int end,
                    array[] int Tsubj, array[,] int choice, array[,] real RT,
                    array[] real V1, array[] real V2, array[] real V3, array[] real V4,
-                   array[] real boundary_subj,
-                   array[] real tau_subj,
+                   array[] vector boundary_subj,
+                   array[] vector tau_subj,
                    array[] real urgency, array[] real drift_con) {
     real log_lik = 0.0;
     for (n in start:end) {
@@ -96,7 +96,7 @@ functions {
       
       log_lik += igt_rd_model(
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-          V_subj, boundary_subj[n 1:Tsubj[n]], tau_subj[n 1:Tsubj[n]], urgency[n], drift_con[n]
+          V_subj, boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n], drift_con[n]
       );
     }
     return log_lik;
