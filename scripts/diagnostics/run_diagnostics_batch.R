@@ -146,26 +146,11 @@ if (opt$dry_run) {
   quit(status = 0)
 }
 
-# Set up logging
-log_dir <- get_diagnostics_logs_dir(opt$task, opt$cohort, opt$session)
-log_file <- file.path(log_dir, sprintf("batch_diagnostics_%s.log", format(Sys.time(), "%Y%m%d-%H%M%S")))
-log_conn <- file(log_file, "w")
-writeLines(paste("Batch diagnostic processing started at:", Sys.time()), log_conn)
-writeLines(paste("Task:", opt$task), log_conn)
-writeLines(paste("Cohort:", opt$cohort), log_conn)
-writeLines(paste("Fits to process:", nrow(available_fits)), log_conn)
-
 # Function to process a single fit
-process_single_fit <- function(fit_row, opt, log_file = NULL) {
+process_single_fit <- function(fit_row, opt) {
   model <- fit_row$model
   group <- fit_row$group
   fit_file <- fit_row$file
-  
-  if (!is.null(log_file)) {
-    log_msg <- sprintf("[%s] Processing: model=%s, group=%s", 
-                      format(Sys.time(), "%H:%M:%S"), model, group)
-    cat(log_msg, "\n", file = log_file, append = TRUE)
-  }
   
   cat(sprintf("Processing: %s (group: %s)\n", model, group))
   
@@ -217,12 +202,6 @@ process_single_fit <- function(fit_row, opt, log_file = NULL) {
   
   cat(sprintf("  ✓ Completed: %s (group: %s)\n\n", model, group))
   
-  if (!is.null(log_file)) {
-    log_msg <- sprintf("[%s] Completed: model=%s, group=%s", 
-                      format(Sys.time(), "%H:%M:%S"), model, group)
-    cat(log_msg, "\n", file = log_file, append = TRUE)
-  }
-  
   return(TRUE)
 }
 
@@ -235,10 +214,9 @@ if (opt$parallel && nrow(available_fits) > 1) {
               nrow(available_fits), min(opt$n_cores, nrow(available_fits))))
   
   cl <- makeCluster(min(opt$n_cores, nrow(available_fits)))
-  clusterExport(cl, c("opt", "log_file"), envir = environment())
   
   results <- parLapply(cl, 1:nrow(available_fits), function(i) {
-    process_single_fit(available_fits[i, ], opt, log_file)
+    process_single_fit(available_fits[i, ], opt)
   })
   
   stopCluster(cl)
@@ -248,7 +226,7 @@ if (opt$parallel && nrow(available_fits) > 1) {
   cat(sprintf("Processing %d fits sequentially...\n\n", nrow(available_fits)))
   
   for (i in 1:nrow(available_fits)) {
-    results[i] <- process_single_fit(available_fits[i, ], opt, log_file)
+    results[i] <- process_single_fit(available_fits[i, ], opt)
   }
 }
 
@@ -265,14 +243,6 @@ cat(sprintf("Successful: %d\n", n_success))
 cat(sprintf("Failed: %d\n", n_failed))
 cat(sprintf("Duration: %.2f minutes\n", as.numeric(duration)))
 cat("=================================\n\n")
-
-writeLines(paste("Batch processing completed at:", end_time), log_conn)
-writeLines(paste("Duration:", round(duration, 2), "minutes"), log_conn)
-writeLines(paste("Successful:", n_success), log_conn)
-writeLines(paste("Failed:", n_failed), log_conn)
-close(log_conn)
-
-cat("Log file saved:", log_file, "\n\n")
 
 # Create index page
 cat("Generating index of reports...\n")
@@ -315,7 +285,6 @@ if (length(report_files) > 0) {
     "</html>"
   )
   
-  writeLines(index_content, index_file)
   cat("  ✓ Index page created:", index_file, "\n")
 }
 
