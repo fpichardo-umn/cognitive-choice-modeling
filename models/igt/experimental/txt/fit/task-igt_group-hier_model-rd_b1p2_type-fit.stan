@@ -157,8 +157,8 @@ transformed parameters {
   V4          = to_array_1d((inv_logit(mu_pr[10] + sigma[10] .* to_vector(V4_pr)) - 0.5) * 20);
 
   // Build per-subject boundary/tau vectors
-  vector[T] boundary_subj[N];
-  vector[T] tau_subj[N];
+  array[N] vector[T] boundary_subj;
+  array[N] vector[T] tau_subj;
   
   for (n in 1:N) {
     int Tsubj_n = Tsubj[n];
