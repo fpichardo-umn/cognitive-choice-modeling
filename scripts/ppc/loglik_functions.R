@@ -75,15 +75,22 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name, 
     )
     
     # Add RT if available for SSM models
-    if ("RT" %in% names(subject_data)) {
+    if ("RT" %in% names(subject_data) && !is.null(subject_data$RT)) {
       data$RT <- subject_data$RT
-      data$RTbound_min = task_params$RTbound_min
-      data$RTbound_max = task_params$RTbound_max
+      # Only add RTbound if we actually have RT data
+      if (length(subject_data$RT) > 0) {
+        data$RTbound_min = task_params$RTbound_min
+        data$RTbound_max = task_params$RTbound_max
+      }
     }
+    
+    # Remove any NULL or empty elements before creating data.frame
+    data <- data[!sapply(data, is.null)]
+    data <- data[sapply(data, length) > 0]
     
     # Use new format
     loglik_result <- model$calculate_loglik(
-      data = data.frame(data),
+      data = as.data.frame(data),
       parameters = parameters,
       task_params = task_params
     )
