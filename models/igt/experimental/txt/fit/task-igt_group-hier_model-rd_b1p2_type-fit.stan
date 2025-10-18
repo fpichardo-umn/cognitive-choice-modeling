@@ -71,7 +71,7 @@ functions {
 
   // Trial-level function for the simpler model
   real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
-                    vector boundaries, vector taus, real urgency, real drift_con) {
+                    array[] real boundaries, array[] real taus, real urgency, real drift_con) {
     real log_lik = 0.0;
     vector[4] drift_rates = urgency + drift_con * V_subj;
 
