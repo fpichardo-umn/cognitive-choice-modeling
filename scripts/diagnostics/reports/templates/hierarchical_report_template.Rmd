@@ -112,10 +112,19 @@ cat(sprintf("- **Subjects with R-hat > %.2f**: %d\n\n",
 ## ESS Distribution Across Subjects
 
 ```{r subject-ess}
-cat(sprintf("- **Minimum ESS ratio (worst)**: %.3f\n", subj_agg$ess$min))
-cat(sprintf("- **Median ESS ratio**: %.3f\n", subj_agg$ess$median))
-cat(sprintf("- **Subjects with ESS ratio < %.2f**: %d\n\n", 
-            thresholds$thresholds$ess_ratio$problematic, subj_agg$ess$n_problematic))
+cat("### ESS Bulk (Center of Distribution)\n\n")
+cat(sprintf("- **Minimum (worst)**: %.0f\n", subj_agg$ess_bulk$min))
+cat(sprintf("- **Median**: %.0f\n", subj_agg$ess_bulk$median))
+cat(sprintf("- **Subjects with ESS_bulk < %d**: %d\n\n", 
+            thresholds$thresholds$ess_bulk$critical, subj_agg$ess_bulk$n_critical))
+
+cat("### ESS Tail (Quantiles/Extremes)\n\n")
+cat(sprintf("- **Minimum (worst)**: %.0f\n", subj_agg$ess_tail$min))
+cat(sprintf("- **Median**: %.0f\n", subj_agg$ess_tail$median))
+cat(sprintf("- **Subjects with ESS_tail < %d**: %d\n\n", 
+            thresholds$thresholds$ess_tail$critical, subj_agg$ess_tail$n_critical))
+
+cat("**Note:** ESS counts matter for validity (need >100 absolute). Low counts = unreliable estimates.\n")
 ```
 
 ## Status Distribution
@@ -152,15 +161,16 @@ if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
   
   if (nrow(df_problems) > 0) {
     display_df <- df_problems %>%
-      select(subject_id, status, worst_rhat, min_ess_ratio, problem_score) %>%
+      select(subject_id, status, worst_rhat, min_ess_bulk, min_ess_tail, problem_score) %>%
       mutate(
         worst_rhat = sprintf("%.4f", worst_rhat),
-        min_ess_ratio = sprintf("%.3f", ifelse(is.na(min_ess_ratio), 0, min_ess_ratio)),
+        min_ess_bulk = sprintf("%.0f", ifelse(is.na(min_ess_bulk), 0, min_ess_bulk)),
+        min_ess_tail = sprintf("%.0f", ifelse(is.na(min_ess_tail), 0, min_ess_tail)),
         problem_score = sprintf("%.1f", problem_score)
       )
     
     kable(display_df, row.names = FALSE,
-          col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Ratio", "Problem Score"))
+          col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Bulk", "Min ESS Tail", "Problem Score"))
   } else {
     cat("✓ **All subjects passed diagnostics!**\n")
   }
@@ -290,7 +300,8 @@ if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
     Status = sapply(summaries, function(x) x$status),
     `Worst R-hat` = sprintf("%.4f", sapply(summaries, function(x) x$worst_rhat)),
     `Median R-hat` = sprintf("%.4f", sapply(summaries, function(x) x$median_rhat %||% NA)),
-    `Min ESS Ratio` = sprintf("%.3f", sapply(summaries, function(x) x$min_ess_ratio %||% NA)),
+    `Min ESS Bulk` = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_bulk %||% NA)),
+    `Min ESS Tail` = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_tail %||% NA)),
     `Problem Score` = sprintf("%.1f", sapply(summaries, function(x) x$problem_score)),
     check.names = FALSE,
     stringsAsFactors = FALSE

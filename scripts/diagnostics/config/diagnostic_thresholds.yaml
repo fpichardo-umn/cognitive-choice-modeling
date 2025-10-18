@@ -63,8 +63,10 @@ csv_export:
     - median_rhat
     - divergence_rate
     - divergence_count
-    - min_ess_ratio
-    - median_ess_ratio
+    - min_ess_bulk
+    - min_ess_tail
+    - min_ess_bulk_ratio
+    - min_ess_tail_ratio
     - worst_mcse_ratio
     - median_mcse_ratio
     - ebfmi

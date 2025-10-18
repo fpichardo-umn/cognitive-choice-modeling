@@ -159,11 +159,19 @@ calculate_problem_score <- function(subject_diagnostics, thresholds) {
     }
   }
   
-  # Low ESS
-  if (!is.null(subject_diagnostics$min_ess_ratio)) {
-    if (subject_diagnostics$min_ess_ratio < thresholds$thresholds$ess_ratio$problematic) {
+  # Low ESS - use absolute counts, not ratios
+  if (!is.null(subject_diagnostics$min_ess_bulk)) {
+    if (subject_diagnostics$min_ess_bulk < thresholds$thresholds$ess_bulk$critical) {
       score <- score + weights$low_ess
-    } else if (subject_diagnostics$min_ess_ratio < thresholds$thresholds$ess_ratio$acceptable) {
+    } else if (subject_diagnostics$min_ess_bulk < thresholds$thresholds$ess_bulk$acceptable) {
+      score <- score + (weights$low_ess * 0.5)
+    }
+  }
+  
+  if (!is.null(subject_diagnostics$min_ess_tail)) {
+    if (subject_diagnostics$min_ess_tail < thresholds$thresholds$ess_tail$critical) {
+      score <- score + weights$low_ess
+    } else if (subject_diagnostics$min_ess_tail < thresholds$thresholds$ess_tail$acceptable) {
       score <- score + (weights$low_ess * 0.5)
     }
   }
@@ -440,11 +448,18 @@ create_recommendations <- function(diagnostic_summary, fit_type = "single") {
                                diagnostic_summary$worst_rhat))
   }
   
-  if (!is.null(diagnostic_summary$min_ess_ratio) && 
-      diagnostic_summary$min_ess_ratio < 0.3) {
+  if (!is.null(diagnostic_summary$min_ess_bulk) && 
+      diagnostic_summary$min_ess_bulk < 400) {
     recommendations <- c(recommendations,
-                        sprintf("• Low effective sample size (%.1f%%). Run more iterations.",
-                               diagnostic_summary$min_ess_ratio * 100))
+                        sprintf("• Low ESS_bulk (%d). Run more iterations for reliable estimates.",
+                               as.integer(diagnostic_summary$min_ess_bulk)))
+  }
+  
+  if (!is.null(diagnostic_summary$min_ess_tail) && 
+      diagnostic_summary$min_ess_tail < 400) {
+    recommendations <- c(recommendations,
+                        sprintf("• Low ESS_tail (%d). Run more iterations for reliable quantile estimates.",
+                               as.integer(diagnostic_summary$min_ess_tail)))
   }
   
   if (!is.null(diagnostic_summary$ebfmi) && 
