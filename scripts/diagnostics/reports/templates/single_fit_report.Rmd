@@ -212,18 +212,23 @@ if (rhat_info$n_problematic > 0) {
 
 Effective Sample Size (ESS) tells you how many **independent** samples you effectively have from the posterior, accounting for autocorrelation in the MCMC chain.
 
-- Raw samples are correlated (each draw depends on previous draws)
-- ESS adjusts for this correlation
-- Higher ESS = more information about the posterior
+- **Raw samples are correlated**: Each MCMC draw depends on previous draws
+- **ESS adjusts for this**: Accounts for autocorrelation to estimate "effective" independent samples  
+- **Higher ESS = more information** about the posterior
 
-**Two types:**
-- **Bulk ESS**: For estimating means and medians
-- **Tail ESS**: For estimating quantiles and credible intervals
+**Two types of ESS:**
+
+- **Bulk ESS**: For estimating means, medians, and central posterior features (most important for parameter estimates)
+- **Tail ESS**: For estimating extreme quantiles and tail probabilities
+
+**ESS Ratio**: ESS divided by total post-warmup samples (`n_iter × n_chains`). Shows sampling efficiency as a percentage.
 
 ## Interpretation Guide
 
 ```{r ess-interpretation}
-ess_interp <- data.frame(
+cat("### ESS Ratio (Efficiency)\n\n")
+
+ess_ratio_df <- data.frame(
   `ESS/Total Samples` = c("> 70%", "> 50%", "< 30%"),
   Assessment = c("Good - highly efficient sampling",
                 "Acceptable - reasonable efficiency", 
@@ -235,10 +240,19 @@ ess_interp <- data.frame(
   stringsAsFactors = FALSE
 )
 
-kable(ess_interp)
+kable(ess_ratio_df)
+
+cat("\n### Absolute ESS Guidelines\n\n")
+cat(sprintf("- **Minimum recommended**: 100 per chain (or %d total for %d chains)\n",
+            100 * diagnostic_results$metadata$n_chains,
+            diagnostic_results$metadata$n_chains))
+cat("- **Rule of thumb**: Aim for ESS > 400 for stable estimates of means\n")
+cat("- **For tail probabilities**: Need higher ESS_tail (1000+ recommended)\n\n")
 ```
 
-**Rule of thumb:** Aim for ESS > 400 for stable estimates.
+### Absolute ESS Guidelines
+- **Minimum**: 100 per chain (or 400 total for 4 chains)  
+- **Good practice**: Aim for ESS > 400 for means, > 1000 for tail probabilities
 
 **What causes low ESS:**
 - High autocorrelation (slow mixing)
@@ -247,48 +261,85 @@ kable(ess_interp)
 
 ## Your Results
 
-```{r ess-summary}
-ess_info <- diagnostic_results$convergence$ess_bulk
+### ESS Bulk (Central Posterior)
 
-cat(sprintf("- **Minimum ESS**: %d (%.1f%% of %d total samples)\n", 
-            ess_info$min, ess_info$min_ratio * 100, diagnostic_results$metadata$total_samples))
-cat(sprintf("- **Median ESS**: %d (%.1f%%)\n", 
-            ess_info$median, ess_info$median_ratio * 100))
-cat(sprintf("- **Status**: %s\n\n", ess_info$status))
+```{r ess-bulk-summary}
+ess_bulk <- diagnostic_results$convergence$ess_bulk
 
-if (ess_info$n_problematic > 0) {
+cat(sprintf("- **Minimum ESS**: %.0f (%.1f%% of %.0f total samples)\n", 
+            ess_bulk$min, ess_bulk$min_ratio * 100, diagnostic_results$metadata$total_samples))
+cat(sprintf("- **Median ESS**: %.0f (%.1f%%)\n", 
+            ess_bulk$median, ess_bulk$median_ratio * 100))
+cat(sprintf("- **Guideline**: > %d (100 per chain)\n",
+            100 * diagnostic_results$metadata$n_chains))
+cat(sprintf("- **Status**: %s\n\n", ess_bulk$status))
+
+if (ess_bulk$n_problematic > 0) {
   cat(sprintf("⚠ **Warning**: %d parameters have ESS ratio < %.0f%%\n\n", 
-              ess_info$n_problematic, thresholds$thresholds$ess_ratio$problematic * 100))
+              ess_bulk$n_problematic, thresholds$thresholds$ess_ratio$problematic * 100))
+}
+```
+
+### ESS Tail (Extreme Quantiles)
+
+```{r ess-tail-summary}
+if (!is.null(diagnostic_results$convergence$ess_tail)) {
+  ess_tail <- diagnostic_results$convergence$ess_tail
+  
+  cat(sprintf("- **Minimum ESS**: %.0f (%.1f%% of total samples)\n", 
+              ess_tail$min, ess_tail$min_ratio * 100))
+  cat(sprintf("- **Median ESS**: %.0f (%.1f%%)\n", 
+              ess_tail$median, ess_tail$median_ratio * 100))
+  cat(sprintf("- **Guideline**: > %d for tail estimates\n\n",
+              100 * diagnostic_results$metadata$n_chains))
+  
+  cat("**Note**: Tail ESS is typically lower than Bulk ESS. This is normal.\n\n")
+} else {
+  cat("*ESS Tail not available*\n\n")
+}
+```
+
+**Note**: Tail ESS is typically lower than Bulk. This is normal.
+
+```{r ess-note}
+if (any(ess_bulk$ratios > 1.0, na.rm = TRUE)) {
+  cat("ℹ️ **Note**: Some ESS ratios exceed 100%. This is valid and indicates negative autocorrelation (anticorrelation) in the chains, which actually improves efficiency beyond independent samples.\n\n")
 }
 ```
 
 ### ESS Distribution
 
 ```{r ess-histogram, fig.width=10, fig.height=5}
-create_ess_histogram(ess_info$ratios, thresholds)
+create_ess_histogram(ess_bulk$ratios, thresholds)
 ```
 
 ### All Parameters
 
 ```{r ess-table}
 param_ess <- data.frame(
-  Parameter = names(ess_info$values),
-  `ESS Bulk` = round(ess_info$values, 0),
-  `ESS Ratio` = sprintf("%.1f%%", ess_info$ratios * 100),
+  Parameter = names(ess_bulk$values),
+  `ESS Bulk` = round(ess_bulk$values, 0),
+  `ESS Ratio` = sprintf("%.1f%%", ess_bulk$ratios * 100),
   check.names = FALSE,
   stringsAsFactors = FALSE
 )
 
-param_ess <- param_ess[order(ess_info$values), ]
+# Add ESS Tail column if available
+if (!is.null(diagnostic_results$convergence$ess_tail)) {
+  ess_tail <- diagnostic_results$convergence$ess_tail
+  param_ess$`ESS Tail` <- round(ess_tail$values[param_ess$Parameter], 0)
+}
+
+param_ess <- param_ess[order(ess_bulk$values), ]
 
 kable(param_ess, row.names = FALSE)
 ```
 
 ```{r ess-problematic}
-if (ess_info$n_problematic > 0) {
+if (ess_bulk$n_problematic > 0) {
   cat("\n### Low ESS Parameters (< ", thresholds$thresholds$ess_ratio$problematic * 100, "%)\n\n", sep="")
   
-  prob_idx <- which(ess_info$ratios < thresholds$thresholds$ess_ratio$problematic)
+  prob_idx <- which(ess_bulk$ratios < thresholds$thresholds$ess_ratio$problematic)
   prob_ess <- param_ess[prob_idx, ]
   kable(prob_ess, row.names = FALSE)
   

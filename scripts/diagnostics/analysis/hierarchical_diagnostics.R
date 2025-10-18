@@ -149,8 +149,8 @@ analyze_subject_level_parameters <- function(hier_fit, param_structure, threshol
             worst_rhat = max(subj_i_diag[, "rhat"], na.rm = TRUE),
             median_rhat = median(subj_i_diag[, "rhat"], na.rm = TRUE),
             min_ess_ratio = if ("ess_bulk" %in% colnames(subj_i_diag)) {
-              total_samples <- if (!is.null(hier_fit$tss)) hier_fit$tss else 
-                (hier_fit$n_iter - hier_fit$n_warmup) * hier_fit$n_chains
+              # n_iter is already post-warmup samples per chain
+              total_samples <- hier_fit$n_iter * hier_fit$n_chains
               min(subj_i_diag[, "ess_bulk"] / total_samples, na.rm = TRUE)
             } else NA_real_,
             status = "PASS"  # Will be updated based on classifications
@@ -241,7 +241,8 @@ check_basic_hierarchical_health <- function(hier_fit, param_structure, threshold
   # Check overall divergences
   if (!is.null(hier_fit$diagnostic_summary$num_divergent)) {
     total_div <- sum(hier_fit$diagnostic_summary$num_divergent)
-    total_trans <- (hier_fit$n_iter - hier_fit$n_warmup) * hier_fit$n_chains
+    # n_iter is already post-warmup samples per chain
+    total_trans <- hier_fit$n_iter * hier_fit$n_chains
     div_rate <- total_div / total_trans
     
     checks$divergences <- list(
@@ -331,7 +332,8 @@ analyze_group_level_parameters <- function(hier_fit, param_structure, thresholds
       ),
       
       ess = if ("ess_bulk" %in% colnames(group_diagnostics)) {
-        total_samples <- (hier_fit$n_iter - hier_fit$n_warmup) * hier_fit$n_chains
+        # n_iter is already post-warmup samples per chain
+        total_samples <- hier_fit$n_iter * hier_fit$n_chains
         list(
           values = group_diagnostics[, "ess_bulk"],
           ratios = group_diagnostics[, "ess_bulk"] / total_samples,

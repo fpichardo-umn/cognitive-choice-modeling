@@ -59,7 +59,11 @@ extract_fit_metadata <- function(fit, subject_id) {
     n_chains = if (!is.null(fit$n_chains)) fit$n_chains else dim(fit$draws)[2],
     n_warmup = if (!is.null(fit$n_warmup)) fit$n_warmup else NA,
     n_iter = if (!is.null(fit$n_iter)) fit$n_iter else NA,
-    total_samples = if (!is.null(fit$tss)) fit$tss else dim(fit$draws)[1] * dim(fit$draws)[2],
+    total_samples = if (!is.null(fit$n_iter) && !is.null(fit$n_chains)) {
+      fit$n_iter * fit$n_chains
+    } else {
+      dim(fit$draws)[1] * dim(fit$draws)[2]
+    },
     n_params = if (!is.null(fit$n_params)) fit$n_params else dim(fit$draws)[3],
     adapt_delta = if (!is.null(fit$adapt_delta)) fit$adapt_delta else NA,
     max_treedepth = if (!is.null(fit$max_treedepth)) fit$max_treedepth else NA
@@ -122,7 +126,8 @@ analyze_convergence <- function(fit, thresholds) {
       if ("lp__" %in% names(ess_bulk)) {
         ess_bulk <- ess_bulk[names(ess_bulk) != "lp__"]
       }
-      total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
+      # Total post-warmup samples: n_iter (per chain) * n_chains
+      total_samples <- fit$n_iter * fit$n_chains
       ess_bulk_ratio <- ess_bulk / total_samples
       
       convergence$ess_bulk <- list(
@@ -150,7 +155,8 @@ analyze_convergence <- function(fit, thresholds) {
       if ("lp__" %in% names(ess_tail)) {
         ess_tail <- ess_tail[names(ess_tail) != "lp__"]
       }
-      total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
+      # Total post-warmup samples: n_iter (per chain) * n_chains
+      total_samples <- fit$n_iter * fit$n_chains
       ess_tail_ratio <- ess_tail / total_samples
       
       convergence$ess_tail <- list(
@@ -224,7 +230,8 @@ analyze_sampling_diagnostics <- function(fit, thresholds) {
     )
   } else if (!is.null(fit$diagnostic_summary$num_divergent)) {
     divergences <- sum(fit$diagnostic_summary$num_divergent)
-    total_transitions <- (fit$n_iter - fit$n_warmup) * fit$n_chains
+    # n_iter is already post-warmup samples per chain
+    total_transitions <- fit$n_iter * fit$n_chains
     divergence_rate <- divergences / total_transitions
     
     sampling$divergences <- list(
@@ -253,7 +260,8 @@ analyze_sampling_diagnostics <- function(fit, thresholds) {
     )
   } else if (!is.null(fit$diagnostic_summary$num_max_treedepth)) {
     treedepth_hits <- sum(fit$diagnostic_summary$num_max_treedepth)
-    total_transitions <- (fit$n_iter - fit$n_warmup) * fit$n_chains
+    # n_iter is already post-warmup samples per chain
+    total_transitions <- fit$n_iter * fit$n_chains
     
     sampling$treedepth <- list(
       max_allowed = fit$max_treedepth,
@@ -360,7 +368,8 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
       ess_bulk_all <- fit$diagnostics[, "ess_bulk"]
       ess_bulk_filtered <- ess_bulk_all[names(ess_bulk_all) %in% params]
       param_df$ess_bulk <- ess_bulk_filtered[params]
-      total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
+      # Total post-warmup samples: n_iter (per chain) * n_chains
+      total_samples <- fit$n_iter * fit$n_chains
       param_df$ess_bulk_ratio <- param_df$ess_bulk / total_samples
       param_df$ess_bulk_status <- sapply(param_df$ess_bulk_ratio, function(x) {
         classify_diagnostic(x, thresholds, "ess_ratio")
@@ -371,7 +380,8 @@ analyze_parameter_diagnostics <- function(fit, thresholds) {
       ess_tail_all <- fit$diagnostics[, "ess_tail"]
       ess_tail_filtered <- ess_tail_all[names(ess_tail_all) %in% params]
       param_df$ess_tail <- ess_tail_filtered[params]
-      total_samples <- if (!is.null(fit$tss)) fit$tss else (fit$n_iter - fit$n_warmup) * fit$n_chains
+      # Total post-warmup samples: n_iter (per chain) * n_chains
+      total_samples <- fit$n_iter * fit$n_chains
       param_df$ess_tail_ratio <- param_df$ess_tail / total_samples
     }
   }

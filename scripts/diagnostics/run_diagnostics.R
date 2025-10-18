@@ -86,14 +86,7 @@ if (opt$verbose) {
   cat("  Tables:", dirs$tables, "\n\n")
 }
 
-# Set up logging
-log_file <- get_diagnostics_log_path(opt$task, opt$cohort, opt$session, opt$group, opt$model)
-log_conn <- file(log_file, "w")
-writeLines(paste("Diagnostics analysis started at:", Sys.time()), log_conn)
-writeLines(paste("Task:", opt$task), log_conn)
-writeLines(paste("Cohort:", opt$cohort), log_conn)
-writeLines(paste("Model:", opt$model), log_conn)
-writeLines(paste("Group:", opt$group), log_conn)
+
 
 # Dry run check
 if (opt$dry_run) {
@@ -126,7 +119,6 @@ if (opt$dry_run) {
   }
   
   cat("=== END DRY RUN ===\n")
-  close(log_conn)
   quit(status = 0)
 }
 
@@ -150,12 +142,9 @@ if (opt$verbose) {
   cat("  Size:", round(file.size(fit_file) / 1024^2, 2), "MB\n")
 }
 
-writeLines(paste("Loading fit file:", fit_file), log_conn)
-
 tryCatch({
   fit <- readRDS(fit_file)
   cat("  ✓ Fit object loaded successfully\n\n")
-  writeLines("Fit object loaded successfully", log_conn)
 }, error = function(e) {
   stop("Failed to load fit object: ", e$message)
 })
@@ -164,7 +153,6 @@ tryCatch({
 cat("Analyzing fit type...\n")
 fit_type <- determine_fit_type(fit)
 cat("  Detected fit type:", fit_type, "\n\n")
-writeLines(paste("Fit type:", fit_type), log_conn)
 
 # Verify fit type matches group specification
 expected_type <- if (opt$group == "sing") {
@@ -226,14 +214,9 @@ tryCatch({
   cat(sprintf("  ✓ Analysis complete (%.1f seconds)\n", as.numeric(analysis_time)))
   cat(sprintf("  Overall status: %s\n\n", diagnostic_results$overall_status))
   
-  writeLines(paste("Analysis completed in", round(analysis_time, 2), "seconds"), log_conn)
-  writeLines(paste("Overall status:", diagnostic_results$overall_status), log_conn)
-  
 }, error = function(e) {
   error_msg <- paste("Error in diagnostic analysis:", e$message)
   cat(error_msg, "\n")
-  writeLines(error_msg, log_conn)
-  close(log_conn)
   stop(e)
 })
 
@@ -248,7 +231,6 @@ if (opt$save_rds || opt$render_html) {
     if (opt$save_rds) {
       cat("  ✓ Summary saved:", summary_file, "\n\n")
     }
-    writeLines(paste("Summary saved:", summary_file), log_conn)
   }, error = function(e) {
     warning("Failed to save summary: ", e$message)
     summary_file <- NULL
@@ -286,7 +268,6 @@ if (fit_type %in% c("batch", "hierarchical")) {
         write.csv(subject_df, table_file, row.names = FALSE)
       }
       cat("  ✓ CSV exported:", table_file, "\n\n")
-      writeLines(paste("CSV exported:", table_file), log_conn)
     }, error = function(e) {
       warning("Failed to export CSV: ", e$message)
     })
@@ -318,18 +299,9 @@ if (opt$render_html || !is.null(opt$output_dir)) {
     }
     cat("\n")
     
-    writeLines(
-      paste(
-        "Report generated:",
-        if (!is.null(report_result$html_file)) report_result$html_file else report_result$rmd_file
-      ),
-      log_conn
-    )
-    
   }, error = function(e) {
     error_msg <- paste("Error generating report:", e$message)
     cat(error_msg, "\n")
-    writeLines(error_msg, log_conn)
     warning(e)
   })
 }
@@ -345,12 +317,4 @@ if (!is.null(diagnostic_results$recommendations)) {
 }
 cat("==========================\n\n")
 
-# Log completion
-end_time <- Sys.time()
-total_duration <- difftime(end_time, start_time, units = "mins")
-writeLines(paste("Analysis completed at:", end_time), log_conn)
-writeLines(paste("Total duration:", round(total_duration, 2), "minutes"), log_conn)
-close(log_conn)
-
-cat("Log file saved:", log_file, "\n")
 cat("\nDiagnostic analysis complete!\n")

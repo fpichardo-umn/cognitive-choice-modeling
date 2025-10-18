@@ -3,14 +3,21 @@
 
 thresholds:
   rhat:
-    excellent: 1.01      # Values <= this are excellent
-    acceptable: 1.05     # Values <= this are acceptable
-    problematic: 1.1     # Values > this are problematic
+    excellent: 1.01      # Values <= this are excellent (PASS)
+    acceptable: 1.05     # Values <= this are acceptable (WARN)
+    warning: 1.05        # Values > this trigger warnings
+    problematic: 1.1     # Values > this are problematic (FAIL)
   
   ess_ratio:
     good: 0.7            # ESS/N >= this is good
     acceptable: 0.5      # ESS/N >= this is acceptable
     problematic: 0.3     # ESS/N < this is problematic
+  
+  ess_bulk:
+    per_chain: 100       # ESS_bulk should be > 100 per chain (or 100 * n_chains total)
+  
+  ess_tail:
+    per_chain: 100       # ESS_tail should be > 100 per chain (or 100 * n_chains total)
   
   divergence_rate:
     acceptable: 0.001    # Rate <= this is acceptable (0.1%)
