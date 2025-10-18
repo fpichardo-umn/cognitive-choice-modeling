@@ -1,6 +1,6 @@
 // Optimized Hierarchical PVL-Both-DDM b1p2 Model for IGT_MOD
 functions {
-  real igt_model_lp(
+  real igt_model(
       array[] int choice, array[] int shown,
       array[] real outcome, array[] real RT, 
       vector ev, int Tsub,
@@ -81,7 +81,7 @@ functions {
       vector[4] ev = rep_vector(0., 4);
       real sensitivity = pow(3, drift_con[n]) - 1;
       
-      log_lik += igt_model_lp(
+      log_lik += igt_model(
           choice[n, 1:Tsubj[n]], shown[n, 1:Tsubj[n]], 
           outcome[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], 
           ev, Tsubj[n],
