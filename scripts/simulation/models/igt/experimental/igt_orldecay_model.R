@@ -5,6 +5,7 @@ igtORLDECAYModel <- R6::R6Class("igtORLDECAYModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev = NULL,    # Expected values for each deck
     ef = NULL,    # Expected frequencies for each deck
     pers = NULL,  # Perseverance values for each deck

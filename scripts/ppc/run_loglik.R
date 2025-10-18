@@ -218,48 +218,55 @@ message("Using RT bounds: [", task_params$RTbound_min, ", ",
         task_params$RTbound_max, "] seconds")
 message("Using RT method: ", opt$rt_method)
 
-# CRITICAL: Preprocess observed data with rt_method to match how model was fitted
-message("Preprocessing observed data with rt_method=", opt$rt_method, "...")
-for (subject_id in names(observed_data_list)) {
-  obs_data <- observed_data_list[[subject_id]]
-  
-  # Check if RT data exists
-  if ("RT" %in% names(obs_data)) {
-    # Convert to data frame format expected by preprocess_data
-    obs_df <- data.frame(
-      subjID = subject_id,
-      RT = obs_data$RT,
-      choice = obs_data$choice,
-      shown = if ("shown" %in% names(obs_data)) obs_data$shown else NULL,
-      deck = if ("deck" %in% names(obs_data)) obs_data$deck else NULL,
-      outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL
-    )
+# ONLY preprocess RTs if model has SSM component
+has_ssm <- model$model_type %in% c("SSM", "RL_SSM")
+
+if (has_ssm) {
+  # CRITICAL: Preprocess observed data with rt_method to match how model was fitted
+  message("Model type: ", model$model_type, " - preprocessing observed data with rt_method=", opt$rt_method, "...")
+  for (subject_id in names(observed_data_list)) {
+    obs_data <- observed_data_list[[subject_id]]
     
-    # Apply RT preprocessing
-    processed_df <- preprocess_data(
-      data = obs_df,
-      task = opt$task,
-      RTbound_min_ms = opt$RTbound_min_ms,
-      RTbound_max_ms = opt$RTbound_max_ms,
-      rt_method = opt$rt_method,
-      return_dropped_indices = FALSE
-    )
-    
-    # Update the observed data with preprocessed RTs
-    observed_data_list[[subject_id]]$RT <- processed_df$RT
-    
-    # If rt_method="remove", we also need to filter other columns
-    if (opt$rt_method == "remove" && nrow(processed_df) < nrow(obs_df)) {
-      message("  Subject ", subject_id, ": removed ", nrow(obs_df) - nrow(processed_df), 
-              " trials with invalid RTs")
-      # Filter all columns to match the kept trials
-      for (col in names(observed_data_list[[subject_id]])) {
-        if (length(observed_data_list[[subject_id]][[col]]) == nrow(obs_df)) {
-          observed_data_list[[subject_id]][[col]] <- observed_data_list[[subject_id]][[col]][1:nrow(processed_df)]
+    # Check if RT data exists
+    if ("RT" %in% names(obs_data)) {
+      # Convert to data frame format expected by preprocess_data
+      obs_df <- data.frame(
+        subjID = subject_id,
+        RT = obs_data$RT,
+        choice = obs_data$choice,
+        shown = if ("shown" %in% names(obs_data)) obs_data$shown else NULL,
+        deck = if ("deck" %in% names(obs_data)) obs_data$deck else NULL,
+        outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL
+      )
+      
+      # Apply RT preprocessing
+      processed_df <- preprocess_data(
+        data = obs_df,
+        task = opt$task,
+        RTbound_min_ms = opt$RTbound_min_ms,
+        RTbound_max_ms = opt$RTbound_max_ms,
+        rt_method = opt$rt_method,
+        return_dropped_indices = FALSE
+      )
+      
+      # Update the observed data with preprocessed RTs
+      observed_data_list[[subject_id]]$RT <- processed_df$RT
+      
+      # If rt_method="remove", we also need to filter other columns
+      if (opt$rt_method == "remove" && nrow(processed_df) < nrow(obs_df)) {
+        message("  Subject ", subject_id, ": removed ", nrow(obs_df) - nrow(processed_df), 
+                " trials with invalid RTs")
+        # Filter all columns to match the kept trials
+        for (col in names(observed_data_list[[subject_id]])) {
+          if (length(observed_data_list[[subject_id]][[col]]) == nrow(obs_df)) {
+            observed_data_list[[subject_id]][[col]] <- observed_data_list[[subject_id]][[col]][1:nrow(processed_df)]
+          }
         }
       }
     }
   }
+} else {
+  message("Model type: ", model$model_type, " - skipping RT preprocessing (pure RL model)")
 }
 
 # Calculate log-likelihood

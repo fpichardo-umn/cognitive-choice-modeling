@@ -5,6 +5,7 @@ igtLAGVSEBOTHModel <- R6::R6Class("igtLAGVSEBOTHModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev_exploit = NULL,  # Exploitation values for each deck
     choice_lag = NULL,  # Trials since each deck was last chosen
     

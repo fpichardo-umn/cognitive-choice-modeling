@@ -3,6 +3,7 @@ igtPVLDECAYModel <- R6::R6Class("igtPVLDECAYModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev = NULL, # Expected values for each deck
     
     validate_config = function(parameters) {

@@ -5,6 +5,7 @@ igtVSEBOTHModel <- R6::R6Class("igtVSEBOTHModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev_exploit = NULL,  # Exploitation values for each deck
     ev_explore = NULL,  # Exploration values for each deck
     

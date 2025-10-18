@@ -3,6 +3,7 @@ igtORLModel <- R6::R6Class("igtORLModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev = NULL,    # Expected values (valence) for each deck
     ef = NULL,    # Expected frequencies for each deck
     pers = NULL,  # Perseverance values for each deck

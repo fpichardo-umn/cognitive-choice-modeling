@@ -3,6 +3,7 @@ igtPVLDELTAModel <- R6::R6Class("igtPVLDELTAModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev = NULL, # Expected values for each deck
     
     validate_config = function(parameters) {
