@@ -67,11 +67,11 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name, 
     )
     
   } else if (task_config$type == "deck_selection") {
-    # IGT: Use new data object format
+    # IGT: Keep original column names that model expects
     data <- list(
       choice = subject_data$choice,
-      gain = subject_data$wins,      # Note: wins -> gain
-      loss = subject_data$losses     # Note: losses -> loss
+      wins = subject_data$wins,
+      losses = subject_data$losses
     )
     
     # Add RT if available for SSM models
