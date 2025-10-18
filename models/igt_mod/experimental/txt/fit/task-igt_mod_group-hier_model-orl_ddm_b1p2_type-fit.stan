@@ -92,6 +92,7 @@ functions {
     
     for (n in start:end) {
       vector[4] ev = rep_vector(0., 4);
+      vector[4] ef = rep_vector(0., 4);
       real sensitivity = pow(3, drift_con[n]) - 1;
       
       log_lik += igt_pp_orl_ddm_model(
@@ -122,6 +123,8 @@ data {
 
 transformed data {
   int block = 20; 
+  array[N] int subject_indices;
+  for (i in 1:N) subject_indices[i] = i;
 }
 
 parameters {

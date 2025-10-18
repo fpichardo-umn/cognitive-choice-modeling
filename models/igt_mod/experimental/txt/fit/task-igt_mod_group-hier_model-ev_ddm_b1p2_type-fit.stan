@@ -101,6 +101,8 @@ data {
 
 transformed data {
   int block = 20; 
+  array[N] int subject_indices;
+  for (i in 1:N) subject_indices[i] = i;
 }
 
 parameters {
