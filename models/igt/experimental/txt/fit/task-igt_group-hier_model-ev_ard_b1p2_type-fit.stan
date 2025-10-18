@@ -117,9 +117,6 @@ functions {
       vector[4] ev = rep_vector(0.0, 4);
       real sensitivity = pow(3, drift_con[n]) - 1;
 
-      boundaries = append_row(rep_vector(boundary1[n], 20), rep_vector(boundary[n], Tsubj[n] - 20));
-      taus = append_row(rep_vector(tau1[n], 20), rep_vector(tau[n], Tsubj[n] - 20));
-
       log_lik += igt_ard_model(
           choice[n, 1:Tsubj[n]], wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
           ev, Tsubj[n],
