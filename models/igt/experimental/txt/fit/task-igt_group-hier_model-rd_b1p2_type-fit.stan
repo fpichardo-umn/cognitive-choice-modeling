@@ -96,7 +96,7 @@ functions {
       
       log_lik += igt_rd_model(
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-          V_subj, boundary_subj[n], tau_subj[n], urgency[n], drift_con[n]
+          V_subj, boundary_subj[n 1:Tsubj[n]], tau_subj[n 1:Tsubj[n]], urgency[n], drift_con[n]
       );
     }
     return log_lik;
