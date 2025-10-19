@@ -257,7 +257,8 @@ model {
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum,
                        subject_indices, grainsize,
-                       Tsubj, choice, wins, losses, RT,
+                       Tsubj, choice,
+		       wins, losses, RT,
                        win_indices_all, lose_indices_all, other_indices,
                        boundary_subj, tau_subj,
                        drift_con, update, wgt_pun, wgt_rew,
