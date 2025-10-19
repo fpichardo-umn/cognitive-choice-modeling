@@ -91,10 +91,9 @@ functions {
       
       real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
       real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
-      curUtil = win_component - loss * loss_component;
 
       local_ev = local_ev * (1 - decay);
-      local_ev[choice[t]] += curUtil;
+      local_ev[choice[t]] += win_component - loss * loss_component;
     }
 
     return log_lik;
