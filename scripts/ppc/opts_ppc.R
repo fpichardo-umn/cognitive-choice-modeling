@@ -7,9 +7,9 @@
 #' - For individual scripts: "batch_001" or "hier" (file naming)
 
 # ========== CONFIGURATION ==========
-opt_model = "lagvsedelta"
+opt_model = "rd_b1p2"
 opt_task = "igt" 
-opt_cohort = "luc"
+opt_cohort = "adb"
 opt_ses = "00"  # or "ses-01"
 opt_group_name = "hier"  # for individual fits
 
@@ -141,9 +141,9 @@ opt = list(
   ic_method = "loo",
   output_dir = NULL,
   sim_file = NULL,
-  rt_method = "remove",
-  RTbound_min_ms = 100,
-  RTbound_max_ms = 2500
+  rt_method = "mark",
+  RTbound_min_ms = 50,
+  RTbound_max_ms = 120000
 )
 
 # Run loglik - Hierarchical fits

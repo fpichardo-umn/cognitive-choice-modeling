@@ -231,14 +231,24 @@ if (has_ssm) {
     # Check if RT data exists
     if ("RT" %in% names(obs_data)) {
       # Convert to data frame format expected by preprocess_data
-      obs_df <- data.frame(
-        subjID = subject_id,
-        RT = obs_data$RT,
-        choice = obs_data$choice,
-        shown = if ("shown" %in% names(obs_data)) obs_data$shown else NULL,
-        deck = if ("deck" %in% names(obs_data)) obs_data$deck else NULL,
-        outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL
-      )
+      if (opt$task == "igt"){
+        obs_df <- data.frame(
+          subjID = subject_id,
+          RT = obs_data$RT,
+          choice = obs_data$choice,
+          wins = if ("wins" %in% names(obs_data)) obs_data$wins else NULL,
+          losses = if ("losses" %in% names(obs_data)) obs_data$losses else NULL
+        )
+      } else if (opt$task == "igt_mod"){
+        obs_df <- data.frame(
+          subjID = subject_id,
+          RT = obs_data$RT,
+          choice = obs_data$choice,
+          shown = if ("shown" %in% names(obs_data)) obs_data$shown else NULL,
+          outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL,
+        )
+      }
+      
       
       # Apply RT preprocessing
       processed_df <- preprocess_data(
