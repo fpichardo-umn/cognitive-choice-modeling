@@ -137,19 +137,6 @@ transformed parameters {
   V2        = (inv_logit(V2_pr) - 0.5) * 20;
   V3        = (inv_logit(V3_pr) - 0.5) * 20;
   V4        = (inv_logit(V4_pr) - 0.5) * 20;
-
-  // Build boundary/tau vectors for trials
-  vector[T] boundary_vec;
-  vector[T] tau_vec;
-  
-  // First block
-  boundary_vec[1:block] = rep_vector(boundary1, block);
-  tau_vec[1:block]      = rep_vector(tau1, block);
-  
-  // Rest of trials
-  int rest_len = Tsubj - block;
-  boundary_vec[(block+1):Tsubj] = rep_vector(boundary, rest_len);
-  tau_vec[(block+1):Tsubj]      = rep_vector(tau, rest_len);
 }
 
 model {
@@ -165,6 +152,19 @@ model {
   V2_pr ~ normal(0, 1);
   V3_pr ~ normal(0, 1);
   V4_pr ~ normal(0, 1);
+
+  // Build boundary/tau vectors for trials
+  vector[T] boundary_vec;
+  vector[T] tau_vec;
+  
+  // First block
+  boundary_vec[1:block] = rep_vector(boundary1, block);
+  tau_vec[1:block]      = rep_vector(tau1, block);
+  
+  // Rest of trials
+  int rest_len = Tsubj - block;
+  boundary_vec[(block+1):Tsubj] = rep_vector(boundary, rest_len);
+  tau_vec[(block+1):Tsubj]      = rep_vector(tau, rest_len);
   
   // Likelihood
   vector[4] V_vec = [V1, V2, V3, V4]';

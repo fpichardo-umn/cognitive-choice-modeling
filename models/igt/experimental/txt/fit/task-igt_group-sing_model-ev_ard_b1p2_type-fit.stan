@@ -178,19 +178,6 @@ transformed parameters {
   wgt_pun   = inv_logit(wgt_pun_pr);
   wgt_rew   = inv_logit(wgt_rew_pr);
   update    = inv_logit(update_pr);
-
-  // Build boundary/tau vectors for trials
-  vector[T] boundary_vec;
-  vector[T] tau_vec;
-  
-  // First block
-  boundary_vec[1:block] = rep_vector(boundary1, block);
-  tau_vec[1:block]      = rep_vector(tau1, block);
-  
-  // Rest of trials
-  int rest_len = Tsubj - block;
-  boundary_vec[(block+1):Tsubj] = rep_vector(boundary, rest_len);
-  tau_vec[(block+1):Tsubj]      = rep_vector(tau, rest_len);
 }
 
 model {
@@ -206,6 +193,19 @@ model {
   wgt_pun_pr ~ normal(0, 1);
   wgt_rew_pr ~ normal(0, 1);
   update_pr ~ normal(0, 1);
+
+  // Build boundary/tau vectors for trials
+  vector[T] boundary_vec;
+  vector[T] tau_vec;
+  
+  // First block
+  boundary_vec[1:block] = rep_vector(boundary1, block);
+  tau_vec[1:block]      = rep_vector(tau1, block);
+  
+  // Rest of trials
+  int rest_len = Tsubj - block;
+  boundary_vec[(block+1):Tsubj] = rep_vector(boundary, rest_len);
+  tau_vec[(block+1):Tsubj]      = rep_vector(tau, rest_len);
   
   // Likelihood with EV learning
   vector[4] ev_init = rep_vector(0.0, 4);
