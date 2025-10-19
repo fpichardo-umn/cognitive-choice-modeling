@@ -11,6 +11,7 @@ suppressPackageStartupMessages({
 # Import required helper functions
 source(file.path(here::here(), "scripts", "helpers", "helper_dirs.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
+source(file.path(here::here(), "scripts", "helpers", "helper_functions.R"))
 
 #' Remove duplicate cohort directories from path
 #' @param file_path Character string with file path
@@ -455,7 +456,7 @@ process_sampling_results <- function(accumulated_samples, accumulated_diagnostic
     max_treedepth = max_treedepth,
     tss = dim(all_samples)[1],
     all_params = param_names,
-    list_params = unique(gsub("_subj", "", gsub("\\[.*?\\]", "", model_fit$all_params))),
+    list_params = unique(gsub("_subj", "", gsub("\\[.*?\\]", "", param_names))),
     summary_stats = summary_stats,
     diagnostic_summary = list(
       num_divergent = num_divergent,
@@ -717,7 +718,7 @@ run_pathfinder_and_process <- function(stanmodel_arg, data_list, num_paths, draw
     n_chains = num_paths,  # Treat paths as "chains" for compatibility
     tss = dim(all_samples)[1],
     all_params = param_names,
-    list_params = unique(gsub("_subj", "", gsub("\\[.*?\\]", "", model_fit$all_params))),
+    list_params = unique(gsub("_subj", "", gsub("\\[.*?\\]", "", param_names))),
     summary_stats = summary_stats,
     diagnostic_summary = pf_diagnostics,
     diagnostics = diagnostics,
