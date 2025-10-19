@@ -146,6 +146,21 @@ transformed parameters {
   gain      = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(gain_pr)) * 2);
   loss      = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(loss_pr)) * 10);
   update    = to_array_1d(inv_logit(mu_pr[9] + sigma[9] .* to_vector(update_pr)));
+}
+
+model {
+  mu_pr ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
+
+  boundary1_pr ~ normal(0, 1);
+  boundary_pr  ~ normal(0, 1);
+  tau1_pr      ~ normal(0, 1);
+  tau_pr       ~ normal(0, 1);
+  beta_pr      ~ normal(0, 1);
+  drift_con_pr ~ normal(0, 1);
+  gain_pr      ~ normal(0, 1);
+  loss_pr      ~ normal(0, 1);
+  update_pr    ~ normal(0, 1);
 
   // Build per-subject boundary/tau vectors
   array[N] vector[T] boundary_subj;
@@ -165,21 +180,6 @@ transformed parameters {
       tau_subj[n][(block+1):Tsubj_n]      = rep_vector(tau[n], rest_len);
     }
   }
-}
-
-model {
-  mu_pr ~ normal(0, 1);
-  sigma ~ student_t(3, 0, 1);
-
-  boundary1_pr ~ normal(0, 1);
-  boundary_pr  ~ normal(0, 1);
-  tau1_pr      ~ normal(0, 1);
-  tau_pr       ~ normal(0, 1);
-  beta_pr      ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
-  gain_pr      ~ normal(0, 1);
-  loss_pr      ~ normal(0, 1);
-  update_pr    ~ normal(0, 1);
 
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum,

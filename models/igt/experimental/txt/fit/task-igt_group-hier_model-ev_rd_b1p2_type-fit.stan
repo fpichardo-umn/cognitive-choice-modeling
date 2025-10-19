@@ -174,6 +174,20 @@ transformed parameters {
   wgt_pun   = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(wgt_pun_pr)));
   wgt_rew   = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(wgt_rew_pr)));
   update    = to_array_1d(inv_logit(mu_pr[9] + sigma[9] .* to_vector(update_pr)));
+}
+model {
+  mu_pr ~ normal(0, 1);
+  sigma ~ student_t(3, 0, 1);
+
+  boundary1_pr ~ normal(0, 1);
+  boundary_pr ~ normal(0, 1);
+  tau1_pr ~ normal(0, 1);
+  tau_pr ~ normal(0, 1);
+  urgency_pr ~ normal(0, 1);
+  drift_con_pr ~ normal(0, 1);
+  wgt_pun_pr ~ normal(0, 1);
+  wgt_rew_pr ~ normal(0, 1);
+  update_pr ~ normal(0, 1);
 
   // Build per-subject boundary/tau vectors
   array[N] vector[T] boundary_subj;
@@ -191,20 +205,6 @@ transformed parameters {
     boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
     tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
   }
-}
-model {
-  mu_pr ~ normal(0, 1);
-  sigma ~ student_t(3, 0, 1);
-
-  boundary1_pr ~ normal(0, 1);
-  boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
-  tau_pr ~ normal(0, 1);
-  urgency_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
-  wgt_pun_pr ~ normal(0, 1);
-  wgt_rew_pr ~ normal(0, 1);
-  update_pr ~ normal(0, 1);
   
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum,

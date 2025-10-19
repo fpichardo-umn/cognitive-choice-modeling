@@ -203,23 +203,6 @@ transformed parameters {
   V2 = to_array_1d((inv_logit(mu_pr[9] + sigma[9] .* to_vector(V2_pr)) - 0.5) * 20);
   V3 = to_array_1d((inv_logit(mu_pr[10] + sigma[10] .* to_vector(V3_pr)) - 0.5) * 20);
   V4 = to_array_1d((inv_logit(mu_pr[11] + sigma[11] .* to_vector(V4_pr)) - 0.5) * 20);
-
-  // Build per-subject boundary/tau vectors
-  array[N] vector[T] boundary_subj;
-  array[N] vector[T] tau_subj;
-  
-  for (n in 1:N) {
-    int Tsubj_n = Tsubj[n];
-    
-    // First block
-    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
-    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
-    
-    // Rest of blocks
-    int rest_len = Tsubj_n - block;
-    boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
-    tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
-  }
 }
 //---
 model {
@@ -238,6 +221,23 @@ model {
   V2_pr ~ normal(0, 1);
   V3_pr ~ normal(0, 1);
   V4_pr ~ normal(0, 1);
+
+  // Build per-subject boundary/tau vectors
+  array[N] vector[T] boundary_subj;
+  array[N] vector[T] tau_subj;
+  
+  for (n in 1:N) {
+    int Tsubj_n = Tsubj[n];
+    
+    // First block
+    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
+    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
+    
+    // Rest of blocks
+    int rest_len = Tsubj_n - block;
+    boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
+    tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
+  }
 
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum,
