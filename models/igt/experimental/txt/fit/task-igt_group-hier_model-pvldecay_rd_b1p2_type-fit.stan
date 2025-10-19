@@ -106,7 +106,7 @@ functions {
                    array[] real decay, array[] real gain, array[] real loss,
                    array[] vector boundary_subj,
                    array[] vector tau_subj,
-                   array[] real urgency {
+                   array[] real urgency) {
     real log_lik = 0.0;
     vector[4] ev = rep_vector(0.0, 4);
 
