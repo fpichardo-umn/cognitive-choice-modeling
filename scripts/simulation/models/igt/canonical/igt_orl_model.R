@@ -85,18 +85,21 @@ igtORLModel <- R6::R6Class("igtORLModel",
         # Calculate fictive prediction errors for all decks
         PEfreq_fic <- rep(-sign_outcome/3.0, 4) - self$ef
         
+        # Store pre-update ef for correction
+        efChosen = ef[choice];
+        
         # Update based on outcome
         if (wins[t] >= losses[t]) {
           # Update EF for all decks with fictive outcomes
           self$ef <- self$ef + Apun * PEfreq_fic
           # Update chosen deck
-          self$ef[choices[t]] <- self$ef[choices[t]] + Arew * PEfreq
+          self$ef[choices[t]] <- efChosen + Arew * PEfreq
           self$ev[choices[t]] <- self$ev[choices[t]] + Arew * PEval
         } else {
           # Update EF for all decks with fictive outcomes
           self$ef <- self$ef + Arew * PEfreq_fic
           # Update chosen deck
-          self$ef[choices[t]] <- self$ef[choices[t]] + Apun * PEfreq
+          self$ef[choices[t]] <- efChosen + Apun * PEfreq
           self$ev[choices[t]] <- self$ev[choices[t]] + Apun * PEval
         }
         
@@ -167,18 +170,21 @@ igtORLModel <- R6::R6Class("igtORLModel",
         # Calculate fictive prediction errors
         PEfreq_fic <- rep(-sign_outcome/3.0, 4) - ef
         
+        # Store pre-update ef for correction
+        efChosen = ef[choice];
+        
         # Update based on outcome
         if (win >= lose) {
           # Update EF for all decks
           ef <- ef + Apun * PEfreq_fic
           # Update chosen deck
-          ef[choice] <- ef[choice] + Arew * PEfreq
+          ef[choice] <- efChosen + Arew * PEfreq
           ev[choice] <- ev[choice] + Arew * PEval
         } else {
           # Update EF for all decks
           ef <- ef + Arew * PEfreq_fic
           # Update chosen deck
-          ef[choice] <- ef[choice] + Apun * PEfreq
+          ef[choice] <- efChosen + Apun * PEfreq
           ev[choice] <- ev[choice] + Apun * PEval
         }
         

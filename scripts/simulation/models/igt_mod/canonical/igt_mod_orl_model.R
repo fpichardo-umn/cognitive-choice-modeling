@@ -89,16 +89,19 @@ igt_modORLModel <- R6::R6Class("igt_modORLModel",
           # Calculate fictive prediction errors for non-chosen decks
           PEfreq_fic <- rep(-sign_outcome / 3.0, 4) - self$ef
           
+          # Store pre-update ef for correction
+          efChosen = ef[shown_deck];
+          
           # Update EV and EF based on valence (gain vs loss)
           if (outcome >= 0) {
             # Net gain: use Arew for chosen deck, Apun for fictive updates
             self$ef <- self$ef + Apun * PEfreq_fic
-            self$ef[shown_deck] <- self$ef[shown_deck] + Arew * PEfreq
+            self$ef[shown_deck] <- efChosen + Arew * PEfreq
             self$ev[shown_deck] <- self$ev[shown_deck] + Arew * PEval
           } else {
             # Net loss: use Apun for chosen deck, Arew for fictive updates
             self$ef <- self$ef + Arew * PEfreq_fic
-            self$ef[shown_deck] <- self$ef[shown_deck] + Apun * PEfreq
+            self$ef[shown_deck] <- efChosen + Apun * PEfreq
             self$ev[shown_deck] <- self$ev[shown_deck] + Apun * PEval
           }
         } else {
@@ -168,14 +171,17 @@ igt_modORLModel <- R6::R6Class("igt_modORLModel",
           # Fictive prediction errors
           PEfreq_fic <- rep(-sign_outcome / 3.0, 4) - ef
           
+          # Store pre-update ef for correction
+          efChosen = ef[shown_deck];
+          
           # Update based on valence
           if (outcome >= 0) {
             ef <- ef + Apun * PEfreq_fic
-            ef[shown_deck] <- ef[shown_deck] + Arew * PEfreq
+            ef[shown_deck] <- efChosen + Arew * PEfreq
             ev[shown_deck] <- ev[shown_deck] + Arew * PEval
           } else {
             ef <- ef + Arew * PEfreq_fic
-            ef[shown_deck] <- ef[shown_deck] + Apun * PEfreq
+            ef[shown_deck] <- efChosen + Apun * PEfreq
             ev[shown_deck] <- ev[shown_deck] + Apun * PEval
           }
         }

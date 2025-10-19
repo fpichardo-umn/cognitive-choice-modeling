@@ -106,14 +106,15 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        PEval <- (current_win - current_loss) - ev[winning_choice]
                                        PEfreq <- sign_outcome - ef[winning_choice]
                                        PEfreq_fic <- (-sign_outcome / 3.0) - ef
+                                       efChosen = ef[choice];
                                        
                                        if (sign_outcome == 1) { # Gain trial
                                          ef <- ef + parameters$Apun * PEfreq_fic
-                                         ef[winning_choice] <- ef[winning_choice] + parameters$Arew * PEfreq
+                                         ef[winning_choice] <- efChosen + parameters$Arew * PEfreq
                                          ev[winning_choice] <- ev[winning_choice] + parameters$Arew * PEval
                                        } else { # Loss trial
                                          ef <- ef + parameters$Arew * PEfreq_fic
-                                         ef[winning_choice] <- ef[winning_choice] + parameters$Apun * PEfreq
+                                         ef[winning_choice] <- efChosen + parameters$Apun * PEfreq
                                          ev[winning_choice] <- ev[winning_choice] + parameters$Apun * PEval
                                        }
                                        
@@ -202,14 +203,15 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        PEval <- (current_win - current_loss) - ev[choice]
                                        PEfreq <- sign_outcome - ef[choice]
                                        PEfreq_fic <- (-sign_outcome / 3.0) - ef
+                                       efChosen = ef[choice];
                                        
                                        if (sign_outcome == 1) { # Gain
                                          ef <- ef + parameters$Apun * PEfreq_fic
-                                         ef[choice] <- ef[choice] + parameters$Arew * PEfreq
+                                         ef[choice] <- efChosen + parameters$Arew * PEfreq
                                          ev[choice] <- ev[choice] + parameters$Arew * PEval
                                        } else { # Loss
                                          ef <- ef + parameters$Arew * PEfreq_fic
-                                         ef[choice] <- ef[choice] + parameters$Apun * PEfreq
+                                         ef[choice] <- efChosen + parameters$Apun * PEfreq
                                          ev[choice] <- ev[choice] + parameters$Apun * PEval
                                        }
                                        

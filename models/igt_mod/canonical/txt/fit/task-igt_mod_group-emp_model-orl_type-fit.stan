@@ -18,6 +18,7 @@ functions {
     int curDeck;
     real PEval;
     real PEfreq;
+    real efChosen; 
     vector[4] PEfreq_fic;
     real sign_outcome;
 
@@ -38,6 +39,7 @@ functions {
         // Prediction errors for value and frequency of the CHOSEN deck
         PEval = outcome[t] - local_ev[curDeck];
         PEfreq = sign_outcome - local_ef[curDeck];
+        efChosen = local_ef[choice[t]];
         
         // Calculate fictive prediction errors for non-chosen decks
         // -sgn(x(t))/3
@@ -50,13 +52,13 @@ functions {
           // Update ef for all decks with fictive outcomes (using Apun for gains)
           local_ef += Apun * PEfreq_fic;
           // Update chosen deck's ef and ev (using Arew for gains)
-          local_ef[curDeck] += Arew * PEfreq;
+          local_ef[curDeck] = efChosen + Arew * PEfreq; // Correct the chosen deck using the stored value
           local_ev[curDeck] += Arew * PEval;
         } else { // Net loss
           // Update ef for all decks with fictive outcomes (using Arew for losses)
           local_ef += Arew * PEfreq_fic;
           // Update chosen deck's ef and ev (using Apun for losses)
-          local_ef[curDeck] += Apun * PEfreq;
+          local_ef[curDeck] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
           local_ev[curDeck] += Apun * PEval;
         }
       } // End of learning block (if choice==1)

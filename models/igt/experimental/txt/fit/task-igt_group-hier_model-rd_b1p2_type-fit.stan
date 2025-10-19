@@ -119,8 +119,8 @@ transformed data {
   int block = 20;
 }
 parameters {
-  array[10] real mu_pr;
-  array[10] real<lower=0.001, upper=5> sigma;
+  array[9] real mu_pr;
+  array[9] real<lower=0> sigma;
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
@@ -148,10 +148,10 @@ transformed parameters {
   tau1        = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   tau         = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   urgency     = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) * 19.999 + 0.001);
-  V1          = to_array_1d((inv_logit(mu_pr[7]  + sigma[7]  .* to_vector(V1_pr)) - 0.5) * 20);
-  V2          = to_array_1d((inv_logit(mu_pr[8]  + sigma[8]  .* to_vector(V2_pr)) - 0.5) * 20);
-  V3          = to_array_1d((inv_logit(mu_pr[9]  + sigma[9]  .* to_vector(V3_pr)) - 0.5) * 20);
-  V4          = to_array_1d((inv_logit(mu_pr[10] + sigma[10] .* to_vector(V4_pr)) - 0.5) * 20);
+  V1          = to_array_1d((inv_logit(mu_pr[6]  + sigma[6]  .* to_vector(V1_pr)) - 0.5) * 20);
+  V2          = to_array_1d((inv_logit(mu_pr[7]  + sigma[7]  .* to_vector(V2_pr)) - 0.5) * 20);
+  V3          = to_array_1d((inv_logit(mu_pr[8]  + sigma[8]  .* to_vector(V3_pr)) - 0.5) * 20);
+  V4          = to_array_1d((inv_logit(mu_pr[9] + sigma[9] .* to_vector(V4_pr)) - 0.5) * 20);
 
 }
 model {
@@ -200,8 +200,8 @@ generated quantities {
   real mu_tau1 	    = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_tau       = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
   real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001;
-  real mu_V1        = (inv_logit(mu_pr[7]) - 0.5) * 20;
-  real mu_V2        = (inv_logit(mu_pr[8]) - 0.5) * 20;
-  real mu_V3        = (inv_logit(mu_pr[9]) - 0.5) * 20;
-  real mu_V4        = (inv_logit(mu_pr[10]) - 0.5) * 20;
+  real mu_V1        = (inv_logit(mu_pr[6]) - 0.5) * 20;
+  real mu_V2        = (inv_logit(mu_pr[7]) - 0.5) * 20;
+  real mu_V3        = (inv_logit(mu_pr[8]) - 0.5) * 20;
+  real mu_V4        = (inv_logit(mu_pr[9]) - 0.5) * 20;
 }

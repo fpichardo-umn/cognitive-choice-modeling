@@ -73,7 +73,7 @@ functions {
   real igt_rd_model(array[] int choice, array[] real RT,
 		    vector ev, vector ef, int T,
 		    array[] real wins, array[] real losses, 
-		    real Arew, real Apun, real K,
+		    real Arew, real Apun,
 		    real betaF, real betaP, 
                     vector boundaries, vector taus,
 		    real urgency) {
@@ -84,9 +84,9 @@ functions {
     vector[4] pers = rep_vector(0.0, 4);
     real PEval;
     real PEfreq;
+    real efChosen; 
     vector[4] PEfreq_fic;
     array[T] real sign_outcome;
-    real K_tr = pow(3, K) - 1;
 
     for (t in 1:T) {
       sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
@@ -95,7 +95,11 @@ functions {
     for (t in 1:T) {
       vector[4] drift_rates;
       for (i in 1:4) {
-        drift_rates[i] = urgency + local_ev[i] + local_ef[i] * betaF + pers[i] * betaP;
+        drift_rates[i] = urgency + local_ev[i] + local_ef[i] * betaF;
+      }
+
+      if (t > 1) {
+        drift_rates[choice[t-1]] += betaP;
       }
 
       if (RT[t] != 999) {
@@ -103,7 +107,8 @@ functions {
       }
       
       PEval = wins[t] - losses[t] - local_ev[choice[t]];
-      PEfreq = sign_outcome[t] - local_ef[choice[t]];
+      PEfreq = sign_outcome[t] - local_ef[choice[t]]
+      efChosen = local_ef[choice[t]];
       
       for (d in 1:4) {
         PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
@@ -111,16 +116,13 @@ functions {
       
       if (wins[t] >= losses[t]) {
         local_ef += Apun * PEfreq_fic;
-        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
+        local_ef[choice[t]] = efChosen + Arew * PEfreq; // Correct the chosen deck using the stored value
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
         local_ef += Arew * PEfreq_fic;
-        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
+        local_ef[choice[t]] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
         local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
       }
-      
-      pers[choice[t]] = 1;
-      pers = pers / (1 + K_tr);
     }
 
     return log_lik;
@@ -130,7 +132,7 @@ functions {
   real partial_sum(array[] int slice_n, int start, int end,
                    array[] int Tsubj, array[,] int choice, 
                    array[,] real wins, array[,] real losses, array[,] real RT,
-                   array[] real Arew, array[] real Apun, array[] real K,
+                   array[] real Arew, array[] real Apun, 
                    array[] real betaF, array[] real betaP,
                    array[] vector boundary_subj,
                    array[] vector tau_subj,
@@ -145,7 +147,7 @@ functions {
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
 	  ev, ef, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
-          Arew[n], Apun[n], K[n], 
+          Arew[n], Apun[n],
           betaF[n], betaP[n], 
           boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], 
 	  urgency[n] 
@@ -174,8 +176,8 @@ transformed data {
   int block = 20;
 }
 parameters {
-  array[10] real mu_pr;
-  array[10] real<lower=0.001, upper=5> sigma;
+  array[9] real mu_pr;
+  array[9] real<lower=0> sigma;
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
@@ -184,7 +186,6 @@ parameters {
   array[N] real urgency_pr;
   array[N] real Arew_pr;
   array[N] real Apun_pr;
-  array[N] real K_pr;
   array[N] real betaF_pr;
   array[N] real betaP_pr;
 }
@@ -196,7 +197,6 @@ transformed parameters {
   array[N] real<lower=0.001, upper=20> urgency;
   array[N] real<lower=0, upper=1> Arew;
   array[N] real<lower=0, upper=1> Apun;
-  array[N] real<lower=0, upper=3> K;
   array[N] real betaF;
   array[N] real betaP;
 
@@ -208,9 +208,8 @@ transformed parameters {
   
   Arew  = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(Arew_pr)));
   Apun  = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(Apun_pr)));
-  K     = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(K_pr)) * 3);
-  betaF = to_array_1d(mu_pr[9] + sigma[9] .* to_vector(betaF_pr));
-  betaP = to_array_1d(mu_pr[10] + sigma[10] .* to_vector(betaP_pr));
+  betaF = to_array_1d(mu_pr[8] + sigma[8] .* to_vector(betaF_pr));
+  betaP = to_array_1d(mu_pr[9] + sigma[9] .* to_vector(betaP_pr));
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -223,7 +222,6 @@ model {
   urgency_pr ~ normal(0, 1);
   Arew_pr  ~ normal(0, 1);
   Apun_pr  ~ normal(0, 1);
-  K_pr     ~ normal(0, 1);
   betaF_pr ~ normal(0, 1);
   betaP_pr ~ normal(0, 1);
 
@@ -249,7 +247,7 @@ model {
                        subject_indices, grainsize,
                        Tsubj, choice,
 		       wins, losses, RT,
-                       Arew, Apun, K,
+                       Arew, Apun,
 		       betaF, betaP,
                        boundary_subj, tau_subj,
                        urgency);
@@ -263,7 +261,6 @@ generated quantities {
   real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001;
   real mu_Arew  = inv_logit(mu_pr[6]);
   real mu_Apun  = inv_logit(mu_pr[7]);
-  real mu_K     = inv_logit(mu_pr[8]) * 3;
-  real mu_betaF = mu_pr[9];
-  real mu_betaP = mu_pr[10];
+  real mu_betaF = mu_pr[8];
+  real mu_betaP = mu_pr[9];
 }

@@ -13,6 +13,7 @@ functions {
     vector[4] util;
     real PEval;
     real PEfreq;
+    real efChosen;
     vector[4] PEfreq_fic;
     array[Tsub] real sign_outcome;
     real K_tr = pow(3, K) - 1;
@@ -27,6 +28,7 @@ functions {
       
       PEval = wins[t] - losses[t] - local_ev[choice[t]];
       PEfreq = sign_outcome[t] - local_ef[choice[t]];
+      efChosen = local_ef[choice[t]];
       
       for (d in 1:4) {
         PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
@@ -34,11 +36,11 @@ functions {
       
       if (wins[t] >= losses[t]) {
         local_ef += Apun * PEfreq_fic;
-        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
+        local_ef[choice[t]] = efChosen + Arew * PEfreq;
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
         local_ef += Arew * PEfreq_fic;
-        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
+        local_ef[choice[t]] = efChosen + Apun * PEfreq;
         local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
       }
       

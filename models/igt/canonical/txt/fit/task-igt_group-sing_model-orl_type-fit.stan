@@ -11,6 +11,7 @@ functions {
     vector[4] util;
     real PEval;
     real PEfreq;
+    real efChosen;
     vector[4] PEfreq_fic;
     array[Tsub] real sign_outcome;
     real K_tr = pow(3, K) - 1;
@@ -31,6 +32,7 @@ functions {
       // Prediction errors for value and frequency
       PEval = wins[t] - losses[t] - local_ev[choice[t]];
       PEfreq = sign_outcome[t] - local_ef[choice[t]];
+      efChosen = local_ef[choice[t]];
       
       // Calculate fictive prediction errors for non-chosen decks
       for (d in 1:4) {
@@ -42,13 +44,13 @@ functions {
         // Update ef for all decks with fictive outcomes
         local_ef += Apun * PEfreq_fic;
         // Update chosen deck
-        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
+        local_ef[choice[t]] = efChosen + Arew * PEfreq;
         local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
       } else {
         // Update ef for all decks with fictive outcomes
         local_ef += Arew * PEfreq_fic;
         // Update chosen deck
-        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
+        local_ef[choice[t]] = efChosen + Apun * PEfreq;
         local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
       }
       
