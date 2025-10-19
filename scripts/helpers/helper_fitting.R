@@ -455,7 +455,7 @@ process_sampling_results <- function(accumulated_samples, accumulated_diagnostic
     max_treedepth = max_treedepth,
     tss = dim(all_samples)[1],
     all_params = param_names,
-    list_params = unique(gsub("\\[.*?\\]", "", param_names)),
+    list_params = unique(gsub("_subj", "", gsub("\\[.*?\\]", "", model_fit$all_params))),
     summary_stats = summary_stats,
     diagnostic_summary = list(
       num_divergent = num_divergent,
@@ -717,7 +717,7 @@ run_pathfinder_and_process <- function(stanmodel_arg, data_list, num_paths, draw
     n_chains = num_paths,  # Treat paths as "chains" for compatibility
     tss = dim(all_samples)[1],
     all_params = param_names,
-    list_params = unique(gsub("\\[.*?\\]", "", param_names)),
+    list_params = unique(gsub("_subj", "", gsub("\\[.*?\\]", "", model_fit$all_params))),
     summary_stats = summary_stats,
     diagnostic_summary = pf_diagnostics,
     diagnostics = diagnostics,

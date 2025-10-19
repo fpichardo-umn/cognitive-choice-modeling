@@ -745,6 +745,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_ev_rd_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$ev), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   
   return(models)
 }

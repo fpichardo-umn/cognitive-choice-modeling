@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 # Simplified RD model with 4 accumulators (no learning)
 # Race Diffusion with a "Win-First" rule and block-specific parameters
 
-igtRDModel <- R6::R6Class("igtRDModel",
+igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
                           inherit = ModelBase,
                           
                           public = list(
@@ -32,7 +32,7 @@ igtRDModel <- R6::R6Class("igtRDModel",
                                 tau1 = list(range = c(0.05, 0.9)),
                                 tau = list(range = c(0.05, 0.9)),
                                 urgency = list(range = c(0, 10)),
-                                drift_scale = list(range = c(0, 10)), # Replaces wd and ws
+                                drift_con = list(range = c(0, 10)), # Replaces wd and ws
                                 V1 = list(range = c(-10, 10)),
                                 V2 = list(range = c(-10, 10)),
                                 V3 = list(range = c(-10, 10)),
@@ -60,7 +60,7 @@ igtRDModel <- R6::R6Class("igtRDModel",
                                 }
                                 
                                 # Calculate 4 simple drift rates (one per deck)
-                                drift_rates <- parameters$urgency + parameters$drift_scale * V
+                                drift_rates <- parameters$urgency + parameters$drift_con * V
                                 drift_rates <- pmax(drift_rates, 1e-6) # Ensure positive
                                 
                                 # Simulate decision times for each of the 4 accumulators
@@ -122,7 +122,7 @@ igtRDModel <- R6::R6Class("igtRDModel",
                                   }
                                   
                                   # Calculate 4 simple drift rates
-                                  drift_rates <- parameters$urgency + parameters$drift_scale * V
+                                  drift_rates <- parameters$urgency + parameters$drift_con * V
                                   drift_rates <- pmax(drift_rates, 1e-6)
                                   
                                   # PDF for the winning accumulator
