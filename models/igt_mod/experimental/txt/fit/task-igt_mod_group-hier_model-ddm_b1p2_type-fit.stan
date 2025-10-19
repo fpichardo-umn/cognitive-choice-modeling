@@ -38,10 +38,6 @@ transformed parameters {
   tau1      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   tau       = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 1e-6) * 0.99 + RTbound);
   beta      = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(beta_pr)));
-
-  // Build per-subject boundary/tau vectors
-  array[N] vector[T] boundary_subj;
-  array[N] vector[T] tau_subj;
 }
 
 model {
@@ -55,6 +51,9 @@ model {
   beta_pr      ~ normal(0, 1);
   drift        ~ normal(mu_pr[6], sigma[6]);
 
+  // Build per-subject boundary/tau vectors
+  array[N] vector[T] boundary_subj;
+  array[N] vector[T] tau_subj;
   
   for (n in 1:N) {
     int Tsubj_n = Tsubj[n];
