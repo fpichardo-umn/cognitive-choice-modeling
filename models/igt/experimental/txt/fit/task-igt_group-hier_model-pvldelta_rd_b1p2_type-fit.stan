@@ -92,7 +92,7 @@ functions {
       real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
       real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
 
-      local_ev[choice[t]] += update * (win_component - loss * loss_component; - local_ev[choice[t]]);
+      local_ev[choice[t]] += update * ((win_component - loss * loss_component) - local_ev[choice[t]]);
     }
 
     return log_lik;
