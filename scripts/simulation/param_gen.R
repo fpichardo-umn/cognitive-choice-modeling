@@ -189,7 +189,7 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                } else {
                                  filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
                                  filtered_params = filtered_params[grepl(paste0("\\[", subject_index,"\\]"), filtered_params)]
-                                 filtered_params = filtered_params[grepl(param_name, filtered_params)]
+                                 filtered_params = filtered_params[grepl(paste0("^", param_name, "\\["), filtered_params)]
                                  samples <- model_fit$draws[,, filtered_params]
                                  
                                  return(apply(samples, 3, function(x) as.vector(x)))
@@ -217,7 +217,7 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                }
                              } else {
                                # 1. Exclude "mu" , model_fit$all_params "sigma"
-                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
+                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__|_subj", model_fit$all_params)]
                                filtered_params = filtered_params[grepl("\\[", filtered_params)]
                                
                                # 2. Extract numbers from within square brackets
