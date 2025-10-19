@@ -36,7 +36,6 @@ igtPVLdeltaRDB1P2Model <- R6::R6Class("igtPVLdeltaRDB1P2Model",
                                             tau1 = list(range = c(0.0, 1.0)), # Adjust based on minRT if needed
                                             tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
                                             urgency = list(range = c(0.001, 20)),
-                                            drift_con = list(range = c(0, 3)),
                                             gain = list(range = c(0, 2)),
                                             loss = list(range = c(0, 10)),
                                             update = list(range = c(0, 1))
@@ -56,9 +55,6 @@ igtPVLdeltaRDB1P2Model <- R6::R6Class("igtPVLdeltaRDB1P2Model",
                                           RTbound_max <- task_params$RTbound_max
                                           block_cutoff <- 20 # Same as 'block' in Stan model
                                           
-                                          # Calculate sensitivity from drift_con, same as in Stan model
-                                          sensitivity <- 3^parameters$drift_con - 1
-                                          
                                           for (t in 1:n_trials) {
                                             # Determine block-specific parameters
                                             if (t <= block_cutoff) {
@@ -70,8 +66,8 @@ igtPVLdeltaRDB1P2Model <- R6::R6Class("igtPVLdeltaRDB1P2Model",
                                             }
                                             
                                             # Calculate 4 drift rates based on current EV
-                                            # drift = urgency + sensitivity * EV
-                                            drift_rates <- parameters$urgency + sensitivity * ev
+                                            # drift = urgency + EV
+                                            drift_rates <- parameters$urgency + ev
                                             drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                             
                                             # Simulate decision times for each of the 4 accumulators (Wald process)
@@ -129,9 +125,6 @@ igtPVLdeltaRDB1P2Model <- R6::R6Class("igtPVLdeltaRDB1P2Model",
                                           # Initialize Expected Values
                                           ev <- c(0, 0, 0, 0)
                                           
-                                          # Calculate sensitivity from drift_con
-                                          sensitivity <- 3^parameters$drift_con - 1
-                                          
                                           for (t in 1:n_trials) {
                                             choice <- choices[t]
                                             rt <- RTs[t]
@@ -151,7 +144,7 @@ igtPVLdeltaRDB1P2Model <- R6::R6Class("igtPVLdeltaRDB1P2Model",
                                                 trial_loglik[t] <- -Inf # log(0), practically impossible
                                               } else {
                                                 # Calculate 4 drift rates based on current EV
-                                                drift_rates <- parameters$urgency + sensitivity * ev
+                                                drift_rates <- parameters$urgency + ev
                                                 drift_rates <- pmax(drift_rates, 1e-6)
                                                 
                                                 # PDF for the winning accumulator

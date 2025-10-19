@@ -38,7 +38,6 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        urgency = list(range = c(0.001, 20)),
                                        Arew = list(range = c(0, 1)),
                                        Apun = list(range = c(0, 1)),
-                                       K = list(range = c(0, 3)),
                                        betaF = list(range = c(-10, 10)), # Broadened range
                                        betaP = list(range = c(-10, 10))  # Broadened range
                                      ))
@@ -54,13 +53,9 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                      # Initialize ORL components
                                      ev <- c(0, 0, 0, 0)   # Expected values
                                      ef <- c(0, 0, 0, 0)   # Expected frequencies
-                                     pers <- c(0, 0, 0, 0) # Perseverance
                                      
                                      RTbound_max <- task_params$RTbound_max
                                      block_cutoff <- 20 # Same as 'block' in Stan model
-                                     
-                                     # Transform perseverance parameter K, as in Stan model
-                                     K_tr <- 3^parameters$K - 1
                                      
                                      for (t in 1:n_trials) {
                                        # Determine block-specific parameters
@@ -73,7 +68,10 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        }
                                        
                                        # Calculate drift rates based on ORL components
-                                       drift_rates <- parameters$urgency + ev + ef * parameters$betaF + pers * parameters$betaP
+                                       drift_rates <- parameters$urgency + ev + ef * parameters$betaF
+                                       if (t > 1){
+                                         drift_rates[choices[t - 1]] = drift_rates[choices[t - 1]] + parameters$betaP
+                                         }
                                        drift_rates <- pmax(drift_rates, 1e-6)
                                        
                                        # Simulate decision times (Wald process)
@@ -118,10 +116,6 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                          ev[winning_choice] <- ev[winning_choice] + parameters$Apun * PEval
                                        }
                                        
-                                       # Update perseverance
-                                       pers <- pers / (1 + K_tr)
-                                       pers[winning_choice] <- pers[winning_choice] + 1
-                                       
                                      }
                                      
                                      return(list(choices = choices, RTs = RTs, wins = wins, losses = losses))
@@ -143,10 +137,6 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                      # Initialize ORL components
                                      ev <- c(0, 0, 0, 0)
                                      ef <- c(0, 0, 0, 0)
-                                     pers <- c(0, 0, 0, 0)
-                                     
-                                     # Transform K
-                                     K_tr <- 3^parameters$K - 1
                                      
                                      for (t in 1:n_trials) {
                                        choice <- choices[t]
@@ -167,7 +157,10 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                            trial_loglik[t] <- -Inf
                                          } else {
                                            # Calculate drift rates from ORL components
-                                           drift_rates <- parameters$urgency + ev + ef * parameters$betaF + pers * parameters$betaP
+                                           drift_rates <- parameters$urgency + ev + ef * parameters$betaF
+                                           if (t > 1){
+                                             drift_rates[choices[t - 1]] = drift_rates[choices[t - 1]] + parameters$betaP
+                                           }
                                            drift_rates <- pmax(drift_rates, 1e-6)
                                            
                                            # PDF for the winning accumulator
@@ -214,10 +207,6 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                          ef[choice] <- efChosen + parameters$Apun * PEfreq
                                          ev[choice] <- ev[choice] + parameters$Apun * PEval
                                        }
-                                       
-                                       # Update perseverance
-                                       pers <- pers / (1 + K_tr)
-                                       pers[choice] <- pers[choice] + 1
                                        
                                      }
                                      
