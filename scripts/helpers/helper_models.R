@@ -731,6 +731,7 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  # ---- RD Models ----
   models[["igt_sing_rd_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
     params = setdiff(c(param_sets$rd_b1p2, param_sets$ssm_only), "con"),
@@ -740,14 +741,14 @@ get_igt_defaults = function() {
   
   models[["igt_hier_rd_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$ssm_only), "con"),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$ssm_only), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_hier_ev_rd_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$ev), "con"),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$ev), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
