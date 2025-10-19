@@ -107,7 +107,7 @@ functions {
       }
       
       PEval = wins[t] - losses[t] - local_ev[choice[t]];
-      PEfreq = sign_outcome[t] - local_ef[choice[t]]
+      PEfreq = sign_outcome[t] - local_ef[choice[t]];
       efChosen = local_ef[choice[t]];
       
       for (d in 1:4) {
