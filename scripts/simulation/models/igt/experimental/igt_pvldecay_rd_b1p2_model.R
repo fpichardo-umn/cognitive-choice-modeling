@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
 # Drift rates are updated on each trial based on the Prospect Valence Learning
 # (PVL) decay rule, which aligns with the provided Stan model.
 
-igtPVLdecayRDB1P2Model <- R6::R6Class("igtPVLdecayRDB1P2Model",
+igtPVLDECAYRDB1P2Model <- R6::R6Class("igtPVLDECAYRDB1P2Model",
                                       inherit = ModelBase,
                                       
                                       public = list(

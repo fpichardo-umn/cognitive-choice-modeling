@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
 # Drift rates are updated on each trial based on the Prospect Valence Learning
 # (PVL) delta rule, which aligns with the provided Stan model.
 
-igtPVLdeltaRDB1P2Model <- R6::R6Class("igtPVLdeltaRDB1P2Model",
+igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                       inherit = ModelBase,
                                       
                                       public = list(
