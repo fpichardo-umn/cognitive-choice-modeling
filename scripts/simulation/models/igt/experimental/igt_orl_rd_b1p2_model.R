@@ -104,7 +104,7 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        PEval <- (current_win - current_loss) - ev[winning_choice]
                                        PEfreq <- sign_outcome - ef[winning_choice]
                                        PEfreq_fic <- (-sign_outcome / 3.0) - ef
-                                       efChosen = ef[choice];
+                                       efChosen = ef[choices[t]];
                                        
                                        if (sign_outcome == 1) { # Gain trial
                                          ef <- ef + parameters$Apun * PEfreq_fic

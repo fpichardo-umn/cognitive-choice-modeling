@@ -86,7 +86,7 @@ igtORLModel <- R6::R6Class("igtORLModel",
         PEfreq_fic <- rep(-sign_outcome/3.0, 4) - self$ef
         
         # Store pre-update ef for correction
-        efChosen = ef[choice];
+        efChosen = self$ef[choice];
         
         # Update based on outcome
         if (wins[t] >= losses[t]) {
