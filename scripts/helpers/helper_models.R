@@ -771,7 +771,8 @@ get_igt_defaults = function() {
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
     params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
-                       param_sets$orl_igt), c("con", "K", "urgency")),
+                       param_sets$orl_igt), 
+                     c("con", "K", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )

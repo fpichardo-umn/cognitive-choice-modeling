@@ -1,4 +1,4 @@
-opt_model = "rd_b1p2"
+opt_model = "orl_rd_b1p2"
 # =======
 #opt_model = "orl"
 
@@ -105,28 +105,28 @@ opt = list(
 
 
 # Rec Analysis
-opt = list(
-  input = paste0("Data/sim/recovery/recovery_igt_mod_", opt_model, "_batch_001.csv"),  # Fitted model file
-  model = opt_model,  # Model name (e.g., vppdeltag, pvl)
-  task = opt_task,  # Task name (e.g., igt_mod)
-  group = opt_group,  # Group type
-  output_dir = NULL,  # Output directory
-  render = "TRUE"
-)
+# opt = list(
+#   input = paste0("Data/sim/recovery/recovery_igt_mod_", opt_model, "_batch_001.csv"),  # Fitted model file
+#   model = opt_model,  # Model name (e.g., vppdeltag, pvl)
+#   task = opt_task,  # Task name (e.g., igt_mod)
+#   group = opt_group,  # Group type
+#   output_dir = NULL,  # Output directory
+#   render = "TRUE"
+# )
 
 
 # PPC
-opt = list(
-  fit_file = paste0("Data/sim/fit/fits_igt_mod_", opt_model, "_batch_001.rds"),  # Fitted model file
-  sim_data = paste0("Data/sim/rds/igt_mod_batch_001_", opt_model, "_desc-sim_params.rds"),  # Simulation data file
-  model = opt_model,  # Model name (e.g., vppdeltag, pvl)
-  task = "igt_mod",  # Task name (e.g., igt_mod)
-  group = "batch_001",  # Group type
-  n_sims = 100,  # Number of PPC simulations
-  stats_level = "standard",  # Statistics lvppdeltagel [basic|standard|extended]
-  output_dir = NULL,  # Output directory
-  parallel = FALSE,  # Use parallel processing
-  n_cores = 2,  # Number of cores for parallel processing
-  checkpoint_interval = 10, # Checkpoint save interval (subjects)
-  render = "TRUE"
-)
+# opt = list(
+#   fit_file = paste0("Data/sim/fit/fits_igt_mod_", opt_model, "_batch_001.rds"),  # Fitted model file
+#   sim_data = paste0("Data/sim/rds/igt_mod_batch_001_", opt_model, "_desc-sim_params.rds"),  # Simulation data file
+#   model = opt_model,  # Model name (e.g., vppdeltag, pvl)
+#   task = "igt_mod",  # Task name (e.g., igt_mod)
+#   group = "batch_001",  # Group type
+#   n_sims = 100,  # Number of PPC simulations
+#   stats_level = "standard",  # Statistics lvppdeltagel [basic|standard|extended]
+#   output_dir = NULL,  # Output directory
+#   parallel = FALSE,  # Use parallel processing
+#   n_cores = 2,  # Number of cores for parallel processing
+#   checkpoint_interval = 10, # Checkpoint save interval (subjects)
+#   render = "TRUE"
+# )

@@ -29,7 +29,7 @@ print_usage() {
   echo "  -F    Fit config name (default: default)"
   echo "  -D    Data config name (default: default)"
   echo "  -M    Parameter generation method (default: mbSPSepse)"
-  echo "  -f    Subject file in Data/raw/{source}/ses-{ses}/ (optional)"
+  echo "  -f    Subject file in Data/raw/{source}/ses-{ses}/ (default: subject_ids_all.txt)"
   echo "  -N    Number of subjects for PR (default: 200)"
   echo "  -T    Number of trials for PR (default: 100)"
   echo ""
@@ -53,7 +53,7 @@ NO_INDIV=true
 FIT_CONFIG="default"
 DATA_CONFIG="default"
 METHOD="mbSPSepse"
-SUBS_FILE=""
+SUBS_FILE="subject_ids_all.txt"
 
 # --- Parse Command Line Arguments ---
 while getopts ":k:m:s:e:g:S:c:F:D:M:f:N:T:idh" opt; do
@@ -124,7 +124,7 @@ if $DRY_RUN; then
   echo "PR Subjects: $N_SUBJECTS"
   echo "PR Trials: $N_TRIALS"
   echo "Individual fitting: $(if [ "$NO_INDIV" = false ]; then echo "enabled"; else echo "disabled"; fi)"
-  echo "Subject file: ${SUBS_FILE:-'(not specified - will use defaults)'}"
+  echo "Subject file: ${SUBS_FILE:-'(not specified - will use default: subject_ids_all.txt)'}"
   echo ""
   echo "Command that would be executed:"
   echo "sbatch --parsable \\"
