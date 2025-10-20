@@ -54,7 +54,6 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                      ev <- c(0, 0, 0, 0)   # Expected values
                                      ef <- c(0, 0, 0, 0)   # Expected frequencies
                                      
-                                     RTbound_max <- task_params$RTbound_max
                                      block_cutoff <- 20 # Same as 'block' in Stan model
                                      
                                      for (t in 1:n_trials) {
@@ -85,10 +84,6 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        
                                        choices[t] <- winning_choice
                                        RTs[t] <- min_time + current_tau
-                                       
-                                       if (RTs[t] > RTbound_max) {
-                                         RTs[t] <- RTbound_max
-                                       }
                                        
                                        # Get outcome
                                        result <- self$task$generate_deck_outcome(choices[t], t)

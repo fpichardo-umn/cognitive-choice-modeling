@@ -33,7 +33,12 @@ option_list = list(
   make_option(c("-a", "--adapt_delta"), type="double", default=0.95),
   make_option(c("-d", "--max_treedepth"), type="integer", default=12),
   make_option(c("--check_iter"), type="integer", default=10000, help="Iteration interval for checkpoint runs. Default: 10000"),
-  make_option(c("-R", "--render"), action="store_true", default=FALSE, help="Render RMD to HTML")
+  make_option(c("-R", "--render"), action="store_true", default=FALSE, help="Render RMD to HTML"),
+  make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
+  make_option(c("--rt_method"), type="character", default="mark", help="RT method"),
+  make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
+  make_option(c("--RTbound_max_ms"), type="integer", default=4000, help="RT max bound in milliseconds"),
+  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -107,7 +112,24 @@ data_to_extract <- model_defaults[[model_key]]$data
 model_params <- model_defaults[[model_key]]$params
 
 # Extract data from simulation
-stan_data <- extract_simulation_data(sim_data, data_params = data_to_extract, opt$task, individual = opt$indiv)
+stan_data <- extract_simulation_data(
+  data = sim_data, 
+  data_params = data_to_extract, 
+  task = opt$task, 
+  individual = opt$indiv,
+  n_trials = opt$n_trials,
+  
+  # --- Pass all RT parameters ---
+  RTbound_min_ms = opt$RTbound_min_ms, 
+  RTbound_max_ms = opt$RTbound_max_ms,
+  
+  # Use the same "reject" logic as the real data scripts
+  RTbound_reject_min_ms = opt$RTbound_min_ms + 20, 
+  RTbound_reject_max_ms = opt$RTbound_max_ms, 
+  
+  rt_method = opt$rt_method, 
+  min_valid_rt_pct = opt$min_valid_rt_pct
+)
 
 if ("subjects" %in% names(stan_data)){
   stan_data$subjects = NULL
@@ -186,10 +208,13 @@ if (opt$indiv || is_batch) {
     sub_stan_data$task = NULL
     sub_stan_data$sid <- as.numeric(sub)
     
-    # Handle missing RTs if present
-    if ("RT" %in% names(sub_stan_data)) {
-      sub_stan_data$RT[is.na(sub_stan_data$RT)] <- median(sub_stan_data$RT, na.rm = TRUE)
-    }
+    data_list <- extract_sample_data(subject_data, data_to_extract, 
+                                     task = opt$task,
+                                     n_trials = opt$n_trials, 
+                                     RTbound_min_ms = opt$RTbound_min_ms, RTbound_max_ms = opt$RTbound_max_ms,
+                                     RTbound_reject_min_ms = opt$RTbound_min_ms + 20, RTbound_reject_max_ms = opt$RTbound_max_ms, 
+                                     rt_method = opt$rt_method, minrt_ep_ms = 0, 
+                                     min_valid_rt_pct = opt$min_valid_rt_pct)
     
     # Fit model for this subject
     fit <- fit_and_save_model(

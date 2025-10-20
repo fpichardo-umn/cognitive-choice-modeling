@@ -732,6 +732,8 @@ run_pr_simulate() {
         "--n_blocks $N_BLOCKS"
         "--trials_per_block $TRIALS_PER_BLOCK"
         "--seed $SEED"
+        "--RTbound_min_ms $RTBOUND_MIN_MS"
+        "--RTbound_max_ms $RTBOUND_MAX_MS"
     )
     
     # Create output directory if it doesn't exist
@@ -788,6 +790,9 @@ run_pr_recovery() {
         "--max_treedepth $max_treedepth"
         "--check_iter $check_iter"
         "--seed $SEED"
+        "--rt_method $RTMETHOD"
+        "--RTbound_min_ms $RTBOUND_MIN_MS"
+        "--RTbound_max_ms $RTBOUND_MAX_MS"
     )
     
     # Run the command

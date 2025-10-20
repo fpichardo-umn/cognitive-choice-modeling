@@ -55,7 +55,6 @@ igtVSERDB1P2Model <- R6::R6Class("igtVSERDB1P2Model",
                                      ev_exploit <- c(0, 0, 0, 0)
                                      ev_explore <- c(0, 0, 0, 0)
                                      
-                                     RTbound_max <- task_params$RTbound_max
                                      block_cutoff <- 20 # Same as 'block' in Stan model
                                      
                                      for (t in 1:n_trials) {
@@ -84,10 +83,6 @@ igtVSERDB1P2Model <- R6::R6Class("igtVSERDB1P2Model",
                                        
                                        choices[t] <- winning_choice
                                        RTs[t] <- min_time + current_tau
-                                       
-                                       if (RTs[t] > RTbound_max) {
-                                         RTs[t] <- RTbound_max
-                                       }
                                        
                                        # Get outcome for the chosen deck
                                        result <- self$task$generate_deck_outcome(choices[t], t)

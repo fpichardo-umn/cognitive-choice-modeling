@@ -102,6 +102,7 @@ CMD_ARGS+=("--method" "$METHOD")
 CMD_ARGS+=("--rt_method" "$rt_method")
 CMD_ARGS+=("--rt_min" "$RTbound_min_ms")
 CMD_ARGS+=("--rt_max" "$RTbound_max_ms")
+CMD_ARGS+=("--n_blocks" "$n_blocks")
 
 # Add no-indiv flag if enabled
 if [ "$NO_INDIV" = true ]; then

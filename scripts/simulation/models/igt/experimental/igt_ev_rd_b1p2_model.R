@@ -50,7 +50,6 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                     # Initialize Expected Values (EV) for the four decks
                                     ev <- c(0, 0, 0, 0)
                                     
-                                    RTbound_max <- task_params$RTbound_max
                                     block_cutoff <- 20 # Same as 'block' in Stan model
                                     
                                     # Calculate sensitivity from drift_con, same as in Stan model
@@ -84,10 +83,6 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                       
                                       choices[t] <- winning_choice
                                       RTs[t] <- min_time + current_tau
-                                      
-                                      if (RTs[t] > RTbound_max) {
-                                        RTs[t] <- RTbound_max
-                                      }
                                       
                                       # Get outcome for the chosen deck
                                       result <- self$task$generate_deck_outcome(choices[t], t)

@@ -27,7 +27,7 @@ option_list = list(
   make_option(c("-s", "--seed"), type="integer", default=12345),
   make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
               help="RT lower bound in milliseconds [default: %default]"),
-  make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
+  make_option(c("--RTbound_max_ms"), type="numeric", default=1200000, 
               help="RT upper bound in milliseconds [default: %default]")
 )
 

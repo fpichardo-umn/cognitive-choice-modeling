@@ -47,7 +47,6 @@ igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
                               losses <- numeric(n_trials)
                               
                               V <- c(parameters$V1, parameters$V2, parameters$V3, parameters$V4)
-                              RTbound_max <- task_params$RTbound_max
                               
                               for (t in 1:n_trials) {
                                 if (t <= 20) {
@@ -76,10 +75,6 @@ igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
                                 
                                 choices[t] <- sample(tied_choices, 1)
                                 RTs[t] <- min_time + current_tau
-                                
-                                if (RTs[t] > RTbound_max) {
-                                  RTs[t] <- RTbound_max
-                                }
                                 
                                 result <- self$task$generate_deck_outcome(choices[t], t)
                                 wins[t] <- result$gain

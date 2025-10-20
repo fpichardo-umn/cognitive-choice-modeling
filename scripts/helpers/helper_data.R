@@ -517,22 +517,28 @@ calculate_data_quality_metrics <- function(data, data_list, drop_idx, rt_method,
 #' @param use_percentile Boolean to use percentile-based RT bounds
 #' @param minrt_ep_ms Minimum RT epsilon in milliseconds
 #' @param maxrt_ep_ms Maximum RT epsilon in milliseconds
+#' @param min_valid_rt_pct Minimum percent valid RT (NEW)
 #' @param individual Boolean indicating whether to return individual data
 #' @param participant_list Optional character vector of specific participants to include
 #' @return List of data for simulation
 extract_simulation_data <- function(data, data_params, task, n_trials = NULL, n_subs = NULL, 
-                                   RTbound_min_ms = 50, RTbound_reject_min_ms = 100,
-                                   RTbound_max_ms = NULL, RTbound_reject_max_ms = NULL,
-                                   rt_method = "remove", use_percentile = FALSE, 
-                                   minrt_ep_ms = 0, maxrt_ep_ms = 0, 
-                                   individual = FALSE, participant_list = NULL) {
+                                    RTbound_min_ms = 50, RTbound_reject_min_ms = 100,
+                                    RTbound_max_ms = NULL, RTbound_reject_max_ms = NULL,
+                                    rt_method = "remove", use_percentile = FALSE, 
+                                    minrt_ep_ms = 0, maxrt_ep_ms = 0, 
+                                    min_valid_rt_pct = 0.70, # <-- ADDED
+                                    individual = FALSE, participant_list = NULL) {
   
   # Stage 1: Extract all data in hierarchical format first
-  hierarchy_data <- extract_simulation_hierarchical_data(data, data_params, task, n_trials, n_subs, 
-                                                        RTbound_min_ms, RTbound_reject_min_ms,
-                                                        RTbound_max_ms, RTbound_reject_max_ms,
-                                                        rt_method, use_percentile, 
-                                                        minrt_ep_ms, maxrt_ep_ms, participant_list)
+  hierarchy_data <- extract_simulation_hierarchical_data(
+    data, data_params, task, n_trials, n_subs, 
+    RTbound_min_ms, RTbound_reject_min_ms,
+    RTbound_max_ms, RTbound_reject_max_ms,
+    rt_method, use_percentile, 
+    minrt_ep_ms, maxrt_ep_ms, 
+    min_valid_rt_pct, # <-- PASSING DOWN
+    participant_list
+  )
   
   # Stage 2: If individual format requested, transform hierarchical data
   if (individual) {
@@ -556,13 +562,16 @@ extract_simulation_data <- function(data, data_params, task, n_trials = NULL, n_
 #' @param use_percentile Boolean to use percentile-based RT bounds
 #' @param minrt_ep_ms Minimum RT epsilon in milliseconds
 #' @param maxrt_ep_ms Maximum RT epsilon in milliseconds
+#' @param min_valid_rt_pct Minimum percent valid RT (NEW)
 #' @param participant_list Optional character vector of specific participants to include
 #' @return List of hierarchical data for simulation
 extract_simulation_hierarchical_data <- function(data, data_params, task, n_trials, n_subs, 
                                                  RTbound_min_ms = 50, RTbound_reject_min_ms = 100,
                                                  RTbound_max_ms = NULL, RTbound_reject_max_ms = NULL,
                                                  rt_method = "remove", use_percentile = FALSE, 
-                                                 minrt_ep_ms = 0, maxrt_ep_ms = 0, participant_list = NULL) {
+                                                 minrt_ep_ms = 0, maxrt_ep_ms = 0, 
+                                                 min_valid_rt_pct = 0.70, # <-- ADDED
+                                                 participant_list = NULL) {
   # Initialize data list
   data_list <- list()
   
@@ -587,8 +596,52 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
     stop("RT-related parameters were requested, but no RT data is available in the simulation dataset.")
   }
   
-  # Get unique subjects and handle subsetting
-  subjects <- unique(data$idx)
+  # ----- START: NEW PREPROCESSING LOGIC -----
+  
+  # Standardize sim data column 'idx' to 'subjID' for preprocess_data
+  # 'idx' is the default subject ID in sim data, 'subjID' is expected by preprocess_data
+  if ("idx" %in% names(data)) {
+    data <- data %>% dplyr::rename(subjID = idx)
+  }
+  
+  # RT Filtering (Copied from extract_sample_data) ====
+  if (data_has_rt) {
+    results <- preprocess_data(data, task, RTbound_reject_min_ms, RTbound_reject_max_ms, rt_method, return_dropped_indices = TRUE)
+    data <- results$data
+    drop_idx <- results$dropped_indices
+  } else {
+    drop_idx <- NULL
+  }
+  
+  # Data Quality Check (Copied from extract_sample_data) ====
+  if (rt_method == "mark" && data_has_rt) {
+    # Calculate valid RT percentage per subject
+    rt_quality <- data %>%
+      group_by(subjID) %>%
+      summarize(
+        total_trials = n(),
+        valid_rt_trials = sum(RT != 999),
+        valid_rt_pct = valid_rt_trials / total_trials
+      ) %>%
+      ungroup()
+    
+    # Check if any subjects fall below threshold
+    low_quality_subs <- rt_quality$subjID[rt_quality$valid_rt_pct < min_valid_rt_pct]
+    
+    if (length(low_quality_subs) > 0) {
+      cat("Dropping", length(low_quality_subs), "simulated subjects due to <", 
+          min_valid_rt_pct * 100, "% valid RTs\n")
+      cat("Dropped simulated subjects:", paste(low_quality_subs, collapse=", "), "\n")
+      
+      # Simple filter - data is still a data frame
+      data <- data %>% filter(!(subjID %in% low_quality_subs))
+    }
+  }
+  
+  # ----- END: NEW PREPROCESSING LOGIC -----
+  
+  # Get unique subjects and handle subsetting (NOW USES FILTERED DATA)
+  subjects <- unique(data$subjID) 
   if (!is.null(participant_list)) {
     if (!all(participant_list %in% subjects)) {
       stop("Some participants in participant_list are not present in the data.")
@@ -598,7 +651,8 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
   
   # Process n_trials and n_subs
   if (is.null(n_trials) || n_trials == "Full") {
-    n_trials <- max(data$trial)
+    # Adjust n_trials to max trial count *after* potential dropping
+    n_trials <- max(data$trial) 
   } else {
     n_trials <- as.integer(n_trials)
   }
@@ -617,7 +671,8 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
   
   # Calculate Tsubj for each participant
   data_list$Tsubj <- sapply(subjects, function(sub) {
-    as.integer(max(data$trial[data$idx == sub]))
+    # Use 'subjID' here
+    as.integer(max(data$trial[data$subjID == sub]))
   })
   
   # Process each requested parameter based on task
@@ -628,7 +683,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
              "choice" = {
                choice_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  choice_mat[i,] <- sub_data$choice
                }
                data_list$choice <- choice_mat
@@ -636,7 +691,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
              "shown" = {
                shown_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  shown_mat[i,] <- sub_data$deck_shown
                }
                data_list$shown <- shown_mat
@@ -644,7 +699,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
              "outcome" = {
                outcome_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  outcome_mat[i,] <- sub_data$outcome
                }
                data_list$outcome <- outcome_mat
@@ -656,7 +711,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
                
                rt_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  rt_mat[i,] <- sub_data$RT
                }
                data_list$RT <- rt_mat
@@ -711,7 +766,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
              "choice" = {
                choice_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  choice_mat[i,] <- sub_data$choice
                }
                data_list$choice <- choice_mat
@@ -719,7 +774,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
              "wins" = {
                wins_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  wins_mat[i,] <- sub_data$wins
                }
                data_list$wins <- wins_mat
@@ -727,7 +782,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
              "losses" = {
                losses_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  losses_mat[i,] <- sub_data$losses
                }
                data_list$losses <- losses_mat
@@ -739,7 +794,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
                
                rt_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$idx == subjects[i], ]
+                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
                  rt_mat[i,] <- sub_data$RT
                }
                data_list$RT <- rt_mat
@@ -749,30 +804,84 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
   }
   
   # Process RT-related parameters for bounds
+  # THIS LOGIC IS NOW COPIED FROM extract_sample_data TO HANDLE 'mark' METHOD
   if (any(c("RTbound", "minRT", "maxRT") %in% data_params) && "RT" %in% names(data_list)) {
-    # Handle RT bounds
-    if (use_percentile) {
-      RTbound_min <- as.numeric(quantile(head(sort(as.vector(data_list$RT)), 100), 0.01))
-    } else if (rt_method == "adaptive") {
-      RTbound_min <- as.numeric(min(data_list$RT, na.rm = TRUE) - 1e-5)
-    } else {
-      RTbound_min <- as.numeric(RTbound_min_ms) / 1000
-    }
     
-    data_list$RTbound <- RTbound_min
-    data_list$minRT <- apply(data_list$RT, 1, min, na.rm = TRUE) + pmax(minrt_ep_ms/1000, 0)
-    
-    if (!is.null(RTbound_max_ms)) {
-      if (use_percentile) {
-        RTbound_max <- as.numeric(quantile(tail(sort(as.vector(data_list$RT)), 100), 0.99))
-      } else if (rt_method == "adaptive") {
-        RTbound_max <- as.numeric(max(data_list$RT, na.rm = TRUE) + 1e-5)
-      } else {
-        RTbound_max <- as.numeric(RTbound_max_ms) / 1000
+    if (rt_method == "mark") {
+      valid_RTs <- data_list$RT[data_list$RT != 999]
+      
+      if (length(valid_RTs) == 0) {
+        stop("All simulated RTs are invalid (marked as 999). Cannot calculate minRT/maxRT.")
       }
       
-      data_list$RTbound_max <- RTbound_max
-      data_list$maxRT <- apply(data_list$RT, 1, max, na.rm = TRUE) - pmax(maxrt_ep_ms/1000, 0)
+      # Calculate RTbound from valid RTs only
+      if (use_percentile) {
+        RTbound_min <- as.numeric(quantile(head(sort(valid_RTs), 100), 0.01))
+      } else if (rt_method == "adaptive") {
+        RTbound_min <- as.numeric(min(valid_RTs, na.rm = TRUE) - 1e-5)
+      } else {
+        RTbound_min <- as.numeric(RTbound_min_ms) / 1000
+      }
+      
+      # Calculate minRT excluding 999 values
+      data_list$minRT <- apply(data_list$RT, 1, function(x) {
+        valid_x <- x[x != 999]
+        if (length(valid_x) == 0) return(NA)
+        min(valid_x, na.rm = TRUE)
+      })
+      data_list$minRT <- data_list$minRT + pmax(minrt_ep_ms/1000, 0)
+      
+      # Calculate maxRT if needed, excluding 999 values
+      if (!is.null(RTbound_max_ms)) {
+        if (use_percentile) {
+          RTbound_max <- as.numeric(quantile(tail(sort(valid_RTs), 100), 0.99))
+        } else if (rt_method == "adaptive") {
+          RTbound_max <- as.numeric(max(valid_RTs, na.rm = TRUE) + 1e-5)
+        } else {
+          RTbound_max <- as.numeric(RTbound_max_ms) / 1000
+        }
+        
+        data_list$RTbound_max <- as.numeric(RTbound_max)
+        
+        data_list$maxRT <- apply(data_list$RT, 1, function(x) {
+          valid_x <- x[x != 999]
+          if (length(valid_x) == 0) return(NA)
+          max(valid_x, na.rm = TRUE)
+        })
+        data_list$maxRT <- data_list$maxRT - pmax(maxrt_ep_ms/1000, 0)
+      }
+      
+      data_list$RTbound <- as.numeric(RTbound_min)
+      
+    } else {
+      # Existing logic for other rt_methods
+      if (use_percentile) {
+        all_RTs <- as.vector(data_list$RT)
+        RTbound_min <- as.numeric(quantile(head(sort(all_RTs), 100), 0.01))
+      } else if (rt_method == "adaptive") {
+        RTbound_min <- as.numeric(min(data_list$RT, na.rm = TRUE) - 1e-5)
+      } else {
+        RTbound_min <- as.numeric(RTbound_min_ms) / 1000
+      }
+      
+      if (!is.null(RTbound_max_ms)) {
+        if (use_percentile) {
+          all_RTs <- as.vector(data_list$RT)
+          RTbound_max <- as.numeric(quantile(tail(sort(all_RTs), 100), 0.99))
+        } else if (rt_method == "adaptive") {
+          RTbound_max <- as.numeric(max(data_list$RT, na.rm = TRUE) + 1e-5)
+        } else {
+          RTbound_max <- as.numeric(RTbound_max_ms) / 1000
+        }
+        
+        data_list$RTbound_max <- as.numeric(RTbound_max)
+        data_list$maxRT <- as.numeric(apply(data_list$RT, 1, max, na.rm = TRUE))
+        data_list$maxRT <- data_list$maxRT - pmax(maxrt_ep_ms/1000, 0)
+      }
+      
+      data_list$RTbound <- as.numeric(RTbound_min)
+      data_list$minRT <- as.numeric(apply(data_list$RT, 1, min, na.rm = TRUE))
+      data_list$minRT <- data_list$minRT + pmax(minrt_ep_ms/1000, 0)
     }
   }
   
