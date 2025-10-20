@@ -86,8 +86,6 @@ if (opt$verbose) {
   cat("  Tables:", dirs$tables, "\n\n")
 }
 
-
-
 # Dry run check
 if (opt$dry_run) {
   cat("\n=== DRY RUN - Actions that would be performed ===\n")

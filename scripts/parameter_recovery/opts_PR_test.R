@@ -100,7 +100,10 @@ opt = list(
   seed = 12345,
   adapt_delta = 0.95,
   max_treedepth = 12,
-  render = TRUE
+  render = TRUE,
+  RTbound_min_ms = opt_RTmin_ms,
+  RTbound_max_ms = opt_RTmax_ms,
+  rt_method = "mark"
 )
 
 
