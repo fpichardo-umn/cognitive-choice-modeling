@@ -33,7 +33,6 @@ igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                      return(list(
                                        boundary1 = list(range = c(0.001, 5)),
                                        boundary = list(range = c(0.001, 5)),
-                                       tau1 = list(range = c(0.0, 1.0)), # Adjust based on minRT if needed
                                        tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
                                        urgency = list(range = c(0.001, 20)),
                                        drift_con = list(range = c(0, 3)),
@@ -65,7 +64,7 @@ igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                        # Determine block-specific parameters
                                        if (t <= block_cutoff) {
                                          current_boundary <- parameters$boundary1
-                                         current_tau <- parameters$tau1
+                                         current_tau <- parameters$tau
                                        } else {
                                          current_boundary <- parameters$boundary
                                          current_tau <- parameters$tau
@@ -142,7 +141,7 @@ igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                        # Determine block-specific parameters
                                        if (t <= block_cutoff) {
                                          current_boundary <- parameters$boundary1
-                                         current_tau <- parameters$tau1
+                                         current_tau <- parameters$tau
                                        } else {
                                          current_boundary <- parameters$boundary
                                          current_tau <- parameters$tau
