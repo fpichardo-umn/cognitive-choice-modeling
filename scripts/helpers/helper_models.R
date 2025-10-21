@@ -788,9 +788,6 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
-  
-  return(models)
-  
   # ---- RD B1 Models ----
   models[["igt_sing_rd_b1"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
@@ -843,7 +840,6 @@ get_igt_defaults = function() {
     non_pr_params = NULL,
     exclude_params = NULL
   )
-  
   
   return(models)
 }

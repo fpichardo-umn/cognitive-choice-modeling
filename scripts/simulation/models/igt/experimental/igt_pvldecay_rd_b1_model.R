@@ -61,7 +61,7 @@ igtPVLDECAYRDB1Model <- R6::R6Class("igtPVLDECAYRDB1Model",
                                             # Determine block-specific parameters
                                             if (t <= block_cutoff) {
                                               current_boundary <- parameters$boundary1
-                                              current_tau <- parameters$tau1
+                                              current_tau <- parameters$tau
                                             } else {
                                               current_boundary <- parameters$boundary
                                               current_tau <- parameters$tau
@@ -133,7 +133,7 @@ igtPVLDECAYRDB1Model <- R6::R6Class("igtPVLDECAYRDB1Model",
                                             # Determine block-specific parameters
                                             if (t <= block_cutoff) {
                                               current_boundary <- parameters$boundary1
-                                              current_tau <- parameters$tau1
+                                              current_tau <- parameters$tau
                                             } else {
                                               current_boundary <- parameters$boundary
                                               current_tau <- parameters$tau
