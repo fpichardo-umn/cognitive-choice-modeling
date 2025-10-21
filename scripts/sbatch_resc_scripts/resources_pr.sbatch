@@ -33,7 +33,8 @@ COMPONENTS=$(echo "$COMPONENTS_RAW" | sed 's/;/,/g')
 
 # Pipeline parameters with defaults
 SESSION=${SESSION:-"00"}
-N_SUBJECTS=${N_SUBJECTS:-200}
+N_SUBJECTS_FIT=${N_SUBJECTS_FIT:-200}
+N_SUBJECTS_PR=${N_SUBJECTS_PR:-200}
 N_TRIALS=${N_TRIALS:-100}
 FIT_CONFIG=${FIT_CONFIG:-"default"}
 DATA_CONFIG=${DATA_CONFIG:-"default"}
@@ -78,7 +79,8 @@ log_message "Source: $SOURCE"
 log_message "Group type: $GROUP_TYPE"
 log_message "Components: $COMPONENTS"
 log_message "Session: $SESSION"
-log_message "Number of subjects: $N_SUBJECTS"
+log_message "Number of sim subjects: $N_SUBJECTS_FIT"
+log_message "Number of PR subjects: $N_SUBJECTS_PR"
 log_message "Number of trials: $N_TRIALS"
 log_message "MCMC iterations: $n_iter"
 log_message "Checkpoint interval: $check_iter"
@@ -90,7 +92,8 @@ CMD_ARGS=("-k" "$TASK" "-m" "$MODEL" "-s" "$SOURCE" "-g" "$GROUP_TYPE")
 
 # Add session and pipeline parameters
 CMD_ARGS+=("--ses" "$SESSION")
-CMD_ARGS+=("--n-subjects" "$N_SUBJECTS")
+CMD_ARGS+=("--n_subjects_fit" "$N_SUBJECTS_FIT")
+CMD_ARGS+=("--n_subjects_pr" "$N_SUBJECTS_PR")
 CMD_ARGS+=("--subs-file" "$SUBS_FILE")
 CMD_ARGS+=("--n-trials" "$N_TRIALS")
 CMD_ARGS+=("--n-iter" "$n_iter")

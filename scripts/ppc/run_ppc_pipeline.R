@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-# Define command line options
+# ---- Define command line options ----
 option_list = list(
   make_option(c("-m", "--model"), type="character", help="Model name (e.g., ev, pvldelta)"),
   make_option(c("-k", "--task"), type="character", default="igt_mod", help="Task name"),
@@ -228,7 +228,7 @@ if (opt$render) {
   run_report_args <- paste0(run_report_args, " --render")
 }
 
-# Step 1: Simulation
+# ---- Step 1: Simulation ----
 if ("simulate" %in% steps_to_run) {
   if (file.exists(sim_file) && !opt$force) {
     message("Simulation output already exists. Skipping simulation step. Use --force to override.")
@@ -247,7 +247,7 @@ if ("simulate" %in% steps_to_run) {
   message("Skipping simulation step as requested.")
 }
 
-# Step 2: Calculate log-likelihood (independent of simulation!)
+# ---- Step 2: Calculate log-likelihood (independent of simulation!) ----
 if ("loglik" %in% steps_to_run) {
   if (file.exists(loglik_file) && !opt$force) {
     message("Log-likelihood output already exists. Skipping log-likelihood step. Use --force to override.")
@@ -269,7 +269,7 @@ if ("loglik" %in% steps_to_run) {
   message("Skipping log-likelihood step as requested.")
 }
 
-# Step 3: Calculate statistics (can be slow, so runs after loglik)
+# ---- Step 3: Calculate statistics (can be slow, so runs after loglik) ----
 if ("stats" %in% steps_to_run) {
   if (file.exists(stats_file) && !opt$force) {
     message("Statistics output already exists. Skipping statistics step. Use --force to override.")
@@ -295,7 +295,7 @@ if ("stats" %in% steps_to_run) {
 
 
 
-# Step 4: Generate report
+# ---- Step 4: Generate report ----
 if ("report" %in% steps_to_run) {
   if (file.exists(report_file) && !opt$force) {
     message("Report already exists. Skipping report generation. Use --force to override.")

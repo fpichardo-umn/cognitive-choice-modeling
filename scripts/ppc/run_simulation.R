@@ -82,20 +82,21 @@ if (!is.null(opt$exclude_file)) {
 
 # Construct fit file path if not provided
 if (is.null(opt$fit_file)) {
-  # Get RDS directory for fits
-  rds_dir <- get_fits_output_dir(opt$task, opt$type, opt$source, opt$ses)
-  fit_dir <- if (!is.null(opt$cohort)) file.path(rds_dir, opt$cohort) else rds_dir
-  ensure_dir_exists(fit_dir)
-  
-  # Combine components and add extension
-  # For individual fits, use group_name; for hierarchical fits, use group
-  group_identifier <- if(opt$group == "sing") opt$group_name else opt$group
-  filename <- generate_bids_filename(NULL, opt$task, group_identifier, opt$model, 
-                                     ext = "rds", cohort = opt$cohort, 
-                                     ses = opt$ses, additional_tags = c(
-                                       "type" = "fit", "desc" = "output"))
-  
-  fit_file <- file.path(fit_dir, filename)
+  fit_file = file.path(here::here(), "Outputs", opt$task,
+            "fits", "fit", opt$cohort, paste0("ses-", opt$ses), 
+            generate_bids_filename(
+              prefix = NULL,
+              task = opt$task,
+              group = if(opt$group == "sing") opt$group_name else opt$group,
+              model = opt$model,
+              cohort = opt$cohort,
+              ses = opt$ses,
+              additional_tags = list(
+                "type" = "fit",
+                "desc" = "output"
+              ),
+              ext = "rds"
+            ))
   
   if (!file.exists(fit_file)) {
     stop("Fit file not found: ", fit_file, ". Use --fit_file to specify path.")

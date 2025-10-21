@@ -307,7 +307,7 @@ generate_simulation_data <- function(task_name, model_name, subject_data,
   
   # Initialize task and model
   task <- initialize_task(task_name, SIM_DIR)
-  model <- initialize_model(toupper(model_name), tolower(task_name), task, SIM_DIR)
+  model <- initialize_model(model_name, task_name, task, SIM_DIR)
   
   # Initialize results
   simulation_results <- list()

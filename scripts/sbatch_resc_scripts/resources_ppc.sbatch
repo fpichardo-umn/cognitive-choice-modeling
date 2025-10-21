@@ -36,7 +36,7 @@ N_SIMS=${N_SIMS:-100}
 BLOCK_SIZE=${BLOCK_SIZE:-20}
 SAMPLING=${SAMPLING:-"weighted"}
 WIDTH_CONTROL=${WIDTH_CONTROL:-0.95}
-EXCLUDES_FILE=${EXCLUDES_FILE:-"Data/txt/subs/subject_ids_excludes.txt"}
+EXCLUDES_FILE=${EXCLUDES_FILE}
 IC_METHOD=${IC_METHOD:-"loo"}
 STEPS=${STEPS:-"all"}
 
@@ -110,6 +110,15 @@ log_message "  Steps to run: $STEPS"
 # Use config-sourced RT parameters
 log_message "Running PPC pipeline with config-sourced parameters"
 
+# Set up the optional argument string
+EXCLUDE_ARG=""
+
+# Check if EXCLUDES_FILE is set and not empty
+if [[ -n "${EXCLUDES_FILE}" ]]; then
+  # If it has a value, build the argument string
+  EXCLUDE_ARG="--exclude_file \"${EXCLUDES_FILE}\""
+fi
+
 Rscript scripts/ppc/run_ppc_pipeline.R \
   --model ${MODEL_NAME} \
   --task ${TASK} \
@@ -124,7 +133,7 @@ Rscript scripts/ppc/run_ppc_pipeline.R \
   --rt_method ${rt_method} \
   --RTbound_min_ms ${RTbound_min_ms} \
   --RTbound_max_ms ${RTbound_max_ms} \
-  --exclude_file ${EXCLUDES_FILE} \
+  ${EXCLUDE_ARG} \
   --ic_method ${IC_METHOD} \
   --steps ${STEPS} \
   --parallel \

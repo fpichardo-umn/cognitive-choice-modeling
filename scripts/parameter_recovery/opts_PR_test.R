@@ -46,8 +46,8 @@ opt <- list(
   dry_run = FALSE,
   check_iter = 20000,
   init = FALSE,
-  min_valid_rt_pct = 0.8,
-  subid = "1002"#"9104700"
+  min_valid_rt_pct = 0.8#,
+  #subid = "1002"#"9104700"
 )
 
 # Gen Params
@@ -103,7 +103,8 @@ opt = list(
   render = TRUE,
   RTbound_min_ms = opt_RTmin_ms,
   RTbound_max_ms = opt_RTmax_ms,
-  rt_method = "mark"
+  rt_method = "mark",
+  n_trials = opt_n_trials
 )
 
 

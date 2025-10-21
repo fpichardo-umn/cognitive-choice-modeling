@@ -599,7 +599,6 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
   # ----- START: NEW PREPROCESSING LOGIC -----
   
   # Standardize sim data column 'idx' to 'subjID' for preprocess_data
-  # 'idx' is the default subject ID in sim data, 'subjID' is expected by preprocess_data
   if ("idx" %in% names(data)) {
     data <- data %>% dplyr::rename(subjID = idx)
   }
@@ -633,12 +632,33 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
           min_valid_rt_pct * 100, "% valid RTs\n")
       cat("Dropped simulated subjects:", paste(low_quality_subs, collapse=", "), "\n")
       
-      # Simple filter - data is still a data frame
       data <- data %>% filter(!(subjID %in% low_quality_subs))
     }
   }
   
   # ----- END: NEW PREPROCESSING LOGIC -----
+  
+  # ----- START: FIX - Correct n_trials handling -----
+  
+  # 1. Determine the MINIMUM trials required
+  if (is.null(n_trials) || n_trials == "Full") {
+    n_trials_min <- 1 # No minimum
+  } else {
+    n_trials_min <- as.integer(n_trials) # e.g., 80
+  }
+  
+  # 2. Filter subjects who don't have *at least* n_trials_min
+  #    (Mimics extract_sample_data)
+  data <- data %>%
+    dplyr::group_by(subjID) %>%
+    filter(dplyr::n() >= n_trials_min) %>%
+    ungroup()
+  
+  if (nrow(data) == 0) {
+    stop(paste("No simulated subjects have at least", n_trials_min, "trials after preprocessing."))
+  }
+  
+  # ----- END: FIX -----
   
   # Get unique subjects and handle subsetting (NOW USES FILTERED DATA)
   subjects <- unique(data$subjID) 
@@ -649,14 +669,7 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
     subjects <- participant_list
   }
   
-  # Process n_trials and n_subs
-  if (is.null(n_trials) || n_trials == "Full") {
-    # Adjust n_trials to max trial count *after* potential dropping
-    n_trials <- max(data$trial) 
-  } else {
-    n_trials <- as.integer(n_trials)
-  }
-  
+  # Process n_subs (using the *filtered* subject list)
   if (is.null(n_subs) || n_subs == "Full") {
     n_subs <- length(subjects)
   } else {
@@ -664,16 +677,22 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
     subjects <- subjects[1:n_subs]
   }
   
-  # Store subject info and trial counts
-  data_list$sid <- as.integer(subjects)
-  data_list$N <- as.integer(n_subs)
-  data_list$T <- as.integer(n_trials)
+  # ----- START: FIX - Calculate T and Tsubj correctly -----
   
-  # Calculate Tsubj for each participant
-  data_list$Tsubj <- sapply(subjects, function(sub) {
-    # Use 'subjID' here
+  # 3. Calculate Tsubj for each *kept* participant
+  Tsubj_counts <- sapply(subjects, function(sub) {
     as.integer(max(data$trial[data$subjID == sub]))
   })
+  
+  # 4. Determine the ACTUAL max trials (T) from the kept subjects
+  n_trials_actual <- max(Tsubj_counts)
+  
+  data_list$sid <- as.integer(subjects)
+  data_list$N <- as.integer(n_subs)
+  data_list$T <- as.integer(n_trials_actual) # Use the REAL max T
+  data_list$Tsubj <- as.integer(Tsubj_counts) # Store per-subject count
+  
+  # ----- END: FIX -----
   
   # Process each requested parameter based on task
   if (task == "igt_mod") {
@@ -681,40 +700,52 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
     for (param in intersect(data_params, c("choice", "shown", "outcome", "RT"))) {
       switch(param,
              "choice" = {
-               choice_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               choice_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 choice_mat[i,] <- sub_data$choice
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 choice_mat[i, 1:n_sub_trials] <- sub_data$choice
                }
                data_list$choice <- choice_mat
+               # ----- END: FIX -----
              },
              "shown" = {
-               shown_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               shown_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 shown_mat[i,] <- sub_data$deck_shown
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 shown_mat[i, 1:n_sub_trials] <- sub_data$deck_shown
                }
                data_list$shown <- shown_mat
+               # ----- END: FIX -----
              },
              "outcome" = {
-               outcome_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               outcome_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 outcome_mat[i,] <- sub_data$outcome
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 outcome_mat[i, 1:n_sub_trials] <- sub_data$outcome
                }
                data_list$outcome <- outcome_mat
+               # ----- END: FIX -----
              },
              "RT" = {
                if (!"RT" %in% names(data)) {
                  stop("RT parameter was requested, but no RT data is available in the simulation dataset.")
                }
                
-               rt_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               rt_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 rt_mat[i,] <- sub_data$RT
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 rt_mat[i, 1:n_sub_trials] <- sub_data$RT
                }
                data_list$RT <- rt_mat
+               # ----- END: FIX -----
              }
       )
     }
@@ -764,40 +795,52 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
     for (param in intersect(data_params, c("choice", "wins", "losses", "RT"))) {
       switch(param,
              "choice" = {
-               choice_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               choice_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 choice_mat[i,] <- sub_data$choice
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 choice_mat[i, 1:n_sub_trials] <- sub_data$choice
                }
                data_list$choice <- choice_mat
+               # ----- END: FIX -----
              },
              "wins" = {
-               wins_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               wins_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 wins_mat[i,] <- sub_data$wins
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 wins_mat[i, 1:n_sub_trials] <- sub_data$wins
                }
                data_list$wins <- wins_mat
+               # ----- END: FIX -----
              },
              "losses" = {
-               losses_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               losses_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 losses_mat[i,] <- sub_data$losses
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 losses_mat[i, 1:n_sub_trials] <- sub_data$losses
                }
                data_list$losses <- losses_mat
+               # ----- END: FIX -----
              },
              "RT" = {
                if (!"RT" %in% names(data)) {
                  stop("RT parameter was requested, but no RT data is available in the simulation dataset.")
                }
                
-               rt_mat <- matrix(0, nrow = n_subs, ncol = n_trials)
+               # ----- START: FIX - Use n_trials_actual and pad -----
+               rt_mat <- matrix(0, nrow = n_subs, ncol = n_trials_actual)
                for (i in seq_len(n_subs)) {
-                 sub_data <- data[data$subjID == subjects[i], ] # Use 'subjID'
-                 rt_mat[i,] <- sub_data$RT
+                 sub_data <- data[data$subjID == subjects[i], ]
+                 n_sub_trials <- nrow(sub_data)
+                 rt_mat[i, 1:n_sub_trials] <- sub_data$RT
                }
                data_list$RT <- rt_mat
+               # ----- END: FIX -----
              }
       )
     }

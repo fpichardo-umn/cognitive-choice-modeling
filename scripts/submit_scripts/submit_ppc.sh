@@ -45,7 +45,7 @@ N_SIMS=100
 BLOCK_SIZE=20
 SAMPLING="weighted"
 WIDTH_CONTROL=0.95
-EXCLUDES_FILE="Data/txt/subs/subject_ids_excludes.txt"
+EXCLUDES_FILE=""
 IC_METHOD="loo"
 STEPS="all"
 

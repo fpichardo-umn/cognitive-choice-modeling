@@ -185,9 +185,8 @@ get_ppc_loglik_file_path <- function(task, model, group, cohort, session = NULL)
 #' @param group Group name
 #' @param cohort Cohort identifier
 #' @param session Optional session identifier
-#' @param status Optional analysis status identifier
 #' @return Full path to report file
-get_ppc_report_file_path <- function(task, model, group, cohort, session = NULL, status = "working") {
+get_ppc_report_file_path <- function(task, model, group, cohort, session = NULL) {
   # Generate filename
   filename <- generate_bids_filename(
     prefix = "ppc_report",
@@ -200,7 +199,7 @@ get_ppc_report_file_path <- function(task, model, group, cohort, session = NULL,
   )
   
   # Return full path
-  return(file.path(get_ppc_reports_dir(task, cohort, session, status), filename))
+  return(file.path(get_ppc_reports_dir(task, cohort, session), filename))
 }
 
 #' Save PPC statistics summary to CSV file

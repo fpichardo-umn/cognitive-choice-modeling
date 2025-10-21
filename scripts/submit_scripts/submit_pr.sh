@@ -24,6 +24,7 @@ print_usage() {
   echo "        (options: fit, pr_genparams, pr_simulate, pr_recovery, all)"
   echo "  -i    Enable individual fitting (default: disabled for hier)"
   echo "  -d    Dry run (show what would be submitted without submitting)"
+  echo "  -n    Number of subjects to fit (default: 200)"
   echo ""
   echo "Configuration & PR Options:"
   echo "  -F    Fit config name (default: default)"
@@ -47,7 +48,8 @@ DRY_RUN=false
 GROUP_TYPE="hier"
 COMPONENTS="all"
 SESSION="00"
-N_SUBJECTS=200
+N_SUBJECTS_FIT=200
+N_SUBJECTS_PR=200
 N_TRIALS=100
 NO_INDIV=true
 FIT_CONFIG="default"
@@ -56,7 +58,7 @@ METHOD="mbSPSepse"
 SUBS_FILE="subject_ids_all.txt"
 
 # --- Parse Command Line Arguments ---
-while getopts ":k:m:s:e:g:S:c:F:D:M:f:N:T:idh" opt; do
+while getopts ":k:m:s:e:g:S:c:F:D:M:f:N:n:T:idh" opt; do
   case $opt in
     k) TASK=$OPTARG ;;
     m) MODEL=$OPTARG ;;
@@ -69,7 +71,8 @@ while getopts ":k:m:s:e:g:S:c:F:D:M:f:N:T:idh" opt; do
     D) DATA_CONFIG=$OPTARG ;;
     M) METHOD=$OPTARG ;;
     f) SUBS_FILE=$OPTARG ;;
-    N) N_SUBJECTS=$OPTARG ;;
+    N) N_SUBJECTS_PR=$OPTARG ;;
+    n) N_SUBJECTS_FIT=$OPTARG ;;
     T) N_TRIALS=$OPTARG ;;
     i) NO_INDIV=false ;;
     d) DRY_RUN=true ;;
@@ -120,8 +123,9 @@ if $DRY_RUN; then
   echo "---"
   echo "Fit config: $FIT_CONFIG"
   echo "Data config: $DATA_CONFIG"
+  echo "Fit Subjects: $N_SUBJECTS_FIT"
   echo "PR Method: $METHOD"
-  echo "PR Subjects: $N_SUBJECTS"
+  echo "PR Subjects: $N_SUBJECTS_PR"
   echo "PR Trials: $N_TRIALS"
   echo "Individual fitting: $(if [ "$NO_INDIV" = false ]; then echo "enabled"; else echo "disabled"; fi)"
   echo "Subject file: ${SUBS_FILE:-'(not specified - will use default: subject_ids_all.txt)'}"
@@ -132,7 +136,7 @@ if $DRY_RUN; then
   echo "  --mail-user=$USER_EMAIL \\"
   echo "  --output=\"${LOG_DIR}/${JOB_NAME}_%j.out\" \\"
   echo "  --error=\"${LOG_DIR}/${JOB_NAME}_%j.err\" \\"
-  echo "  --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS=$N_SUBJECTS,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \\"
+  echo "  --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS_FIT=$N_SUBJECTS_FIT,N_SUBJECTS_PR=$N_SUBJECTS_PR,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \\"
   echo "  $BATCH_SCRIPT"
   echo "====== DRY RUN COMPLETED ======"
 else
@@ -145,7 +149,7 @@ else
     --mail-user=$USER_EMAIL \
     --output="${LOG_DIR}/${JOB_NAME}_%j.out" \
     --error="${LOG_DIR}/${JOB_NAME}_%j.err" \
-    --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS=$N_SUBJECTS,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \
+    --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS_FIT=$N_SUBJECTS_FIT,N_SUBJECTS_PR=$N_SUBJECTS_PR,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \
     $BATCH_SCRIPT)
 
   if [ $? -eq 0 ]; then
@@ -153,7 +157,7 @@ else
     echo "   Job name: $JOB_NAME"
     echo "   Task: $TASK, Model: $MODEL, Source: $SOURCE"
     echo "   Group type: $GROUP_TYPE, Components: $COMPONENTS"
-    echo "   Subjects: $N_SUBJECTS, Trials: $N_TRIALS"
+    echo "   Fit Subjects: $N_SUBJECTS_FIT, PR Subjects: $N_SUBJECTS_PR, Trials: $N_TRIALS"
     echo "   Check logs in: ${LOG_DIR}/"
   else
     echo "Failed to submit PR job"

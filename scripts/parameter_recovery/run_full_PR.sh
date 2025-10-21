@@ -20,7 +20,8 @@ MODEL_TYPE="fit"
 DRY_RUN=false
 PARALLEL=false
 CORES=4
-N_SUBJECTS=100
+N_SUBJECTS_FIT=100
+N_SUBJECTS_PR=100
 METHOD="mbSPSepse"
 N_BLOCKS=5
 TRIALS_PER_BLOCK=20
@@ -75,7 +76,7 @@ show_help() {
     echo "  --cores N            - Number of cores for parallel processing (default: 4)"
     echo ""
     echo "Fitting options (hierarchical mode: group/hier):"
-    echo "  --n-subjects N       - Number of subjects for hierarchical model (default: 100)"
+    echo "  --n-subjects-fit N   - Number of subjects for hierarchical model (default: 100)"
     echo "  --n-trials N         - Number of trials (default: 120)"
     echo "  --n-warmup N         - Warmup iterations (default: 1000)"
     echo "  --n-iter N           - Total iterations (default: 2000)"
@@ -92,6 +93,7 @@ show_help() {
     echo "Parameter generation options:"
     echo "  --method METHOD      - Parameter generation method (default: mbSPSepse)"
     echo "  --exclude-file FILE  - Exclude file for parameter generation"
+    echo "  --n-subjects-pr N    - Number of subjects for sim model (default: 100)"
     echo ""
     echo "Simulation options:"
     echo "  --n-blocks N         - Number of blocks (default: 5)"
@@ -172,8 +174,12 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
-        --n-subjects|--n_subjects)
-            N_SUBJECTS="$2"
+        --n-subjects-fit|--n_subjects_fit)
+            N_SUBJECTS_FIT="$2"
+            shift 2
+            ;;
+        --n-subjects-pr|--n_subjects_pr)
+            N_SUBJECTS_PR="$2"
             shift 2
             ;;
         --n-trials|--n_trials)
@@ -269,11 +275,6 @@ else
     FIT_APPROACH="hier"
 fi
 
-# Set default trials for hierarchical models
-if [ "$FIT_APPROACH" == "hier" ] && [ -z "$N_TRIALS" ]; then
-    N_TRIALS=120
-fi
-
 # Validate hierarchical-specific constraints
 if [ "$FIT_APPROACH" == "hier" ]; then
     # Parallel processing doesn't make sense for hierarchical models
@@ -313,28 +314,8 @@ fi
 FULL_MODEL_NAME="${TASK}_${GROUP_TYPE}_${MODEL}"
 
 # Define file paths based on naming conventions
-PARAM_FILE="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-${N_SUBJECTS}.rds"
+PARAM_FILE="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-${N_SUBJECTS_PR}.rds"
 PARAM_GLOB="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-*.rds"
-
-# Check if the specific parameter file exists
-if [ ! -f "$PARAM_FILE" ]; then
-    echo "Warning: Parameter file not found at $PARAM_FILE"
-    
-    # Check for any matching files
-    matches=( $PARAM_GLOB )
-
-    if [ ${#matches[@]} -eq 1 ]; then
-        PARAM_FILE="${matches[0]}"
-        echo "Using fallback parameter file: $PARAM_FILE"
-    elif [ ${#matches[@]} -gt 1 ]; then
-        echo "Error: Multiple possible parameter files found:"
-        printf '  %s\n' "${matches[@]}"
-        exit 1
-    else
-        echo "Error: No parameter files found matching pattern: $PARAM_GLOB"
-        exit 1
-    fi
-fi
 
 SIM_FILE="Outputs/${TASK}/simulation/data/rds/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-sim_desc-data.rds"
 
@@ -378,7 +359,7 @@ print_fit_options() {
         else
             echo "    ses = NULL,  # No session specified"
         fi
-        echo "    n_subs = $N_SUBJECTS,"
+        echo "    n_subs = $N_SUBJECTS_FIT,"
         echo "    n_trials = ${N_TRIALS:-120},"
         echo "    type = '$MODEL_TYPE',"
         echo "    n_warmup = $N_WARMUP,"
@@ -405,7 +386,7 @@ print_fit_options() {
         echo "    --data_config $DATA_CONFIG \\"
         echo "    --subjects $SUBJECTS \\"
         echo "    --subs_file $SUBS_FILE \\"
-        echo "    n_subs = $N_SUBJECTS,"
+        echo "    n_subs = $N_SUBJECTS_FIT,"
         echo "    n_trials = ${N_TRIALS:-120},"
         echo "    type = '$MODEL_TYPE',"
         echo "    n_warmup = $N_WARMUP,"
@@ -428,7 +409,7 @@ print_fit_options() {
         if [ ! -z "$SESSION" ]; then
             echo "    --ses $SESSION \\"
         fi
-        echo "    --n_subs $N_SUBJECTS \\"
+        echo "    --n_subs $N_SUBJECTS_FIT \\"
         echo "    --n_trials ${N_TRIALS:-120} \\"
         echo "    --n_warmup $N_WARMUP \\"
         echo "    --n_iter $N_ITER \\"
@@ -452,7 +433,7 @@ print_genparams_options() {
     else
         echo "    session = NULL,  # No session specified" 
     fi
-    echo "    n_subjects = $N_SUBJECTS,"
+    echo "    n_subjects = $N_SUBJECTS_PR,"
     echo "    method = '$METHOD',"
     echo "    output_dir = NULL,"
     echo "    fit_file = NULL,"
@@ -478,7 +459,7 @@ print_genparams_options() {
     if [ ! -z "$SESSION" ]; then
         echo "    --session $SESSION \\"
     fi
-    echo "    --n_subjects $N_SUBJECTS \\"
+    echo "    --n_subjects $N_SUBJECTS_PR \\"
     echo "    --method $METHOD \\"
     echo "    --seed $SEED \\"
     if [ ! -z "$EXCLUDE_FILE" ]; then
@@ -582,7 +563,8 @@ print_recovery_options() {
     echo "    --adapt_delta $ADAPT_DELTA \\"
     echo "    --max_treedepth $MAX_TREEDEPTH \\"
     echo "    --check_iter $CHECK_ITER \\"
-    echo "    --seed $SEED"
+    echo "    --seed $SEED \\"
+    echo "    n_trials = ${N_TRIALS:-120}"
 }
 
 # Function to run model fitting (batch or hierarchical based on group type)
@@ -650,7 +632,7 @@ run_fit() {
         
         CMD_ARGS+=(
             "--subs_file" "$SUBS_FILE"
-            "--n_subs $N_SUBJECTS"
+            "--n_subs $N_SUBJECTS_FIT"
             "--n_trials ${N_TRIALS:-120}"
             "--n_warmup $N_WARMUP"
             "--n_iter $N_ITER"
@@ -672,6 +654,25 @@ run_fit() {
 
 # Function to generate parameters
 run_pr_genparams() {
+  # Check if the specific parameter file exists
+  if [ ! -f "$PARAM_FILE" ]; then
+      echo "Warning: Parameter file not found at $PARAM_FILE"
+      
+      # Check for any matching files
+      matches=( $PARAM_GLOB )
+  
+      if [ ${#matches[@]} -eq 1 ]; then
+          PARAM_FILE="${matches[0]}"
+          echo "Using fallback parameter file: $PARAM_FILE"
+      elif [ ${#matches[@]} -gt 1 ]; then
+          echo "Error: Multiple possible parameter files found:"
+          printf '  %s\n' "${matches[@]}"
+          exit 1
+      else
+          echo "Error: No parameter files found matching pattern: $PARAM_GLOB"
+          exit 1
+      fi
+  fi
     echo "Generating parameters for parameter recovery ($FULL_MODEL_NAME)..."
     
     if [ "$DRY_RUN" = true ]; then
@@ -690,7 +691,7 @@ run_pr_genparams() {
         CMD_ARGS+=("--session $SESSION")
     fi
     CMD_ARGS+=(
-        "--n_subjects $N_SUBJECTS"
+        "--n_subjects $N_SUBJECTS_PR"
         "--method $METHOD"
         "--seed $SEED"
     )
@@ -793,6 +794,7 @@ run_pr_recovery() {
         "--rt_method $RTMETHOD"
         "--RTbound_min_ms $RTBOUND_MIN_MS"
         "--RTbound_max_ms $RTBOUND_MAX_MS"
+        "--n_trials ${N_TRIALS}"
     )
     
     # Run the command
