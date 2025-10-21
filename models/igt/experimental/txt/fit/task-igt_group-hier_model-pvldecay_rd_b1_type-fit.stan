@@ -1,4 +1,4 @@
-// Hierarchical ORL-RD Model (4 Accumulators, "Win-First")
+// Hierarchical PVLdecay-RD Model (4 Accumulators, "Win-First")
 functions {
   // Log PDF for Racing Diffusion/Wald
   vector race_log_pdf_vec(vector t, vector boundary, vector drift) {
@@ -71,58 +71,29 @@ functions {
 
   // Trial-level function for the simpler model
   real igt_rd_model(array[] int choice, array[] real RT,
-		    vector ev, vector ef, int T,
+		    vector ev_init, int T,
 		    array[] real wins, array[] real losses, 
-		    real Arew, real Apun,
-		    real betaF, real betaP, 
-                    vector boundaries, vector taus,
-		    real urgency) {
+		    real sensitivity, real decay, real gain, real loss,
+                    vector boundaries, real tau, real urgency, real sensitivity) {
 
+    vector[4] local_ev = ev_init;
     real log_lik = 0.0;
-    vector[4] local_ev = ev;
-    vector[4] local_ef = ef;
-    vector[4] pers = rep_vector(0.0, 4);
-    real PEval;
-    real PEfreq;
-    real efChosen; 
-    vector[4] PEfreq_fic;
-    array[T] real sign_outcome;
-
-    for (t in 1:T) {
-      sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
-    }
 
     for (t in 1:T) {
       vector[4] drift_rates;
       for (i in 1:4) {
-        drift_rates[i] = urgency + local_ev[i] + local_ef[i] * betaF;
-      }
-
-      if (t > 1) {
-        drift_rates[choice[t-1]] += betaP;
+        drift_rates[i] = urgency + sensitivity * local_ev[i];
       }
 
       if (RT[t] != 999) {
-        log_lik += win_first_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
+        log_lik += win_first_lpdf(RT[t] | choice[t], tau, boundaries[t], drift_rates);
       }
       
-      PEval = wins[t] - losses[t] - local_ev[choice[t]];
-      PEfreq = sign_outcome[t] - local_ef[choice[t]];
-      efChosen = local_ef[choice[t]];
-      
-      for (d in 1:4) {
-        PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
-      }
-      
-      if (wins[t] >= losses[t]) {
-        local_ef += Apun * PEfreq_fic;
-        local_ef[choice[t]] = efChosen + Arew * PEfreq; // Correct the chosen deck using the stored value
-        local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
-      } else {
-        local_ef += Arew * PEfreq_fic;
-        local_ef[choice[t]] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
-        local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
-      }
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+      real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+
+      local_ev = local_ev * (1 - decay);
+      local_ev[choice[t]] += win_component - loss * loss_component;
     }
 
     return log_lik;
@@ -132,31 +103,27 @@ functions {
   real partial_sum(array[] int slice_n, int start, int end,
                    array[] int Tsubj, array[,] int choice, 
                    array[,] real wins, array[,] real losses, array[,] real RT,
-                   array[] real Arew, array[] real Apun, 
-                   array[] real betaF, array[] real betaP,
+                   array[] real decay, array[] real gain, array[] real loss,
                    array[] vector boundary_subj,
-                   array[] vector tau_subj,
-                   array[] real urgency) {
+                   array[] real tau,
+                   array[] real urgency, array[] real drift_con) {
     real log_lik = 0.0;
-    vector[4] ev = rep_vector(0., 4);
-    vector[4] ef = rep_vector(0., 4);
+    vector[4] ev = rep_vector(0.0, 4);
 
     for (n in start:end) {
+      real sensitivity = pow(3, drift_con[n]) - 1;
       
       log_lik += igt_rd_model(
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
-	  ev, ef, Tsubj[n],
+	  ev, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
-          Arew[n], Apun[n],
-          betaF[n], betaP[n], 
-          boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], 
-	  urgency[n] 
+          sensitivity, decay[n], gain[n], loss[n],
+          boundary_subj[n][1:Tsubj[n]], tau[n], urgency[n], sensitivity
       );
     }
     return log_lik;
   }
 }
-
 data {
   int<lower=1> N;
   int<lower=1> T;
@@ -176,40 +143,37 @@ transformed data {
   int block = 20;
 }
 parameters {
-  array[9] real mu_pr;
-  array[9] real<lower=0> sigma;
+  array[8] real mu_pr;
+  array[8] real<lower=0> sigma;
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
-  array[N] real tau1_pr;
   array[N] real tau_pr;
   array[N] real urgency_pr;
-  array[N] real Arew_pr;
-  array[N] real Apun_pr;
-  array[N] real betaF_pr;
-  array[N] real betaP_pr;
+  array[N] real drift_con_pr;
+  array[N] real gain_pr;
+  array[N] real loss_pr;
+  array[N] real decay_pr;
 }
 transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary1;
   array[N] real<lower=0.001, upper=5> boundary;
-  array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
   array[N] real<lower=0.001, upper=20> urgency;
-  array[N] real<lower=0, upper=1> Arew;
-  array[N] real<lower=0, upper=1> Apun;
-  array[N] real betaF;
-  array[N] real betaP;
+  array[N] real<lower=0, upper=3> drift_con;
+  array[N] real<lower=0, upper=2> gain;
+  array[N] real<lower=0, upper=10> loss;
+  array[N] real<lower=0, upper=1> decay;
 
   boundary1   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
   boundary    = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
-  tau1        = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  tau         = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  urgency     = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) * 19.999 + 0.001);
+  tau         = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
+  urgency     = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(urgency_pr)) * 19.999 + 0.001);
   
-  Arew  = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(Arew_pr)));
-  Apun  = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(Apun_pr)));
-  betaF = to_array_1d(mu_pr[8] + sigma[8] .* to_vector(betaF_pr));
-  betaP = to_array_1d(mu_pr[9] + sigma[9] .* to_vector(betaP_pr));
+  drift_con = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(drift_con_pr)) * 3);
+  gain      = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(gain_pr)) * 2);
+  loss      = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(loss_pr)) * 10);
+  decay     = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(decay_pr)));
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -217,29 +181,25 @@ model {
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   urgency_pr ~ normal(0, 1);
-  Arew_pr  ~ normal(0, 1);
-  Apun_pr  ~ normal(0, 1);
-  betaF_pr ~ normal(0, 1);
-  betaP_pr ~ normal(0, 1);
+  drift_con_pr ~ normal(0, 1);
+  gain_pr   ~ normal(0, 1);
+  loss_pr   ~ normal(0, 1);
+  decay_pr  ~ normal(0, 1);
 
   // Build per-subject boundary/tau vectors
   array[N] vector[T] boundary_subj;
-  array[N] vector[T] tau_subj;
   
   for (n in 1:N) {
     int Tsubj_n = Tsubj[n];
     
     // First block
     boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
-    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
     
     // Rest of blocks
     int rest_len = Tsubj_n - block;
     boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
-    tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
   }
   
   int grainsize = max(1, N %/% 4);
@@ -247,20 +207,18 @@ model {
                        subject_indices, grainsize,
                        Tsubj, choice,
 		       wins, losses, RT,
-                       Arew, Apun,
-		       betaF, betaP,
-                       boundary_subj, tau_subj,
-                       urgency);
+                       decay, gain, loss,
+                       boundary_subj, tau,
+                       urgency, drift_con);
 }
 
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
   real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
-  real mu_tau1 	    = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_tau       = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001;
-  real mu_Arew  = inv_logit(mu_pr[6]);
-  real mu_Apun  = inv_logit(mu_pr[7]);
-  real mu_betaF = mu_pr[8];
-  real mu_betaP = mu_pr[9];
+  real mu_tau       = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real mu_urgency   = inv_logit(mu_pr[4]) * 19.999 + 0.001;
+  real mu_drift_con = inv_logit(mu_pr[5]) * 3;
+  real mu_gain      = inv_logit(mu_pr[6]) * 2;
+  real mu_loss      = inv_logit(mu_pr[7]) * 10;
+  real mu_decay     = inv_logit(mu_pr[8]);
 }

@@ -1,4 +1,4 @@
-// Hierarchical RL-RD Model (4 Accumulators, "Win-First")
+// Hierarchical ORL-RD Model (4 Accumulators, "Win-First")
 functions {
   // Log PDF for Racing Diffusion/Wald
   vector race_log_pdf_vec(vector t, vector boundary, vector drift) {
@@ -70,38 +70,91 @@ functions {
 }
 
   // Trial-level function for the simpler model
-  real igt_rd_model(array[] int choice, array[] real RT, int T, vector V_subj,
-                    vector boundaries, vector taus, real urgency) {
+  real igt_rd_model(array[] int choice, array[] real RT,
+		    vector ev, vector ef, int T,
+		    array[] real wins, array[] real losses, 
+		    real Arew, real Apun, real K,
+		    real betaF, real betaP, 
+                    vector boundaries, real tau,
+		    real urgency) {
+
     real log_lik = 0.0;
-    vector[4] drift_rates = urgency + V_subj;
+    vector[4] local_ev = ev;
+    vector[4] local_ef = ef;
+    vector[4] pers = rep_vector(0.0, 4);
+    real PEval;
+    real PEfreq;
+    vector[4] PEfreq_fic;
+    array[T] real sign_outcome;
+    real K_tr = pow(3, K) - 1;
 
     for (t in 1:T) {
-      if (RT[t] != 999) {
-        log_lik += win_first_lpdf(RT[t] | choice[t], taus[t], boundaries[t], drift_rates);
-      }
+      sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
     }
+
+    for (t in 1:T) {
+      vector[4] drift_rates;
+      for (i in 1:4) {
+        drift_rates[i] = urgency + local_ev[i] + local_ef[i] * betaF + pers[i] * betaP;
+      }
+
+      if (RT[t] != 999) {
+        log_lik += win_first_lpdf(RT[t] | choice[t], tau, boundaries[t], drift_rates);
+      }
+      
+      PEval = wins[t] - losses[t] - local_ev[choice[t]];
+      PEfreq = sign_outcome[t] - local_ef[choice[t]];
+      
+      for (d in 1:4) {
+        PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
+      }
+      
+      if (wins[t] >= losses[t]) {
+        local_ef += Apun * PEfreq_fic;
+        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
+        local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
+      } else {
+        local_ef += Arew * PEfreq_fic;
+        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
+        local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
+      }
+      
+      pers[choice[t]] = 1;
+      pers = pers / (1 + K_tr);
+    }
+
     return log_lik;
   }
 
   // Main parallelization function
   real partial_sum(array[] int slice_n, int start, int end,
-                   array[] int Tsubj, array[,] int choice, array[,] real RT,
-                   array[] real V1, array[] real V2, array[] real V3, array[] real V4,
+                   array[] int Tsubj, array[,] int choice, 
+                   array[,] real wins, array[,] real losses, array[,] real RT,
+                   array[] real Arew, array[] real Apun, array[] real K,
+                   array[] real betaF, array[] real betaP,
                    array[] vector boundary_subj,
-                   array[] vector tau_subj,
+                   array[] real tau,
                    array[] real urgency) {
     real log_lik = 0.0;
+    vector[4] ev = rep_vector(0., 4);
+    vector[4] ef = rep_vector(0., 4);
+
     for (n in start:end) {
-      vector[4] V_subj = [V1[n], V2[n], V3[n], V4[n]]';
       
       log_lik += igt_rd_model(
-          choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]], Tsubj[n],
-          V_subj, boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n]
+          choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
+	  ev, ef, Tsubj[n],
+	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
+          Arew[n], Apun[n], K[n], 
+          betaF[n], betaP[n], 
+          boundary_subj[n][1:Tsubj[n]], tau[n], 
+	  urgency[n] 
       );
     }
     return log_lik;
   }
 }
+
 data {
   int<lower=1> N;
   int<lower=1> T;
@@ -111,6 +164,8 @@ data {
   real<lower=0> RTbound;
   array[N, T] int<lower=1, upper=4> choice;
   array[N, T] real RT;
+  array[N, T] real wins;
+  array[N, T] real losses;
 }
 transformed data {
   array[N] int subject_indices;
@@ -124,35 +179,35 @@ parameters {
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
-  array[N] real tau1_pr;
   array[N] real tau_pr;
   array[N] real urgency_pr;
-  array[N] real V1_pr;
-  array[N] real V2_pr;
-  array[N] real V3_pr;
-  array[N] real V4_pr;
+  array[N] real Arew_pr;
+  array[N] real Apun_pr;
+  array[N] real K_pr;
+  array[N] real betaF_pr;
+  array[N] real betaP_pr;
 }
 transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary1;
   array[N] real<lower=0.001, upper=5> boundary;
-  array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
   array[N] real<lower=0.001, upper=20> urgency;
-  array[N] real<lower=-10, upper=10> V1;
-  array[N] real<lower=-10, upper=10> V2;
-  array[N] real<lower=-10, upper=10> V3;
-  array[N] real<lower=-10, upper=10> V4;
+  array[N] real<lower=0, upper=1> Arew;
+  array[N] real<lower=0, upper=1> Apun;
+  array[N] real<lower=0, upper=3> K;
+  array[N] real betaF;
+  array[N] real betaP;
 
   boundary1   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
   boundary    = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
-  tau1        = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau1_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  tau         = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  urgency     = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(urgency_pr)) * 19.999 + 0.001);
-  V1          = to_array_1d((inv_logit(mu_pr[6]  + sigma[6]  .* to_vector(V1_pr)) - 0.5) * 20);
-  V2          = to_array_1d((inv_logit(mu_pr[7]  + sigma[7]  .* to_vector(V2_pr)) - 0.5) * 20);
-  V3          = to_array_1d((inv_logit(mu_pr[8]  + sigma[8]  .* to_vector(V3_pr)) - 0.5) * 20);
-  V4          = to_array_1d((inv_logit(mu_pr[9] + sigma[9] .* to_vector(V4_pr)) - 0.5) * 20);
-
+  tau         = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
+  urgency     = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(urgency_pr)) * 19.999 + 0.001);
+  
+  Arew  = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(Arew_pr)));
+  Apun  = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(Apun_pr)));
+  K     = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(K_pr)) * 3);
+  betaF = to_array_1d(mu_pr[8] + sigma[8] .* to_vector(betaF_pr));
+  betaP = to_array_1d(mu_pr[9] + sigma[9] .* to_vector(betaP_pr));
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -160,48 +215,47 @@ model {
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   urgency_pr ~ normal(0, 1);
-  V1_pr ~ normal(0, 1);
-  V2_pr ~ normal(0, 1);
-  V3_pr ~ normal(0, 1);
-  V4_pr ~ normal(0, 1);
+  Arew_pr  ~ normal(0, 1);
+  Apun_pr  ~ normal(0, 1);
+  K_pr     ~ normal(0, 1);
+  betaF_pr ~ normal(0, 1);
+  betaP_pr ~ normal(0, 1);
 
   // Build per-subject boundary/tau vectors
   array[N] vector[T] boundary_subj;
-  array[N] vector[T] tau_subj;
   
   for (n in 1:N) {
     int Tsubj_n = Tsubj[n];
     
     // First block
     boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
-    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
     
     // Rest of blocks
     int rest_len = Tsubj_n - block;
     boundary_subj[n][(block+1): Tsubj_n] = rep_vector(boundary[n], rest_len);
-    tau_subj[n][(block+1): Tsubj_n]      = rep_vector(tau[n], rest_len);
   }
   
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum,
                        subject_indices, grainsize,
-                       Tsubj, choice, RT,
-                       V1, V2, V3, V4,
-                       boundary_subj, tau_subj,
+                       Tsubj, choice,
+		       wins, losses, RT,
+                       Arew, Apun, K,
+		       betaF, betaP,
+                       boundary_subj, tau,
                        urgency);
 }
 
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
   real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
-  real mu_tau1 	    = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_tau       = inv_logit(mu_pr[4]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_urgency   = inv_logit(mu_pr[5]) * 19.999 + 0.001;
-  real mu_V1        = (inv_logit(mu_pr[6]) - 0.5) * 20;
-  real mu_V2        = (inv_logit(mu_pr[7]) - 0.5) * 20;
-  real mu_V3        = (inv_logit(mu_pr[8]) - 0.5) * 20;
-  real mu_V4        = (inv_logit(mu_pr[9]) - 0.5) * 20;
+  real mu_tau       = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
+  real mu_urgency   = inv_logit(mu_pr[4]) * 19.999 + 0.001;
+  real mu_Arew  = inv_logit(mu_pr[5]);
+  real mu_Apun  = inv_logit(mu_pr[6]);
+  real mu_K     = inv_logit(mu_pr[7]) * 3;
+  real mu_betaF = mu_pr[8];
+  real mu_betaP = mu_pr[9];
 }
