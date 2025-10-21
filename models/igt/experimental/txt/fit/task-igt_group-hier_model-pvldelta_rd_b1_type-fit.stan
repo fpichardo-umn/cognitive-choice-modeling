@@ -74,7 +74,7 @@ functions {
 		    vector ev_init, int T,
 		    array[] real wins, array[] real losses, 
 		    real sensitivity, real update, real gain, real loss,
-                    vector boundaries, real tau, real urgency, real sensitivity) {
+                    vector boundaries, real tau, real urgency) {
 
     vector[4] local_ev = ev_init;
     real log_lik = 0.0;
@@ -117,7 +117,7 @@ functions {
 	  ev, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
           sensitivity, update[n], gain[n], loss[n],
-          boundary_subj[n][1:Tsubj[n]], tau[n], urgency[n], sensitivity
+          boundary_subj[n][1:Tsubj[n]], tau[n], urgency[n]
       );
     }
     return log_lik;

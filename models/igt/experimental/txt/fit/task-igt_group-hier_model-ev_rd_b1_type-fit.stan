@@ -115,7 +115,7 @@ functions {
 	  ev, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
           sensitivity, update[n], wgt_pun[n], wgt_rew[n],
-          boundary_subj[n][1:Tsubj[n]], tau[n], urgency[n], sensitivity
+          boundary_subj[n][1:Tsubj[n]], tau[n], urgency[n]
       );
     }
     return log_lik;

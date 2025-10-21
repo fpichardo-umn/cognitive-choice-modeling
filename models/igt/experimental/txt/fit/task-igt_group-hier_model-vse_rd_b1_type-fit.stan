@@ -75,7 +75,7 @@ functions {
 		    array[] real wins, array[] real losses, 
 		    real sensitivity, real decay, real gain, real loss,
                     vector boundaries, real tau,
-		    real urgency, real sensitivity, real explore_alpha, real explore_bonus) {
+		    real urgency, real explore_alpha, real explore_bonus) {
 
     vector[4] local_ev_explore = ev_explore;
     vector[4] local_ev_exploit = ev_exploit;
@@ -130,7 +130,7 @@ functions {
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
           sensitivity, decay[n], gain[n], loss[n],
           boundary_subj[n][1:Tsubj[n]], tau[n], 
-	  urgency[n], sensitivity, explore_alpha[n], explore_bonus[n]
+	  urgency[n], explore_alpha[n], explore_bonus[n]
       );
     }
     return log_lik;
