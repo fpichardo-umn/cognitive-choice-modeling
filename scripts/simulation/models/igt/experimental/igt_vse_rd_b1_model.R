@@ -4,12 +4,12 @@ suppressPackageStartupMessages({
   library(statmod)
 })
 
-# Hierarchical ORL-RD Model (4 Accumulators, "Win-First")
+# Hierarchical VSE-RD Model (4 Accumulators, "Win-First")
 # This script simulates a 4-way race between independent accumulators.
-# Drift rates are based on a combination of expected values, expected frequencies,
-# and perseverance, updated according to the Outcome-Representation Learning (ORL) rule.
+# Drift rates are based on a combination of exploitation and exploration values,
+# updated according to the VSE model
 
-igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
+igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                  inherit = ModelBase,
                                  
                                  public = list(
@@ -29,17 +29,19 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                    
                                    get_parameter_info = function() {
                                      # These parameters and ranges match the 'transformed parameters'
-                                     # block of the provided ORL-RD Stan model.
+                                     # block of the provided VSE-RD Stan model.
                                      return(list(
                                        boundary1 = list(range = c(0.001, 5)),
                                        boundary = list(range = c(0.001, 5)),
                                        tau1 = list(range = c(0.0, 1.0)), # Adjust based on minRT if needed
                                        tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
                                        urgency = list(range = c(0.001, 20)),
-                                       Arew = list(range = c(0, 1)),
-                                       Apun = list(range = c(0, 1)),
-                                       betaF = list(range = c(-10, 10)), # Broadened range
-                                       betaP = list(range = c(-10, 10))  # Broadened range
+                                       drift_con = list(range = c(0, 3)),
+                                       gain = list(range = c(0, 1)),
+                                       loss = list(range = c(0, 10)),
+                                       decay = list(range = c(0, 1)),
+                                       explore_alpha = list(range = c(0, 1)),
+                                       explore_bonus = list(range = c(-10, 10))
                                      ))
                                    },
                                    
@@ -50,11 +52,14 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                      wins <- numeric(n_trials)
                                      losses <- numeric(n_trials)
                                      
-                                     # Initialize ORL components
-                                     ev <- c(0, 0, 0, 0)   # Expected values
-                                     ef <- c(0, 0, 0, 0)   # Expected frequencies
+                                     # Initialize separate Expected Values (EV) for exploitation and exploration
+                                     ev_exploit <- c(0, 0, 0, 0)
+                                     ev_explore <- c(0, 0, 0, 0)
                                      
                                      block_cutoff <- 20 # Same as 'block' in Stan model
+                                     
+                                     # Calculate sensitivity from drift_con, same as in Stan model
+                                     sensitivity <- 3^parameters$drift_con - 1
                                      
                                      for (t in 1:n_trials) {
                                        # Determine block-specific parameters
@@ -66,26 +71,24 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                          current_tau <- parameters$tau
                                        }
                                        
-                                       # Calculate drift rates based on ORL components
-                                       drift_rates <- parameters$urgency + ev + ef * parameters$betaF
-                                       if (t > 1){
-                                         drift_rates[choices[t - 1]] = drift_rates[choices[t - 1]] + parameters$betaP
-                                         }
-                                       drift_rates <- pmax(drift_rates, 1e-6)
+                                       # Combine exploitation and exploration values for drift rate calculation
+                                       combined_ev <- ev_exploit + ev_explore
+                                       drift_rates <- parameters$urgency + sensitivity*combined_ev
+                                       drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                        
-                                       # Simulate decision times (Wald process)
+                                       # Simulate decision times for each of the 4 accumulators (Wald process)
                                        mean_times <- current_boundary / drift_rates
                                        shape_param <- current_boundary^2
                                        decision_times <- statmod::rinvgauss(4, mean = mean_times, shape = shape_param)
                                        
-                                       # "Win-First" rule
+                                       # "Win-First" rule: the fastest accumulator wins the race
                                        min_time <- min(decision_times)
                                        winning_choice <- sample(which(decision_times == min_time), 1)
                                        
                                        choices[t] <- winning_choice
                                        RTs[t] <- min_time + current_tau
                                        
-                                       # Get outcome
+                                       # Get outcome for the chosen deck
                                        result <- self$task$generate_deck_outcome(choices[t], t)
                                        current_win <- result$gain
                                        current_loss <- abs(result$loss)
@@ -93,24 +96,20 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                        wins[t] <- current_win
                                        losses[t] <- current_loss
                                        
-                                       # Update ORL components
-                                       sign_outcome <- ifelse(current_win >= current_loss, 1.0, -1.0)
+                                       # Update EV using the VSE rule
+                                       utility <- current_win^parameters$gain - parameters$loss * current_loss^parameters$gain
                                        
-                                       PEval <- (current_win - current_loss) - ev[winning_choice]
-                                       PEfreq <- sign_outcome - ef[winning_choice]
-                                       PEfreq_fic <- (-sign_outcome / 3.0) - ef
-                                       efChosen = ef[choices[t]];
+                                       # 1. Update exploitation values
+                                       ev_exploit <- ev_exploit * (1 - parameters$decay) # Decay all decks
+                                       ev_exploit[winning_choice] <- ev_exploit[winning_choice] + utility # Update chosen
                                        
-                                       if (sign_outcome == 1) { # Gain trial
-                                         ef <- ef + parameters$Apun * PEfreq_fic
-                                         ef[winning_choice] <- efChosen + parameters$Arew * PEfreq
-                                         ev[winning_choice] <- ev[winning_choice] + parameters$Arew * PEval
-                                       } else { # Loss trial
-                                         ef <- ef + parameters$Arew * PEfreq_fic
-                                         ef[winning_choice] <- efChosen + parameters$Apun * PEfreq
-                                         ev[winning_choice] <- ev[winning_choice] + parameters$Apun * PEval
+                                       # 2. Update exploration values
+                                       ev_explore[winning_choice] <- 0 # Reset chosen deck
+                                       for (d in 1:4) { # Update unchosen decks
+                                         if (d != winning_choice) {
+                                           ev_explore[d] <- ev_explore[d] + parameters$explore_alpha * (parameters$explore_bonus - ev_explore[d])
+                                         }
                                        }
-                                       
                                      }
                                      
                                      return(list(choices = choices, RTs = RTs, wins = wins, losses = losses))
@@ -129,9 +128,12 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                      RTbound_max <- task_params$RTbound_max
                                      block_cutoff <- 20
                                      
-                                     # Initialize ORL components
-                                     ev <- c(0, 0, 0, 0)
-                                     ef <- c(0, 0, 0, 0)
+                                     # Initialize EV for exploitation and exploration
+                                     ev_exploit <- c(0, 0, 0, 0)
+                                     ev_explore <- c(0, 0, 0, 0)
+                                     
+                                     # Calculate sensitivity from drift_con
+                                     sensitivity <- 3^parameters$drift_con - 1
                                      
                                      for (t in 1:n_trials) {
                                        choice <- choices[t]
@@ -151,11 +153,9 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                          if (rt_adj <= 1e-5) {
                                            trial_loglik[t] <- -Inf
                                          } else {
-                                           # Calculate drift rates from ORL components
-                                           drift_rates <- parameters$urgency + ev + ef * parameters$betaF
-                                           if (t > 1){
-                                             drift_rates[choices[t - 1]] = drift_rates[choices[t - 1]] + parameters$betaP
-                                           }
+                                           # Combine values for drift rate
+                                           combined_ev <- ev_exploit + ev_explore
+                                           drift_rates <- parameters$urgency + sensitivity*combined_ev
                                            drift_rates <- pmax(drift_rates, 1e-6)
                                            
                                            # PDF for the winning accumulator
@@ -165,7 +165,7 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                                                                 shape = current_boundary^2, 
                                                                                 log = TRUE)
                                            
-                                           # Survival probabilities for losers
+                                           # Survival probabilities (1 - CDF) for the losing accumulators
                                            log_survival_losers <- 0
                                            for (i in 1:4) {
                                              if (i != choice) {
@@ -180,29 +180,25 @@ igtORLRDB1P2Model <- R6::R6Class("igtORLRDB1P2Model",
                                            trial_loglik[t] <- log_pdf_winner + log_survival_losers
                                          }
                                        } else {
-                                         trial_loglik[t] <- 0
+                                         trial_loglik[t] <- 0 # Ignore trials outside the RT bounds
                                        }
                                        
-                                       # Update ORL components for the next trial
+                                       # Update EV for the *next* trial's calculation using VSE rule
                                        current_win <- wins[t]
                                        current_loss <- abs(losses[t])
-                                       sign_outcome <- ifelse(current_win >= current_loss, 1.0, -1.0)
+                                       utility <- current_win^parameters$gain - parameters$loss * current_loss^parameters$gain
                                        
-                                       PEval <- (current_win - current_loss) - ev[choice]
-                                       PEfreq <- sign_outcome - ef[choice]
-                                       PEfreq_fic <- (-sign_outcome / 3.0) - ef
-                                       efChosen = ef[choice];
+                                       # 1. Update exploitation values
+                                       ev_exploit <- ev_exploit * (1 - parameters$decay)
+                                       ev_exploit[choice] <- ev_exploit[choice] + utility
                                        
-                                       if (sign_outcome == 1) { # Gain
-                                         ef <- ef + parameters$Apun * PEfreq_fic
-                                         ef[choice] <- efChosen + parameters$Arew * PEfreq
-                                         ev[choice] <- ev[choice] + parameters$Arew * PEval
-                                       } else { # Loss
-                                         ef <- ef + parameters$Arew * PEfreq_fic
-                                         ef[choice] <- efChosen + parameters$Apun * PEfreq
-                                         ev[choice] <- ev[choice] + parameters$Apun * PEval
+                                       # 2. Update exploration values
+                                       ev_explore[choice] <- 0
+                                       for (d in 1:4) {
+                                         if (d != choice) {
+                                           ev_explore[d] <- ev_explore[d] + parameters$explore_alpha * (parameters$explore_bonus - ev_explore[d])
+                                         }
                                        }
-                                       
                                      }
                                      
                                      return(list(trial_loglik = trial_loglik, total_loglik = sum(trial_loglik)))

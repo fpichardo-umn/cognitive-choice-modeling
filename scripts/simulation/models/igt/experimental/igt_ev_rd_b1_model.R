@@ -8,7 +8,7 @@ suppressPackageStartupMessages({
 # It simulates a 4-way race between independent accumulators where the drift rates
 # are updated on each trial based on the Expectation-Valence (EV) learning rule.
 
-igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
+igtEVRDB1Model <- R6::R6Class("igtEVRDB1Model",
                                 inherit = ModelBase,
                                 
                                 public = list(
@@ -31,8 +31,8 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                     return(list(
                                       boundary1 = list(range = c(0.001, 5)),
                                       boundary = list(range = c(0.001, 5)),
-                                      tau1 = list(range = c(0.0, 1.0)), # Adjust based on minRT if needed
                                       tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
+                                      urgency = list(range = c(0.001, 20)),
                                       drift_con = list(range = c(0, 3)),
                                       wgt_pun = list(range = c(0, 1)),
                                       wgt_rew = list(range = c(0, 1)),
@@ -50,6 +50,7 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                     # Initialize Expected Values (EV) for the four decks
                                     ev <- c(0, 0, 0, 0)
                                     
+                                    RTbound_max <- task_params$RTbound_max
                                     block_cutoff <- 20 # Same as 'block' in Stan model
                                     
                                     # Calculate sensitivity from drift_con, same as in Stan model
@@ -59,15 +60,15 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                       # Determine block-specific parameters
                                       if (t <= block_cutoff) {
                                         current_boundary <- parameters$boundary1
-                                        current_tau <- parameters$tau1
+                                        current_tau <- parameters$tau
                                       } else {
                                         current_boundary <- parameters$boundary
                                         current_tau <- parameters$tau
                                       }
                                       
                                       # Calculate 4 drift rates based on current EV
-                                      # drift = sensitivity * EV
-                                      drift_rates <- sensitivity * ev
+                                      # drift = urgency + sensitivity * EV
+                                      drift_rates <- parameters$urgency + sensitivity * ev
                                       drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                       
                                       # Simulate decision times for each of the 4 accumulators (Wald process)
@@ -83,6 +84,10 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                       
                                       choices[t] <- winning_choice
                                       RTs[t] <- min_time + current_tau
+                                      
+                                      if (RTs[t] > RTbound_max) {
+                                        RTs[t] <- RTbound_max
+                                      }
                                       
                                       # Get outcome for the chosen deck
                                       result <- self$task$generate_deck_outcome(choices[t], t)
@@ -127,7 +132,7 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                       # Determine block-specific parameters
                                       if (t <= block_cutoff) {
                                         current_boundary <- parameters$boundary1
-                                        current_tau <- parameters$tau1
+                                        current_tau <- parameters$tau
                                       } else {
                                         current_boundary <- parameters$boundary
                                         current_tau <- parameters$tau
@@ -141,7 +146,7 @@ igtEVRDB1P2Model <- R6::R6Class("igtEVRDB1P2Model",
                                         }
                                         
                                         # Calculate 4 drift rates based on current EV
-                                        drift_rates <- sensitivity * ev
+                                        drift_rates <- parameters$urgency + sensitivity * ev
                                         drift_rates <- pmax(drift_rates, 1e-6)
                                         
                                         # PDF for the winning accumulator

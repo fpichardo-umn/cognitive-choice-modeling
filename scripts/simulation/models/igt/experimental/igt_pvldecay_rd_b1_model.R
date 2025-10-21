@@ -4,12 +4,12 @@ suppressPackageStartupMessages({
   library(statmod)
 })
 
-# Hierarchical PVLdelta-RD Model (4 Accumulators, "Win-First")
+# Hierarchical PVLdecay-RD Model (4 Accumulators, "Win-First")
 # This script simulates a 4-way race between independent accumulators.
 # Drift rates are updated on each trial based on the Prospect Valence Learning
-# (PVL) delta rule, which aligns with the provided Stan model.
+# (PVL) decay rule, which aligns with the provided Stan model.
 
-igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
+igtPVLDECAYRDB1Model <- R6::R6Class("igtPVLDECAYRDB1Model",
                                       inherit = ModelBase,
                                       
                                       public = list(
@@ -33,12 +33,12 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                           return(list(
                                             boundary1 = list(range = c(0.001, 5)),
                                             boundary = list(range = c(0.001, 5)),
-                                            tau1 = list(range = c(0.0, 1.0)), # Adjust based on minRT if needed
                                             tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
                                             urgency = list(range = c(0.001, 20)),
+                                            drift_con = list(range = c(0, 3)),
                                             gain = list(range = c(0, 2)),
                                             loss = list(range = c(0, 10)),
-                                            update = list(range = c(0, 1))
+                                            decay = list(range = c(0, 1))
                                           ))
                                         },
                                         
@@ -54,6 +54,9 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                           
                                           block_cutoff <- 20 # Same as 'block' in Stan model
                                           
+                                          # Calculate sensitivity from drift_con, same as in Stan model
+                                          sensitivity <- 3^parameters$drift_con - 1
+                                          
                                           for (t in 1:n_trials) {
                                             # Determine block-specific parameters
                                             if (t <= block_cutoff) {
@@ -65,19 +68,17 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                             }
                                             
                                             # Calculate 4 drift rates based on current EV
-                                            # drift = urgency + EV
-                                            drift_rates <- parameters$urgency + ev
+                                            # drift = urgency + sensitivity*EV
+                                            drift_rates <- parameters$urgency + sensitivity*ev
                                             drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                             
                                             # Simulate decision times for each of the 4 accumulators (Wald process)
-                                            # Using vectorized 'mean' for efficiency
                                             mean_times <- current_boundary / drift_rates
                                             shape_param <- current_boundary^2
                                             decision_times <- statmod::rinvgauss(4, mean = mean_times, shape = shape_param)
                                             
                                             # "Win-First" rule: the fastest accumulator wins the race
                                             min_time <- min(decision_times)
-                                            # Handle potential ties by random sampling
                                             winning_choice <- sample(which(decision_times == min_time), 1)
                                             
                                             choices[t] <- winning_choice
@@ -91,14 +92,16 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                             wins[t] <- current_win
                                             losses[t] <- current_loss
                                             
-                                            # Update EV for the chosen deck using the PVL-delta rule
+                                            # Update EV for the chosen deck using the PVL-decay rule
                                             # This matches the logic in the Stan model's 'igt_rd_model' function
                                             win_comp <- ifelse(current_win > 0, current_win^parameters$gain, 0)
                                             loss_comp <- ifelse(current_loss > 0, current_loss^parameters$gain, 0)
-                                            
                                             utility <- win_comp - parameters$loss * loss_comp
-                                            prediction_error <- utility - ev[winning_choice]
-                                            ev[winning_choice] <- ev[winning_choice] + parameters$update * prediction_error
+                                            
+                                            # First, decay all expectancies
+                                            ev <- ev * (1 - parameters$decay)
+                                            # Then, update the expectancy of the chosen deck
+                                            ev[winning_choice] <- ev[winning_choice] + utility
                                           }
                                           
                                           return(list(choices = choices, RTs = RTs, wins = wins, losses = losses))
@@ -120,6 +123,9 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                           # Initialize Expected Values
                                           ev <- c(0, 0, 0, 0)
                                           
+                                          # Calculate sensitivity from drift_con
+                                          sensitivity <- 3^parameters$drift_con - 1
+                                          
                                           for (t in 1:n_trials) {
                                             choice <- choices[t]
                                             rt <- RTs[t]
@@ -139,7 +145,7 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                                 trial_loglik[t] <- -Inf # log(0), practically impossible
                                               } else {
                                                 # Calculate 4 drift rates based on current EV
-                                                drift_rates <- parameters$urgency + ev
+                                                drift_rates <- parameters$urgency + sensitivity*ev
                                                 drift_rates <- pmax(drift_rates, 1e-6)
                                                 
                                                 # PDF for the winning accumulator
@@ -168,16 +174,18 @@ igtPVLDELTARDB1P2Model <- R6::R6Class("igtPVLDELTARDB1P2Model",
                                             }
                                             
                                             # Update EV for the chosen deck for the *next* trial's calculation
-                                            # using the PVL-delta rule
+                                            # using the PVL-decay rule
                                             current_win <- wins[t]
                                             current_loss <- abs(losses[t])
                                             
                                             win_comp <- ifelse(current_win > 0, current_win^parameters$gain, 0)
                                             loss_comp <- ifelse(current_loss > 0, current_loss^parameters$gain, 0)
-                                            
                                             utility <- win_comp - parameters$loss * loss_comp
-                                            prediction_error <- utility - ev[choice]
-                                            ev[choice] <- ev[choice] + parameters$update * prediction_error
+                                            
+                                            # First, decay all expectancies
+                                            ev <- ev * (1 - parameters$decay)
+                                            # Then, update the expectancy of the chosen deck
+                                            ev[choice] <- ev[choice] + utility
                                           }
                                           
                                           return(list(trial_loglik = trial_loglik, total_loglik = sum(trial_loglik)))

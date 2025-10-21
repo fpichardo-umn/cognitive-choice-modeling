@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 # Simplified RD model with 4 accumulators (no learning)
 # Race Diffusion with a "Win-First" rule and block-specific parameters
 
-igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
+igtRDB1Model <- R6::R6Class("igtRDB1Model",
                           inherit = ModelBase,
                           
                           public = list(
@@ -29,7 +29,6 @@ igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
                               return(list(
                                 boundary1 = list(range = c(0.01, 6)),
                                 boundary = list(range = c(0.01, 6)),
-                                tau1 = list(range = c(0.05, 0.9)),
                                 tau = list(range = c(0.05, 0.9)),
                                 urgency = list(range = c(0, 10)),
                                 V1 = list(range = c(-10, 10)),
@@ -51,7 +50,7 @@ igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
                               for (t in 1:n_trials) {
                                 if (t <= 20) {
                                   current_boundary <- parameters$boundary1
-                                  current_tau <- parameters$tau1
+                                  current_tau <- parameters$tau
                                 } else {
                                   current_boundary <- parameters$boundary
                                   current_tau <- parameters$tau
@@ -102,7 +101,7 @@ igtRDB1P2Model <- R6::R6Class("igtRDB1P2Model",
                                 
                                 if (t <= 20) {
                                   current_boundary <- parameters$boundary1
-                                  current_tau <- parameters$tau1
+                                  current_tau <- parameters$tau
                                 } else {
                                   current_boundary <- parameters$boundary
                                   current_tau <- parameters$tau

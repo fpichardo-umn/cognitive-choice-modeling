@@ -94,6 +94,10 @@ param_sets <- list(
     "boundary1", "boundary",  # Block 1 boundary and rest boundary
     "tau1", "tau",            # Block 1 tau and rest tau
     "drift_con", "urgency"   # Standard parameters
+  ),
+  rd_b1 = c(
+    "boundary1", "boundary",  # Block 1 boundary and rest boundary
+    "tau", "drift_con", "urgency"   # Standard parameters
   )
 )
 
@@ -731,7 +735,7 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
-  # ---- RD Models ----
+  # ---- RD B1P2 Models ----
   models[["igt_sing_rd_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
     params = setdiff(c(param_sets$rd_b1p2, param_sets$ssm_only), "con"),
@@ -780,6 +784,62 @@ get_igt_defaults = function() {
   models[["igt_hier_vse_rd_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
     params = setdiff(c(param_sets$rd_b1p2, param_sets$pvl_decay, param_sets$vse_orig), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  
+  return(models)
+  
+  # ---- RD B1 Models ----
+  models[["igt_sing_rd_b1"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
+    params = setdiff(c(param_sets$rd_b1, param_sets$ssm_only), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_rd_b1"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
+    params = setdiff(c(param_sets$rd_b1, param_sets$ssm_only), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_ev_rd_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
+    params = setdiff(c(param_sets$rd_b1, param_sets$ev), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_pvldecay_rd_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
+    params = setdiff(c(param_sets$rd_b1, param_sets$pvl_delta), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_pvldelta_rd_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
+    params = setdiff(c(param_sets$rd_b1, param_sets$pvl_delta), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_orl_rd_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
+    params = setdiff(c(param_sets$rd_b1, param_sets$orl_base, 
+                       param_sets$orl_base, param_sets$orl_delta, 
+                       param_sets$orl_igt), 
+                     c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_vse_rd_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
+    params = setdiff(c(param_sets$rd_b1, param_sets$pvl_decay, param_sets$vse_orig), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
