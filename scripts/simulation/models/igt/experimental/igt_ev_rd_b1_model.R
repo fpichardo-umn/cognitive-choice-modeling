@@ -63,8 +63,7 @@ igtEVRDB1Model <- R6::R6Class("igtEVRDB1Model",
                                       
                                       # Calculate 4 drift rates based on current EV
                                       # drift = EV
-                                      drift_rates <- ev
-                                      drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
+                                      drift_rates <- exp(ev)
                                       
                                       # Simulate decision times for each of the 4 accumulators (Wald process)
                                       # Using vectorized 'mean' for efficiency
@@ -138,8 +137,7 @@ igtEVRDB1Model <- R6::R6Class("igtEVRDB1Model",
                                         }
                                         
                                         # Calculate 4 drift rates based on current EV
-                                        drift_rates <- ev
-                                        drift_rates <- pmax(drift_rates, 1e-6)
+                                        drift_rates <- exp(ev)
                                         
                                         # PDF for the winning accumulator
                                         winner_drift <- drift_rates[choice]

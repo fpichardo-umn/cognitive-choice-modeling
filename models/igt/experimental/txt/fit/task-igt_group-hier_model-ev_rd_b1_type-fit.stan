@@ -82,7 +82,7 @@ functions {
     for (t in 1:T) {
       vector[4] drift_rates;
       for (i in 1:4) {
-        drift_rates[i] = local_ev[i];
+        drift_rates[i] = exp(local_ev[i]);
       }
 
       if (RT[t] != 999) {
