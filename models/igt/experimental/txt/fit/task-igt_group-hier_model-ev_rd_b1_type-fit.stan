@@ -102,7 +102,7 @@ functions {
                    array[,] real wins, array[,] real losses, array[,] real RT,
                    array[] real update, array[] real wgt_pun, array[] real wgt_rew,
                    array[] vector boundary_subj,
-                   real tau {
+                   real tau) {
     real log_lik = 0.0;
     vector[4] ev = rep_vector(0.0, 4);
 

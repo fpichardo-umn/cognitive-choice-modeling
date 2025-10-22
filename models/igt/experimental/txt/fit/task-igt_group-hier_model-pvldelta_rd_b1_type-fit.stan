@@ -138,6 +138,7 @@ transformed data {
   for (i in 1:N) subject_indices[i] = i;
 
   int block = 20;
+  real tau = .15; // Fixed tau
 }
 parameters {
   array[5] real mu_pr;
