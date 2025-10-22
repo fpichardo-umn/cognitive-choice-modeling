@@ -111,7 +111,6 @@ functions {
 
 data {
   int<lower=1> T;                           // Total number of trials
-  int<lower=1> Tsubj;                       // Actual trials for this subject
   real<lower=0> minRT;                      // Minimum RT for this subject
   real<lower=0> RTbound;                    // RT bound
   array[T] int<lower=1, upper=4> choice;   // Choices
@@ -209,17 +208,17 @@ model {
   tau_vec[1:block]      = rep_vector(tau1, block);
   
   // Rest of trials
-  int rest_len = Tsubj - block;
-  boundary_vec[(block+1):Tsubj] = rep_vector(boundary, rest_len);
-  tau_vec[(block+1):Tsubj]      = rep_vector(tau, rest_len);
+  int rest_len = T - block;
+  boundary_vec[(block+1):T] = rep_vector(boundary, rest_len);
+  tau_vec[(block+1):T]      = rep_vector(tau, rest_len);
   
   // Likelihood with EV learning
   vector[4] ev_init = rep_vector(0.0, 4);
   real sensitivity = pow(3, drift_con) - 1;
   
   target += igt_ard_model(
-      choice[1:Tsubj], wins[1:Tsubj], losses[1:Tsubj], RT[1:Tsubj],
-      ev_init, Tsubj,
+      choice[1:T], wins[1:T], losses[1:T], RT[1:T],
+      ev_init, T,
       sensitivity, update, wgt_pun, wgt_rew,
       boundary_vec, tau_vec, urgency, wd, ws,
       win_indices_all, lose_indices_all, other_indices
