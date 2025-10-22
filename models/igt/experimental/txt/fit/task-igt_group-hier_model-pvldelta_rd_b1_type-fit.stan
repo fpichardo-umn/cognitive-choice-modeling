@@ -73,7 +73,7 @@ functions {
   real igt_rd_model(array[] int choice, array[] real RT,
 		    vector ev_init, int T,
 		    array[] real wins, array[] real losses, 
-		    real sensitivity, real update, real gain, real loss,
+		    real update, real gain, real loss,
                     vector boundaries, real tau) {
 
     vector[4] local_ev = ev_init;
@@ -82,7 +82,7 @@ functions {
     for (t in 1:T) {
       vector[4] drift_rates;
       for (i in 1:4) {
-        drift_rates[i] = sensitivity * local_ev[i];
+        drift_rates[i] = local_ev[i];
       }
 
       if (RT[t] != 999) {
@@ -104,20 +104,18 @@ functions {
                    array[,] real wins, array[,] real losses, array[,] real RT,
                    array[] real update, array[] real gain, array[] real loss,
                    array[] vector boundary_subj,
-                   array[] real tau,
-                   array[] real drift_con) {
+                   real tau) {
     real log_lik = 0.0;
     vector[4] ev = rep_vector(0.0, 4);
 
     for (n in start:end) {
-      real sensitivity = pow(3, drift_con[n]) - 1;
       
       log_lik += igt_rd_model(
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
 	  ev, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
-          sensitivity, update[n], gain[n], loss[n],
-          boundary_subj[n][1:Tsubj[n]], tau[n]
+          update[n], gain[n], loss[n],
+          boundary_subj[n][1:Tsubj[n]], tau
       );
     }
     return log_lik;
@@ -142,13 +140,11 @@ transformed data {
   int block = 20;
 }
 parameters {
-  array[7] real mu_pr;
-  array[7] real<lower=0> sigma;
+  array[5] real mu_pr;
+  array[5] real<lower=0> sigma;
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
-  array[N] real tau_pr;
-  array[N] real drift_con_pr;
   array[N] real gain_pr;
   array[N] real loss_pr;
   array[N] real update_pr;
@@ -156,20 +152,16 @@ parameters {
 transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary1;
   array[N] real<lower=0.001, upper=5> boundary;
-  array[N] real<lower=0> tau;
-  array[N] real<lower=0, upper=3> drift_con;
   array[N] real<lower=0, upper=2> gain;
   array[N] real<lower=0, upper=10> loss;
   array[N] real<lower=0, upper=1> update;
 
   boundary1   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
   boundary    = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
-  tau         = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  
-  drift_con = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(drift_con_pr)) * 3);
-  gain      = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(gain_pr)) * 2);
-  loss      = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(loss_pr)) * 10);
-  update    = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(update_pr)));
+
+  gain      = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(gain_pr)) * 2);
+  loss      = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(loss_pr)) * 10);
+  update    = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(update_pr)));
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -177,8 +169,6 @@ model {
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
   gain_pr   ~ normal(0, 1);
   loss_pr   ~ normal(0, 1);
   update_pr ~ normal(0, 1);
@@ -203,16 +193,13 @@ model {
                        Tsubj, choice,
 		       wins, losses, RT,
                        update, gain, loss,
-                       boundary_subj, tau,
-                       drift_con);
+                       boundary_subj, tau);
 }
 
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
   real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
-  real mu_tau       = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_drift_con = inv_logit(mu_pr[4]) * 3;
-  real mu_gain      = inv_logit(mu_pr[5]) * 2;
-  real mu_loss      = inv_logit(mu_pr[6]) * 10;
-  real mu_update    = inv_logit(mu_pr[7]);
+  real mu_gain      = inv_logit(mu_pr[3]) * 2;
+  real mu_loss      = inv_logit(mu_pr[4]) * 10;
+  real mu_update    = inv_logit(mu_pr[5]);
 }

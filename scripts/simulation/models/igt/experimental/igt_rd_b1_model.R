@@ -12,6 +12,7 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                           
                           public = list(
                             model_type = "SSM",
+                            tau = .15,
                             
                             validate_config = function() {
                               return(TRUE)
@@ -29,8 +30,6 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                               return(list(
                                 boundary1 = list(range = c(0.01, 6)),
                                 boundary = list(range = c(0.01, 6)),
-                                tau = list(range = c(0.05, 0.9)),
-                                drift_con = list(range = c(0, 20)),
                                 V1 = list(range = c(-10, 10)),
                                 V2 = list(range = c(-10, 10)),
                                 V3 = list(range = c(-10, 10)),
@@ -50,14 +49,14 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                               for (t in 1:n_trials) {
                                 if (t <= 20) {
                                   current_boundary <- parameters$boundary1
-                                  current_tau <- parameters$tau
+                                  current_tau <- self$tau
                                 } else {
                                   current_boundary <- parameters$boundary
-                                  current_tau <- parameters$tau
+                                  current_tau <- self$tau
                                 }
                                 
                                 # Calculate 4 simple drift rates (one per deck)
-                                drift_rates <- parameters$drift_con * V
+                                drift_rates <- V
                                 drift_rates <- pmax(drift_rates, 1e-6) # Ensure positive
                                 
                                 # Simulate decision times for each of the 4 accumulators
@@ -101,10 +100,10 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                                 
                                 if (t <= 20) {
                                   current_boundary <- parameters$boundary1
-                                  current_tau <- parameters$tau
+                                  current_tau <- self$tau
                                 } else {
                                   current_boundary <- parameters$boundary
-                                  current_tau <- parameters$tau
+                                  current_tau <- self$tau
                                 }
                                 
                                 if (rt >= RTbound_min && rt <= RTbound_max) {
@@ -115,7 +114,7 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                                   }
                                   
                                   # Calculate 4 simple drift rates
-                                  drift_rates <- parameters$drift_con * V
+                                  drift_rates <- V
                                   drift_rates <- pmax(drift_rates, 1e-6)
                                   
                                   # PDF for the winning accumulator

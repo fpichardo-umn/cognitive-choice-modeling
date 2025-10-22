@@ -14,6 +14,8 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                  
                                  public = list(
                                    model_type = "SSM_RL",
+                                   tau = .15,
+                                   K = .3,
                                    
                                    validate_config = function() {
                                      return(TRUE)
@@ -33,10 +35,8 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                      return(list(
                                        boundary1 = list(range = c(0.001, 5)),
                                        boundary = list(range = c(0.001, 5)),
-                                       tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
                                        Arew = list(range = c(0, 1)),
                                        Apun = list(range = c(0, 1)),
-                                       K = list(range = c(0, 5)),
                                        betaF = list(range = c(-10, 10)), # Broadened range
                                        betaP = list(range = c(-10, 10))  # Broadened range
                                      ))
@@ -57,16 +57,16 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                      block_cutoff <- 20 # Same as 'block' in Stan model
                                      
                                      # Convert consistency parameter to sensitivity (as in Stan model)
-                                     K_tr <- (3^parameters$K) - 1
+                                     K_tr <- (3^self$K) - 1
                                      
                                      for (t in 1:n_trials) {
                                        # Determine block-specific parameters
                                        if (t <= block_cutoff) {
                                          current_boundary <- parameters$boundary1
-                                         current_tau <- parameters$tau
+                                         current_tau <- self$tau
                                        } else {
                                          current_boundary <- parameters$boundary
-                                         current_tau <- parameters$tau
+                                         current_tau <- self$tau
                                        }
                                        
                                        # Calculate drift rates based on ORL components
@@ -139,7 +139,7 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                      pers <- c(0, 0, 0, 0)
                                      
                                      # Convert consistency parameter to sensitivity (as in Stan model)
-                                     K_tr <- (3^parameters$K) - 1
+                                     K_tr <- (3^self$K) - 1
                                      
                                      for (t in 1:n_trials) {
                                        choice <- choices[t]
@@ -148,10 +148,10 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                        # Determine block-specific parameters
                                        if (t <= block_cutoff) {
                                          current_boundary <- parameters$boundary1
-                                         current_tau <- parameters$tau
+                                         current_tau <- self$tau
                                        } else {
                                          current_boundary <- parameters$boundary
-                                         current_tau <- parameters$tau
+                                         current_tau <- self$tau
                                        }
                                        
                                        if (rt >= RTbound_min && rt <= RTbound_max) {

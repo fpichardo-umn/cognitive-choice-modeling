@@ -14,6 +14,7 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                       
                                       public = list(
                                         model_type = "SSM_RL",
+                                        tau = .15,
                                         
                                         validate_config = function() {
                                           return(TRUE)
@@ -33,8 +34,6 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                           return(list(
                                             boundary1 = list(range = c(0.001, 5)),
                                             boundary = list(range = c(0.001, 5)),
-                                            tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
-                                            drift_con = list(range = c(0, 3)),
                                             gain = list(range = c(0, 2)),
                                             loss = list(range = c(0, 10)),
                                             update = list(range = c(0, 1))
@@ -53,22 +52,18 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                           
                                           block_cutoff <- 20 # Same as 'block' in Stan model
                                           
-                                          # Calculate sensitivity from drift_con, same as in Stan model
-                                          sensitivity <- 3^parameters$drift_con - 1
-                                          
                                           for (t in 1:n_trials) {
                                             # Determine block-specific parameters
                                             if (t <= block_cutoff) {
                                               current_boundary <- parameters$boundary1
-                                              current_tau <- parameters$tau
+                                              current_tau <- self$tau
                                             } else {
                                               current_boundary <- parameters$boundary
-                                              current_tau <- parameters$tau
+                                              current_tau <- self$tau
                                             }
                                             
                                             # Calculate 4 drift rates based on current EV
-                                            # drift = sensitivity*EV
-                                            drift_rates <- sensitivity*ev
+                                            drift_rates <- ev
                                             drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                             
                                             # Simulate decision times for each of the 4 accumulators (Wald process)
@@ -122,9 +117,6 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                           # Initialize Expected Values
                                           ev <- c(0, 0, 0, 0)
                                           
-                                          # Calculate sensitivity from drift_con
-                                          sensitivity <- 3^parameters$drift_con - 1
-                                          
                                           for (t in 1:n_trials) {
                                             choice <- choices[t]
                                             rt <- RTs[t]
@@ -132,10 +124,10 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                             # Determine block-specific parameters
                                             if (t <= block_cutoff) {
                                               current_boundary <- parameters$boundary1
-                                              current_tau <- parameters$tau
+                                              current_tau <- self$tau
                                             } else {
                                               current_boundary <- parameters$boundary
-                                              current_tau <- parameters$tau
+                                              current_tau <- self$tau
                                             }
                                             
                                             if (rt >= RTbound_min && rt <= RTbound_max) {
@@ -144,7 +136,7 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                                 trial_loglik[t] <- -Inf # log(0), practically impossible
                                               } else {
                                                 # Calculate 4 drift rates based on current EV
-                                                drift_rates <- sensitivity*ev
+                                                drift_rates <- ev
                                                 drift_rates <- pmax(drift_rates, 1e-6)
                                                 
                                                 # PDF for the winning accumulator

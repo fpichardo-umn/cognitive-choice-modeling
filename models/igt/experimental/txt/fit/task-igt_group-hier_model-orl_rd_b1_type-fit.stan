@@ -129,10 +129,10 @@ functions {
   real partial_sum(array[] int slice_n, int start, int end,
                    array[] int Tsubj, array[,] int choice, 
                    array[,] real wins, array[,] real losses, array[,] real RT,
-                   array[] real Arew, array[] real Apun, array[] real K,
+                   array[] real Arew, array[] real Apun, real K,
                    array[] real betaF, array[] real betaP,
                    array[] vector boundary_subj,
-                   array[] real tau) {
+                   real tau) {
     real log_lik = 0.0;
     vector[4] ev = rep_vector(0., 4);
     vector[4] ef = rep_vector(0., 4);
@@ -143,9 +143,9 @@ functions {
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
 	  ev, ef, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
-          Arew[n], Apun[n], K[n], 
+          Arew[n], Apun[n], K, 
           betaF[n], betaP[n], 
-          boundary_subj[n][1:Tsubj[n]], tau[n] 
+          boundary_subj[n][1:Tsubj[n]], tau
       );
     }
     return log_lik;
@@ -169,10 +169,12 @@ transformed data {
   for (i in 1:N) subject_indices[i] = i;
 
   int block = 20;
+  real tau = .15; // Fixed tau
+  real K   = .3; // Fixed K
 }
 parameters {
-  array[8] real mu_pr;
-  array[8] real<lower=0> sigma;
+  array[6] real mu_pr;
+  array[6] real<lower=0> sigma;
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
@@ -186,22 +188,18 @@ parameters {
 transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary1;
   array[N] real<lower=0.001, upper=5> boundary;
-  array[N] real<lower=0> tau;
   array[N] real<lower=0, upper=1> Arew;
   array[N] real<lower=0, upper=1> Apun;
-  array[N] real<lower=0, upper=3> K;
   array[N] real betaF;
   array[N] real betaP;
 
   boundary1   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
   boundary    = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
-  tau         = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
   
-  Arew  = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(Arew_pr)));
-  Apun  = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(Apun_pr)));
-  K     = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(K_pr)) * 3);
-  betaF = to_array_1d(mu_pr[7] + sigma[7] .* to_vector(betaF_pr));
-  betaP = to_array_1d(mu_pr[8] + sigma[8] .* to_vector(betaP_pr));
+  Arew  = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(Arew_pr)));
+  Apun  = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(Apun_pr)));
+  betaF = to_array_1d(mu_pr[5] + sigma[5] .* to_vector(betaF_pr));
+  betaP = to_array_1d(mu_pr[6] + sigma[6] .* to_vector(betaP_pr));
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -209,14 +207,13 @@ model {
 
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau_pr ~ normal(0, 1);
+
   Arew_pr  ~ normal(0, 1);
   Apun_pr  ~ normal(0, 1);
-  K_pr     ~ normal(0, 1);
   betaF_pr ~ normal(0, 1);
   betaP_pr ~ normal(0, 1);
 
-  // Build per-subject boundary/tau vectors
+  // Build per-subject boundary vectors
   array[N] vector[T] boundary_subj;
   
   for (n in 1:N) {
@@ -243,10 +240,9 @@ model {
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
   real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
-  real mu_tau       = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_Arew  = inv_logit(mu_pr[4]);
-  real mu_Apun  = inv_logit(mu_pr[5]);
-  real mu_K     = inv_logit(mu_pr[6]) * 3;
-  real mu_betaF = mu_pr[7];
-  real mu_betaP = mu_pr[8];
+
+  real mu_Arew  = inv_logit(mu_pr[3]);
+  real mu_Apun  = inv_logit(mu_pr[4]);
+  real mu_betaF = mu_pr[5];
+  real mu_betaP = mu_pr[6];
 }
