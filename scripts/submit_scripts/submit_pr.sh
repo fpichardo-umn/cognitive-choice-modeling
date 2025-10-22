@@ -18,7 +18,7 @@ print_usage() {
   echo "  -e    Your email address"
   echo ""
   echo "Optional Options:"
-  echo "  -g    Group type: 'group' or 'hier' (default: hier)"
+  echo "  -g    Group type: 'sing' (for batch), 'group' or 'hier' (default: hier)"
   echo "  -S    Session identifier (default: 00)"
   echo "  -c    Components to run, comma-separated (default: all)"
   echo "        (options: fit, pr_genparams, pr_simulate, pr_recovery, all)"
@@ -88,8 +88,8 @@ if [ -z "$TASK" ] || [ -z "$MODEL" ] || [ -z "$SOURCE" ] || [ -z "$USER_EMAIL" ]
   print_usage
 fi
 
-if [ "$GROUP_TYPE" != "group" ] && [ "$GROUP_TYPE" != "hier" ]; then
-  echo "Error: Group type (-g) must be 'group' or 'hier'"
+if [ "$GROUP_TYPE" != "sing" ] && [ "$GROUP_TYPE" != "group" ] && [ "$GROUP_TYPE" != "hier" ]; then
+  echo "Error: Group type (-g) must be 'sing' (for batch), 'group' or 'hier'"
   print_usage
 fi
 

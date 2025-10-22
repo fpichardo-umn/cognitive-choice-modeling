@@ -7,7 +7,7 @@
 #' - For individual scripts: "batch_001" or "hier" (file naming)
 
 # ========== CONFIGURATION ==========
-opt_model = "orl_rd_b1p2"
+opt_model = "rd_b1"
 opt_task = "igt" 
 opt_cohort = "adb"
 opt_ses = "00"  # or "ses-01"
