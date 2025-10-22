@@ -34,7 +34,6 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                        boundary1 = list(range = c(0.001, 5)),
                                        boundary = list(range = c(0.001, 5)),
                                        tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
-                                       urgency = list(range = c(0.001, 20)),
                                        Arew = list(range = c(0, 1)),
                                        Apun = list(range = c(0, 1)),
                                        K = list(range = c(0, 5)),
@@ -71,7 +70,7 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                        }
                                        
                                        # Calculate drift rates based on ORL components
-                                       drift_rates <- parameters$urgency + ev + ef * parameters$betaF + pers * parameters$betaP
+                                       drift_rates <- ev + ef * parameters$betaF + pers * parameters$betaP
                                        drift_rates <- pmax(drift_rates, 1e-6)
                                        
                                        # Simulate decision times (Wald process)
@@ -161,7 +160,7 @@ igtORLRDB1Model <- R6::R6Class("igtORLRDB1Model",
                                            trial_loglik[t] <- -Inf
                                          } else {
                                            # Calculate drift rates from ORL components
-                                           drift_rates <- parameters$urgency + ev + ef * parameters$betaF + pers * parameters$betaP
+                                           drift_rates <- ev + ef * parameters$betaF + pers * parameters$betaP
                                            drift_rates <- pmax(drift_rates, 1e-6)
                                            
                                            # PDF for the winning accumulator

@@ -34,7 +34,6 @@ igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                        boundary1 = list(range = c(0.001, 5)),
                                        boundary = list(range = c(0.001, 5)),
                                        tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
-                                       urgency = list(range = c(0.001, 20)),
                                        drift_con = list(range = c(0, 3)),
                                        gain = list(range = c(0, 1)),
                                        loss = list(range = c(0, 10)),
@@ -72,7 +71,7 @@ igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                        
                                        # Combine exploitation and exploration values for drift rate calculation
                                        combined_ev <- ev_exploit + ev_explore
-                                       drift_rates <- parameters$urgency + sensitivity*combined_ev
+                                       drift_rates <- sensitivity*combined_ev
                                        drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                        
                                        # Simulate decision times for each of the 4 accumulators (Wald process)
@@ -154,7 +153,7 @@ igtVSERDB1Model <- R6::R6Class("igtVSERDB1Model",
                                          } else {
                                            # Combine values for drift rate
                                            combined_ev <- ev_exploit + ev_explore
-                                           drift_rates <- parameters$urgency + sensitivity*combined_ev
+                                           drift_rates <- sensitivity*combined_ev
                                            drift_rates <- pmax(drift_rates, 1e-6)
                                            
                                            # PDF for the winning accumulator
