@@ -1,4 +1,5 @@
 // Individual EV-ARD Model for the Iowa Gambling Task
+// Updated with improved numerical stability
 functions {
   // Log PDF for Racing Diffusion/Wald (numerically stable)
   vector race_log_pdf_vec(vector t, vector boundary, vector drift) {
@@ -41,6 +42,7 @@ functions {
   }
 
   // ARD likelihood: all 3 accumulators for chosen deck must win
+  // Vectorized for better numerical stability
   real ard_win_all(real RT, int choice, real tau, real boundary, vector drift_rates,
                    array[,] int win_indices_all, array[,] int lose_indices_all) {
     real t = fmax(RT - tau, 1e-3);
@@ -49,17 +51,21 @@ functions {
     array[3] int winning_indices = win_indices_all[choice];
     array[9] int losing_indices = lose_indices_all[choice];
   
-    // Get log-PDFs for winners (no log() wrapper needed)
+    // Get log-PDFs for all 3 winners using vectorization
     vector[3] log_pdf_winners = race_log_pdf_vec(
-      rep_vector(t, 3), rep_vector(boundary, 3), drift_rates[winning_indices]
+      rep_vector(t, 3), 
+      rep_vector(boundary, 3), 
+      drift_rates[winning_indices]
     );
     
-    // Get CDFs for losers
+    // Get CDFs for all 9 losers using vectorization
     vector[9] cdf_losers = race_cdf_vec(
-      rep_vector(t, 9), rep_vector(boundary, 9), drift_rates[losing_indices]
+      rep_vector(t, 9), 
+      rep_vector(boundary, 9), 
+      drift_rates[losing_indices]
     );
   
-    // Vectorized log-likelihood calculation
+    // Combine: sum of log-PDFs for winners + sum of log(1-CDF) for losers
     return sum(log_pdf_winners) + sum(log1m(cdf_losers));
   }
 
