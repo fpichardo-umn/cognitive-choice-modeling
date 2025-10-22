@@ -74,7 +74,7 @@ functions {
 		    vector ev_init, int T,
 		    array[] real wins, array[] real losses, 
 		    real sensitivity, real update, real wgt_pun, real wgt_rew,
-                    vector boundaries, real tau, real urgency) {
+                    vector boundaries, real tau) {
 
     vector[4] local_ev = ev_init;
     real log_lik = 0.0;
@@ -82,7 +82,7 @@ functions {
     for (t in 1:T) {
       vector[4] drift_rates;
       for (i in 1:4) {
-        drift_rates[i] = urgency + sensitivity * local_ev[i];
+        drift_rates[i] = sensitivity * local_ev[i];
       }
 
       if (RT[t] != 999) {
@@ -103,7 +103,7 @@ functions {
                    array[] real update, array[] real wgt_pun, array[] real wgt_rew,
                    array[] vector boundary_subj,
                    array[] real tau,
-                   array[] real urgency, array[] real drift_con) {
+                   array[] real drift_con) {
     real log_lik = 0.0;
     vector[4] ev = rep_vector(0.0, 4);
 
@@ -115,7 +115,7 @@ functions {
 	  ev, Tsubj[n],
 	  wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], 
           sensitivity, update[n], wgt_pun[n], wgt_rew[n],
-          boundary_subj[n][1:Tsubj[n]], tau[n], urgency[n]
+          boundary_subj[n][1:Tsubj[n]], tau[n]
       );
     }
     return log_lik;
@@ -140,13 +140,12 @@ transformed data {
   int block = 20;
 }
 parameters {
-  array[8] real mu_pr;
-  array[8] real<lower=0> sigma;
+  array[7] real mu_pr;
+  array[7] real<lower=0> sigma;
 
   array[N] real boundary1_pr;
   array[N] real boundary_pr;
   array[N] real tau_pr;
-  array[N] real urgency_pr;
   array[N] real drift_con_pr;
   array[N] real wgt_pun_pr;
   array[N] real wgt_rew_pr;
@@ -156,7 +155,6 @@ transformed parameters {
   array[N] real<lower=0.001, upper=5> boundary1;
   array[N] real<lower=0.001, upper=5> boundary;
   array[N] real<lower=0> tau;
-  array[N] real<lower=0.001, upper=20> urgency;
   array[N] real<lower=0, upper=3> drift_con;
   array[N] real<lower=0, upper=1> wgt_pun;
   array[N] real<lower=0, upper=1> wgt_rew;
@@ -165,12 +163,11 @@ transformed parameters {
   boundary1   = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(boundary1_pr)) * 4.99 + 0.001);
   boundary    = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(boundary_pr)) * 4.99 + 0.001);
   tau         = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(tau_pr)) .* (to_vector(minRT) - RTbound - 0.02) * 0.95 + RTbound);
-  urgency     = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(urgency_pr)) * 19.999 + 0.001);
   
-  drift_con = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(drift_con_pr)) * 3);
-  wgt_pun   = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(wgt_pun_pr)));
-  wgt_rew   = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(wgt_rew_pr)));
-  update    = to_array_1d(inv_logit(mu_pr[8] + sigma[8] .* to_vector(update_pr)));
+  drift_con = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(drift_con_pr)) * 3);
+  wgt_pun   = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(wgt_pun_pr)));
+  wgt_rew   = to_array_1d(inv_logit(mu_pr[6] + sigma[6] .* to_vector(wgt_rew_pr)));
+  update    = to_array_1d(inv_logit(mu_pr[7] + sigma[7] .* to_vector(update_pr)));
 }
 model {
   mu_pr ~ normal(0, 1);
@@ -179,7 +176,6 @@ model {
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
-  urgency_pr ~ normal(0, 1);
   drift_con_pr ~ normal(0, 1);
   wgt_pun_pr ~ normal(0, 1);
   wgt_rew_pr ~ normal(0, 1);
@@ -206,16 +202,15 @@ model {
 		       wins, losses, RT,
                        update, wgt_pun, wgt_rew,
                        boundary_subj, tau,
-                       urgency, drift_con);
+                       drift_con);
 }
 
 generated quantities {
   real mu_boundary1 = inv_logit(mu_pr[1]) * 4.99 + 0.001;
   real mu_boundary  = inv_logit(mu_pr[2]) * 4.99 + 0.001;
   real mu_tau       = inv_logit(mu_pr[3]) * ((mean(to_vector(minRT)) - RTbound - 0.02) * 0.95) + RTbound;
-  real mu_urgency   = inv_logit(mu_pr[4]) * 19.999 + 0.001;
-  real mu_drift_con = inv_logit(mu_pr[5]) * 3;
-  real mu_wgt_pun   = inv_logit(mu_pr[6]);
-  real mu_wgt_rew   = inv_logit(mu_pr[7]);
-  real mu_update    = inv_logit(mu_pr[8]);
+  real mu_drift_con = inv_logit(mu_pr[4]) * 3;
+  real mu_wgt_pun   = inv_logit(mu_pr[5]);
+  real mu_wgt_rew   = inv_logit(mu_pr[6]);
+  real mu_update    = inv_logit(mu_pr[7]);
 }

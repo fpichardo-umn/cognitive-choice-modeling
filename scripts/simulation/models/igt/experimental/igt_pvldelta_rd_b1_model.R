@@ -34,7 +34,6 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                             boundary1 = list(range = c(0.001, 5)),
                                             boundary = list(range = c(0.001, 5)),
                                             tau = list(range = c(0.0, 1.0)),  # Adjust based on minRT if needed
-                                            urgency = list(range = c(0.001, 20)),
                                             drift_con = list(range = c(0, 3)),
                                             gain = list(range = c(0, 2)),
                                             loss = list(range = c(0, 10)),
@@ -68,8 +67,8 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                             }
                                             
                                             # Calculate 4 drift rates based on current EV
-                                            # drift = urgency + sensitivity*EV
-                                            drift_rates <- parameters$urgency + sensitivity*ev
+                                            # drift = sensitivity*EV
+                                            drift_rates <- sensitivity*ev
                                             drift_rates <- pmax(drift_rates, 1e-6) # Ensure drift is not zero or negative
                                             
                                             # Simulate decision times for each of the 4 accumulators (Wald process)
@@ -145,7 +144,7 @@ igtPVLDELTARDB1Model <- R6::R6Class("igtPVLDELTARDB1Model",
                                                 trial_loglik[t] <- -Inf # log(0), practically impossible
                                               } else {
                                                 # Calculate 4 drift rates based on current EV
-                                                drift_rates <- parameters$urgency + sensitivity*ev
+                                                drift_rates <- sensitivity*ev
                                                 drift_rates <- pmax(drift_rates, 1e-6)
                                                 
                                                 # PDF for the winning accumulator

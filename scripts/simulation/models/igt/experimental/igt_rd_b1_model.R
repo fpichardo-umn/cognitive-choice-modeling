@@ -30,7 +30,7 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                                 boundary1 = list(range = c(0.01, 6)),
                                 boundary = list(range = c(0.01, 6)),
                                 tau = list(range = c(0.05, 0.9)),
-                                urgency = list(range = c(0, 10)),
+                                drift_con = list(range = c(0, 20)),
                                 V1 = list(range = c(-10, 10)),
                                 V2 = list(range = c(-10, 10)),
                                 V3 = list(range = c(-10, 10)),
@@ -57,7 +57,7 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                                 }
                                 
                                 # Calculate 4 simple drift rates (one per deck)
-                                drift_rates <- parameters$urgency + V
+                                drift_rates <- parameters$drift_con * V
                                 drift_rates <- pmax(drift_rates, 1e-6) # Ensure positive
                                 
                                 # Simulate decision times for each of the 4 accumulators
@@ -115,7 +115,7 @@ igtRDB1Model <- R6::R6Class("igtRDB1Model",
                                   }
                                   
                                   # Calculate 4 simple drift rates
-                                  drift_rates <- parameters$urgency + V
+                                  drift_rates <- parameters$drift_con * V
                                   drift_rates <- pmax(drift_rates, 1e-6)
                                   
                                   # PDF for the winning accumulator
