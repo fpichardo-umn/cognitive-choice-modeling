@@ -812,11 +812,7 @@ get_igt_defaults = function() {
   
   models[["igt_hier_pvldecay_rd_b1"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
-<<<<<<< HEAD
-    params = setdiff(c(param_sets$rd_b1, param_sets$pvl_decay), "con"),
-=======
-    params = setdiff(c(param_sets$rd_b1, param_sets$pvl_delta), c("con", "urgency")),
->>>>>>> c5dadec91dbc09bc8bc097b985164dd2f1ff022f
+    params = setdiff(c(param_sets$rd_b1, param_sets$pvl_decay), c("con", "urgency")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
