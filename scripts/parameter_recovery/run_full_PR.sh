@@ -315,35 +315,16 @@ FULL_MODEL_NAME="${TASK}_${GROUP_TYPE}_${MODEL}"
 
 # Function to find the latest batch file for sing (batch) fits
 find_latest_batch_file() {
-    local task=$1
-    local source=$2
-    local session=$3
-    local model=$4
-    local type=${5:-"fit"}
-    
-    # Construct the search directory
-    local fit_dir="Data/safe/${source}"
-    if [ ! -z "$session" ]; then
-        fit_dir="${fit_dir}/ses-${session}"
-    fi
-    fit_dir="${fit_dir}/fits/${type}/${task}/canonical/${model}"
-    
-    # Check if directory exists
-    if [ ! -d "$fit_dir" ]; then
-        echo ""
-        return
-    fi
-    
-    # Construct pattern for batch files
+    local task=$1 source=$2 session=$3 model=$4 type=${5:-"fit"}
+    local fit_dir="Outputs/${task}/fits/${type}/${source}"
+    [ -n "$session" ] && fit_dir="${fit_dir}/ses-${session}"
+    [ ! -d "$fit_dir" ] && { echo ""; return; }
+
     local ses_part=""
-    if [ ! -z "$session" ]; then
-        ses_part="ses-${session}_"
-    fi
-    local pattern="task-${task}_cohort-${source}_${ses_part}group-batch_[0-9][0-9][0-9]_model-${model}_type-${type}_desc-output.rds"
-    
-    # Find all matching files and get the latest one (highest batch number)
-    local latest_file=$(find "$fit_dir" -maxdepth 1 -name "$pattern" 2>/dev/null | sort -V | tail -1)
-    
+    [ -n "$session" ] && ses_part="ses-${session}_"
+
+    local latest_file=$(find "$fit_dir" -maxdepth 1 -regex ".*/task-${task}_cohort-${source}_${ses_part}group-batch_[0-9][0-9][0-9]_model-${model}_type-${type}_desc-output\.rds" 2>/dev/null | sort -V | tail -1)
+
     echo "$latest_file"
 }
 

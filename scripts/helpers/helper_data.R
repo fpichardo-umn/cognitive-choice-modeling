@@ -937,40 +937,25 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
 convert_simulation_to_individual <- function(hierarchy_data) {
   individual_data <- lapply(hierarchy_data$sid, function(sub) {
     sub_idx <- which(hierarchy_data$sid == sub)
-    sub_data <- list(
-      T = unname(hierarchy_data$Tsubj[sub_idx]),
-      task = hierarchy_data$task
-    )
+    sub_data <- list()
     
-    # List of possible fields to include - different for igt_mod and igt
-    fields <- if (hierarchy_data$task == "igt_mod") {
-      c("choice", "shown", "outcome", "RT", "RTplay", "RTpass", "Nplay", "Npass")
-    } else {
-      c("choice", "wins", "losses", "RT")
-    }
+    # List of possible fields
+    fields <-names(hierarchy_data)
     
-    # Add fields if they exist in hierarchy_data
+    # Extract sub data
     for (field in fields) {
-      if (field %in% names(hierarchy_data)) {
-        if (field %in% c("Nplay", "Npass")){
-          sub_data[[field]] <- hierarchy_data[[field]][sub_idx]
-        } else {
-          sub_data[[field]] <- as.vector(hierarchy_data[[field]][sub_idx, , drop = FALSE])
-        }
-      }
-    }
-    
-    # Add RT-specific fields including both min and max
-    if (any(c("RT", "RTpass", "RTplay") %in% names(hierarchy_data))) {
-      sub_data$RTbound <- hierarchy_data$RTbound
-      sub_data$minRT <- hierarchy_data$minRT[sub_idx]
-      
-      # Add max RT fields if they exist
-      if ("RTbound_max" %in% names(hierarchy_data)) {
-        sub_data$RTbound_max <- hierarchy_data$RTbound_max
-      }
-      if ("maxRT" %in% names(hierarchy_data)) {
-        sub_data$maxRT <- hierarchy_data$maxRT[sub_idx]
+      if (field %in% c("Nplay", "Npass", "sid",
+                       "maxRT", "minRT")){
+        sub_data[[field]] <- hierarchy_data[[field]][sub_idx]
+      } else if (field %in% c("T", "N", "RTbound_max")) {
+        next
+      } else if (field %in% c("Tsubj")) {
+        sub_data[["T"]] <- hierarchy_data[[field]][sub_idx]
+      } else if (field %in% c("RTbound")) {
+        sub_data[[field]] <- hierarchy_data[[field]]
+      } 
+      else {
+        sub_data[[field]] <- as.vector(hierarchy_data[[field]][sub_idx, , drop = FALSE])
       }
     }
     

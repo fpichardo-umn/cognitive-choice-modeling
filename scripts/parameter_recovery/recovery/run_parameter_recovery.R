@@ -44,6 +44,8 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+dput(opt)
+
 # Get directory structure
 dirs <- setup_directories(opt$task)
 
@@ -185,15 +187,16 @@ if (opt$indiv || is_batch) {
     subject_fit_file <- file.path(
       output_fit_dir,
       generate_bids_filename(
-        prefix = paste0("sub-", sub),
+        prefix = NULL,
         task = task,
         group = fit_group,
         model = model_name,
         cohort = cohort,
         ses = session,
         additional_tags = list(
-          "type" = "rec",
-          "desc" = "fit"
+          "sub" = sub,
+          "type" = "fit",
+          "desc" = "output"
         ),
         ext = "rds"
       )
@@ -207,14 +210,6 @@ if (opt$indiv || is_batch) {
     sub_stan_data <- stan_data[[sub]]
     sub_stan_data$task = NULL
     sub_stan_data$sid <- as.numeric(sub)
-    
-    data_list <- extract_sample_data(subject_data, data_to_extract, 
-                                     task = opt$task,
-                                     n_trials = opt$n_trials, 
-                                     RTbound_min_ms = opt$RTbound_min_ms, RTbound_max_ms = opt$RTbound_max_ms,
-                                     RTbound_reject_min_ms = opt$RTbound_min_ms + 20, RTbound_reject_max_ms = opt$RTbound_max_ms, 
-                                     rt_method = opt$rt_method, minrt_ep_ms = 0, 
-                                     min_valid_rt_pct = opt$min_valid_rt_pct)
     
     # Fit model for this subject
     fit <- fit_and_save_model(
@@ -234,8 +229,10 @@ if (opt$indiv || is_batch) {
       max_treedepth = opt$max_treedepth,
       model_params = model_params,
       output_dir = output_fit_dir, 
+      index = sub, 
       checkpoint_interval = opt$check_iter,
-      is_simulation = TRUE
+      is_simulation = TRUE,
+      cohort_sub_dir = FALSE
     )
     
     # Save individual fit

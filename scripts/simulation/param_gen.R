@@ -211,7 +211,7 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                for (param_name in names(params)) {
                                  values <- sapply(selected_subjects, function(subject) {
                                    samples <- self$extract_posterior(model_fit, param_name, subject)
-                                   compute_medians(samples)
+                                   median(samples)
                                  })
                                  result[[param_name]] <- values
                                }
@@ -234,7 +234,7 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                for (param_name in names(params)) {
                                  values <- sapply(selected_subjects, function(subject) {
                                    samples <- self$extract_posterior(model_fit, param_name, subject)
-                                   compute_medians(samples)
+                                   median(samples)
                                  })
                                  result[[param_name]] <- values
                                }
