@@ -93,7 +93,7 @@ functions {
       int k = 1;
       for (i in 1:4) {
         for (j in 1:3) {
-          real other_deck_idx = other_indices[i][j];
+          int other_deck_idx = other_indices[i][j];
           // Combined value for deck i: weighted sum of ev and pers
           real combined_value_i = w * local_ev[i] + (1 - w) * local_pers[i];
           // Combined value for other deck
