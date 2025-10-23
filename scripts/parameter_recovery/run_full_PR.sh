@@ -319,7 +319,7 @@ find_latest_batch_file() {
     local fit_dir="Outputs/${task}/fits/${type}/${source}"
     [ -n "$session" ] && fit_dir="${fit_dir}/ses-${session}"
     [ ! -d "$fit_dir" ] && { echo ""; return; }
-
+    
     local ses_part=""
     [ -n "$session" ] && ses_part="ses-${session}_"
 

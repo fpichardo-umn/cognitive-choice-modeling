@@ -1,5 +1,5 @@
-// Individual EV-ARD Model for the Iowa Gambling Task
-// Updated with improved numerical stability
+// Individual Static-ARD Model for the Iowa Gambling Task
+// Pure SSM with static deck preferences (no learning)
 functions {
   // Log PDF for Racing Diffusion/Wald (numerically stable)
   vector race_log_pdf_vec(vector t, vector boundary, vector drift) {
@@ -69,40 +69,34 @@ functions {
     return sum(log_pdf_winners) + sum(log1m(cdf_losers));
   }
 
-  // EV-ARD trial-level function (logic remains the same)
+  // Static-ARD trial-level function (no learning, static preferences)
   real igt_ard_model(
-      array[] int choice, array[] real wins, array[] real losses, array[] real RT,
-      vector ev_init, int T,
-      real sensitivity, real update, real wgt_pun, real wgt_rew,
-      vector boundaries, vector taus, real urgency, real wd, real ws,
+      array[] int choice, array[] real RT,
+      int T,
+      real sensitivity, vector deck_values,
+      vector boundaries, vector taus, real urgency,
       array[,] int win_indices_all,
-      array[,] int lose_indices_all,
-      array[,] int other_indices) {
+      array[,] int lose_indices_all) {
 
-    vector[4] local_ev = ev_init;
     real log_lik = 0.0;
-
     real scaled_urgency = urgency * sensitivity;
-    real scaled_wswd_plus = (ws + wd) * sensitivity;
-    real scaled_wswd_minus = (ws - wd) * sensitivity;
 
     for (t in 1:T) {
       vector[12] drift_rates;
       int k = 1;
       for (i in 1:4) {
-        drift_rates[k:k+2] = scaled_urgency +
-                             scaled_wswd_plus * local_ev[i] +
-                             scaled_wswd_minus * local_ev[other_indices[i]];
-        k += 3;
+        // All 3 accumulators for deck i have the same drift
+        // based on static preference V[i]
+        for (j in 1:3) {
+          drift_rates[k] = scaled_urgency + deck_values[i] * sensitivity;
+          k += 1;
+        }
       }
 
       if (RT[t] != 999) {
         log_lik += ard_win_all(RT[t], choice[t], taus[t], boundaries[t], drift_rates,
                                win_indices_all, lose_indices_all);
       }
-
-      real curUtil = wgt_rew * wins[t] - wgt_pun * abs(losses[t]);
-      local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
     }
     return log_lik;
   }
@@ -110,26 +104,28 @@ functions {
   // Main parallelization function
   real partial_sum(array[] int slice_n, int start, int end,
                    array[] int Tsubj, array[,] int choice,
-                   array[,] real wins, array[,] real losses, array[,] real RT,
+                   array[,] real RT,
                    array[,] int win_indices_all, array[,] int lose_indices_all,
-                   array[,] int other_indices,
                    array[] vector boundary_subj,
                    array[] vector tau_subj,
-                   array[] real drift_con, array[] real update,
-                   array[] real wgt_pun, array[] real wgt_rew,
-                   array[] real urgency, array[] real wd, array[] real ws) {
+                   array[] real drift_con, array[] real urgency,
+                   array[] real V1, array[] real V2, array[] real V3, array[] real V4) {
     real log_lik = 0.0;
-    vector[4] ev = rep_vector(0.0, 4);
-
     for (n in start:end) {
+      vector[4] deck_values;
+      deck_values[1] = V1[n];
+      deck_values[2] = V2[n];
+      deck_values[3] = V3[n];
+      deck_values[4] = V4[n];
+      
       real sensitivity = pow(3, drift_con[n]) - 1;
 
       log_lik += igt_ard_model(
-          choice[n, 1:Tsubj[n]], wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
-          ev, Tsubj[n],
-          sensitivity, update[n], wgt_pun[n], wgt_rew[n],
-          boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n], wd[n], ws[n],
-          win_indices_all, lose_indices_all, other_indices
+          choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
+          Tsubj[n],
+          sensitivity, deck_values,
+          boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n],
+          win_indices_all, lose_indices_all
       );
     }
     return log_lik;
@@ -145,8 +141,6 @@ data {
   real<lower=0> RTbound;
   array[N, T] int<lower=1, upper=4> choice;
   array[N, T] real RT;
-  array[N, T] real wins;
-  array[N, T] real losses;
 }
 
 transformed data {
@@ -159,7 +153,6 @@ transformed data {
   // Pre-calculate all possible indices once
   array[4, 3] int win_indices_all;
   array[4, 9] int lose_indices_all;
-  array[4, 3] int other_indices = { {2, 3, 4}, {1, 3, 4}, {1, 2, 4}, {1, 2, 3} };
 
   for (c in 1:4) {
     int losing_idx = 1;
@@ -184,12 +177,13 @@ parameters {
   vector[N] tau1_pr;
   vector[N] tau_pr;
   vector[N] urgency_pr;
-  vector[N] wd_pr;
-  vector[N] ws_pr;
   vector[N] drift_con_pr;
-  vector[N] wgt_pun_pr;
-  vector[N] wgt_rew_pr;
-  vector[N] update_pr;
+  
+  // Static deck preferences
+  vector[N] V1_pr;
+  vector[N] V2_pr;
+  vector[N] V3_pr;
+  vector[N] V4_pr;
 }
 
 transformed parameters {
@@ -199,12 +193,13 @@ transformed parameters {
   array[N] real<lower=0> tau1;
   array[N] real<lower=0> tau;
   array[N] real<lower=0.001, upper=20> urgency;
-  array[N] real<lower=0.001, upper=10> wd;
-  array[N] real<lower=0.001, upper=10> ws;
   array[N] real<lower=0, upper=5> drift_con;
-  array[N] real<lower=0, upper=1> wgt_pun;
-  array[N] real<lower=0, upper=1> wgt_rew;
-  array[N] real<lower=0, upper=1> update;
+  
+  // Static deck preferences (can be negative or positive)
+  array[N] real<lower=-10, upper=10> V1;
+  array[N] real<lower=-10, upper=10> V2;
+  array[N] real<lower=-10, upper=10> V3;
+  array[N] real<lower=-10, upper=10> V4;
   
   // Vectorized transforms
   vector[N] minRT_vec = to_vector(minRT);
@@ -214,13 +209,13 @@ transformed parameters {
   tau  = to_array_1d(inv_logit(tau_pr) .* (minRT_vec - RTbound - 0.02) * 0.95 + RTbound);
 
   urgency = to_array_1d(inv_logit(urgency_pr) * 19.999 + 0.001);
-  wd = to_array_1d(inv_logit(wd_pr) * 9.999 + 0.001);
-  ws = to_array_1d(inv_logit(ws_pr) * 9.999 + 0.001);
-
-  drift_con = to_array_1d(inv_logit(drift_con_pr) * 3);
-  wgt_pun   = to_array_1d(inv_logit(wgt_pun_pr));
-  wgt_rew   = to_array_1d(inv_logit(wgt_rew_pr));
-  update    = to_array_1d(inv_logit(update_pr));
+  drift_con = to_array_1d(inv_logit(drift_con_pr) * 5);
+  
+  // Transform deck preferences from (-10, 10) range
+  V1 = to_array_1d(inv_logit(V1_pr) * 20 - 10);
+  V2 = to_array_1d(inv_logit(V2_pr) * 20 - 10);
+  V3 = to_array_1d(inv_logit(V3_pr) * 20 - 10);
+  V4 = to_array_1d(inv_logit(V4_pr) * 20 - 10);
 }
 
 model {
@@ -230,25 +225,25 @@ model {
   tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   urgency_pr ~ normal(0, 1);
-  wd_pr ~ normal(0, 1);
-  ws_pr ~ normal(0, 1);
   drift_con_pr ~ normal(0, 1);
-  wgt_pun_pr ~ normal(0, 1);
-  wgt_rew_pr ~ normal(0, 1);
-  update_pr ~ normal(0, 1);
+  
+  // Priors on static deck preferences
+  V1_pr ~ normal(0, 1);
+  V2_pr ~ normal(0, 1);
+  V3_pr ~ normal(0, 1);
+  V4_pr ~ normal(0, 1);
 
   // Subject- and trial-specific vectors for the likelihood
-  // This is an array of N vectors, each of max length T
   array[N] vector[T] boundary_subj;
   array[N] vector[T] tau_subj;
 
   // Build boundary/tau vectors for all subjects
   for (n in 1:N) {
-    // First block [cite: 49-50]
+    // First block
     boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
     tau_subj[n][1:block]      = rep_vector(tau1[n], block);
     
-    // Rest of trials (if any) [cite: 51]
+    // Rest of trials (if any)
     if (Tsubj[n] > block) {
       int rest_len = Tsubj[n] - block;
       boundary_subj[n][(block+1):Tsubj[n]] = rep_vector(boundary[n], rest_len);
@@ -259,9 +254,9 @@ model {
   // Likelihood using parallelization
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum, subject_indices, grainsize,
-                       Tsubj, choice, wins, losses, RT,
-                       win_indices_all, lose_indices_all, other_indices,
+                       Tsubj, choice, RT,
+                       win_indices_all, lose_indices_all,
                        boundary_subj, tau_subj,
-                       drift_con, update, wgt_pun, wgt_rew,
-                       urgency, wd, ws);
+                       drift_con, urgency,
+                       V1, V2, V3, V4);
 }

@@ -693,6 +693,22 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_alba_b1p2"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
+    params = setdiff(c(param_sets$alba_b1p2, param_sets$ssm_only), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_alba_b1p2"]] <- list(
+    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
+    params = setdiff(c(param_sets$alba_b1p2, param_sets$ssm_only), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  # ---- ARD B1P2 Models ----
+  
   models[["igt_sing_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$ard_b1p2, param_sets$ssm_only), "con"),
@@ -707,6 +723,37 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_pvldelta_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_pvldecay_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_decay), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_orl_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
+                       param_sets$orl_base, param_sets$orl_delta, 
+                       param_sets$orl_igt), 
+                     c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_vse_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$pvl_decay, param_sets$vse_orig), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_hier_ard_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
     params = setdiff(c(param_sets$ard_b1p2, param_sets$ssm_only), "con"),
@@ -717,20 +764,6 @@ get_igt_defaults = function() {
   models[["igt_hier_ev_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
     params = setdiff(c(param_sets$ard_b1p2, param_sets$ev), "con"),
-    non_pr_params = NULL,
-    exclude_params = NULL
-  )
-  
-  models[["igt_sing_alba_b1p2"]] <- list(
-    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
-    params = setdiff(c(param_sets$alba_b1p2, param_sets$ssm_only), "con"),
-    non_pr_params = NULL,
-    exclude_params = NULL
-  )
-  
-  models[["igt_hier_alba_b1p2"]] <- list(
-    data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)), c("wins", "losses")),
-    params = setdiff(c(param_sets$alba_b1p2, param_sets$ssm_only), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -759,7 +792,7 @@ get_igt_defaults = function() {
   
   models[["igt_hier_pvldecay_rd_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$pvl_delta), c("con", "drift_con")),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$pvl_decay), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )

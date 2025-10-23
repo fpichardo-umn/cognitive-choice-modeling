@@ -1,4 +1,4 @@
-// Individual EV-ARD Model for the Iowa Gambling Task
+// Individual ORL-ARD Model for the Iowa Gambling Task
 // Updated with improved numerical stability
 functions {
   // Log PDF for Racing Diffusion/Wald (numerically stable)
@@ -69,30 +69,47 @@ functions {
     return sum(log_pdf_winners) + sum(log1m(cdf_losers));
   }
 
-  // EV-ARD trial-level function (logic remains the same)
+  // ORL-ARD trial-level function
   real igt_ard_model(
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
-      vector ev_init, int T,
-      real sensitivity, real update, real wgt_pun, real wgt_rew,
+      vector ev, vector ef, int T,
+      real sensitivity, real Arew, real Apun, real K,
+      real betaF, real betaP,
       vector boundaries, vector taus, real urgency, real wd, real ws,
       array[,] int win_indices_all,
       array[,] int lose_indices_all,
       array[,] int other_indices) {
 
-    vector[4] local_ev = ev_init;
+    vector[4] local_ev = ev;
+    vector[4] local_ef = ef;
+    vector[4] pers = rep_vector(0.0, 4);
     real log_lik = 0.0;
+    real PEval;
+    real PEfreq;
+    vector[4] PEfreq_fic;
+    array[T] real sign_outcome;
+    real K_tr = pow(3, K) - 1;
 
     real scaled_urgency = urgency * sensitivity;
     real scaled_wswd_plus = (ws + wd) * sensitivity;
     real scaled_wswd_minus = (ws - wd) * sensitivity;
+    real scaled_betaF = betaF * sensitivity;
+    real scaled_betaP = betaP * sensitivity;
+
+    for (t in 1:T) {
+      sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
+    }
 
     for (t in 1:T) {
       vector[12] drift_rates;
       int k = 1;
       for (i in 1:4) {
+        real combined_value = local_ev[i] + local_ef[i] * scaled_betaF + pers[i] * scaled_betaP;
         drift_rates[k:k+2] = scaled_urgency +
-                             scaled_wswd_plus * local_ev[i] +
-                             scaled_wswd_minus * local_ev[other_indices[i]];
+                             scaled_wswd_plus * combined_value +
+                             scaled_wswd_minus * (local_ev[other_indices[i]] + 
+                                                   local_ef[other_indices[i]] * scaled_betaF + 
+                                                   pers[other_indices[i]] * scaled_betaP);
         k += 3;
       }
 
@@ -101,8 +118,25 @@ functions {
                                win_indices_all, lose_indices_all);
       }
 
-      real curUtil = wgt_rew * wins[t] - wgt_pun * abs(losses[t]);
-      local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
+      PEval = wins[t] - losses[t] - local_ev[choice[t]];
+      PEfreq = sign_outcome[t] - local_ef[choice[t]];
+      
+      for (d in 1:4) {
+        PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
+      }
+      
+      if (wins[t] >= losses[t]) {
+        local_ef += Apun * PEfreq_fic;
+        local_ef[choice[t]] = local_ef[choice[t]] + Arew * PEfreq;
+        local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
+      } else {
+        local_ef += Arew * PEfreq_fic;
+        local_ef[choice[t]] = local_ef[choice[t]] + Apun * PEfreq;
+        local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
+      }
+      
+      pers[choice[t]] = 1;
+      pers = pers / (1 + K_tr);
     }
     return log_lik;
   }
@@ -115,19 +149,21 @@ functions {
                    array[,] int other_indices,
                    array[] vector boundary_subj,
                    array[] vector tau_subj,
-                   array[] real drift_con, array[] real update,
-                   array[] real wgt_pun, array[] real wgt_rew,
+                   array[] real drift_con, array[] real Arew, array[] real Apun, array[] real K,
+                   array[] real betaF, array[] real betaP,
                    array[] real urgency, array[] real wd, array[] real ws) {
     real log_lik = 0.0;
     vector[4] ev = rep_vector(0.0, 4);
+    vector[4] ef = rep_vector(0.0, 4);
 
     for (n in start:end) {
       real sensitivity = pow(3, drift_con[n]) - 1;
 
       log_lik += igt_ard_model(
           choice[n, 1:Tsubj[n]], wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
-          ev, Tsubj[n],
-          sensitivity, update[n], wgt_pun[n], wgt_rew[n],
+          ev, ef, Tsubj[n],
+          sensitivity, Arew[n], Apun[n], K[n],
+          betaF[n], betaP[n],
           boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n], wd[n], ws[n],
           win_indices_all, lose_indices_all, other_indices
       );
@@ -187,9 +223,11 @@ parameters {
   vector[N] wd_pr;
   vector[N] ws_pr;
   vector[N] drift_con_pr;
-  vector[N] wgt_pun_pr;
-  vector[N] wgt_rew_pr;
-  vector[N] update_pr;
+  vector[N] Arew_pr;
+  vector[N] Apun_pr;
+  vector[N] K_pr;
+  vector[N] betaF_pr;
+  vector[N] betaP_pr;
 }
 
 transformed parameters {
@@ -202,9 +240,11 @@ transformed parameters {
   array[N] real<lower=0.001, upper=10> wd;
   array[N] real<lower=0.001, upper=10> ws;
   array[N] real<lower=0, upper=5> drift_con;
-  array[N] real<lower=0, upper=1> wgt_pun;
-  array[N] real<lower=0, upper=1> wgt_rew;
-  array[N] real<lower=0, upper=1> update;
+  array[N] real<lower=0, upper=1> Arew;
+  array[N] real<lower=0, upper=1> Apun;
+  array[N] real<lower=0, upper=5> K;
+  array[N] real betaF;
+  array[N] real betaP;
   
   // Vectorized transforms
   vector[N] minRT_vec = to_vector(minRT);
@@ -217,10 +257,12 @@ transformed parameters {
   wd = to_array_1d(inv_logit(wd_pr) * 9.999 + 0.001);
   ws = to_array_1d(inv_logit(ws_pr) * 9.999 + 0.001);
 
-  drift_con = to_array_1d(inv_logit(drift_con_pr) * 3);
-  wgt_pun   = to_array_1d(inv_logit(wgt_pun_pr));
-  wgt_rew   = to_array_1d(inv_logit(wgt_rew_pr));
-  update    = to_array_1d(inv_logit(update_pr));
+  drift_con = to_array_1d(inv_logit(drift_con_pr) * 5);
+  Arew      = to_array_1d(inv_logit(Arew_pr));
+  Apun      = to_array_1d(inv_logit(Apun_pr));
+  K         = to_array_1d(inv_logit(K_pr) * 5);
+  betaF     = to_array_1d(betaF_pr);
+  betaP     = to_array_1d(betaP_pr);
 }
 
 model {
@@ -233,9 +275,11 @@ model {
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
   drift_con_pr ~ normal(0, 1);
-  wgt_pun_pr ~ normal(0, 1);
-  wgt_rew_pr ~ normal(0, 1);
-  update_pr ~ normal(0, 1);
+  Arew_pr ~ normal(0, 1);
+  Apun_pr ~ normal(0, 1);
+  K_pr ~ normal(0, 1);
+  betaF_pr ~ normal(0, 1);
+  betaP_pr ~ normal(0, 1);
 
   // Subject- and trial-specific vectors for the likelihood
   // This is an array of N vectors, each of max length T
@@ -244,11 +288,11 @@ model {
 
   // Build boundary/tau vectors for all subjects
   for (n in 1:N) {
-    // First block [cite: 49-50]
+    // First block
     boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
     tau_subj[n][1:block]      = rep_vector(tau1[n], block);
     
-    // Rest of trials (if any) [cite: 51]
+    // Rest of trials (if any)
     if (Tsubj[n] > block) {
       int rest_len = Tsubj[n] - block;
       boundary_subj[n][(block+1):Tsubj[n]] = rep_vector(boundary[n], rest_len);
@@ -262,6 +306,7 @@ model {
                        Tsubj, choice, wins, losses, RT,
                        win_indices_all, lose_indices_all, other_indices,
                        boundary_subj, tau_subj,
-                       drift_con, update, wgt_pun, wgt_rew,
+                       drift_con, Arew, Apun, K,
+                       betaF, betaP,
                        urgency, wd, ws);
 }
