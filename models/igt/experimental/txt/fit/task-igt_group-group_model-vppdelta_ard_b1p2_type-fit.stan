@@ -133,7 +133,7 @@ functions {
   }
 
   // Main parallelization function
-  real partial_sum(array[] int slice_n, int start, int end,
+  real partial_sum(array[] int slice_n, int start, int end, int block,
                    array[] int Tsubj, array[,] int choice,
                    array[,] real wins, array[,] real losses, array[,] real RT,
                    array[,] int win_indices_all, array[,] int lose_indices_all,
@@ -294,8 +294,8 @@ model {
   w_pr ~ normal(0, 1);
   
   // Likelihood using parallelization
-  int grainsize = max(1, N %/% 4);
-  target += reduce_sum(partial_sum, subject_indices, grainsize,
+  int grainsize = 1;
+  target += reduce_sum(partial_sum, subject_indices, grainsize, block,
                        Tsubj, choice, wins, losses, RT,
                        win_indices_all, lose_indices_all, other_indices,
                        boundary1, boundary,
