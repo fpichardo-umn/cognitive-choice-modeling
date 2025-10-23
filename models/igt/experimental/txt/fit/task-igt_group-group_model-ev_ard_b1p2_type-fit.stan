@@ -113,8 +113,8 @@ functions {
                    array[,] real wins, array[,] real losses, array[,] real RT,
                    array[,] int win_indices_all, array[,] int lose_indices_all,
                    array[,] int other_indices,
-                   array[] vector boundary_subj,
-                   array[] vector tau_subj,
+                   array[] real boundary1, array[] real boundary,
+                   array[] real tau1, array[] real tau,
                    array[] real drift_con, array[] real update,
                    array[] real wgt_pun, array[] real wgt_rew,
                    array[] real urgency, array[] real wd, array[] real ws) {
@@ -122,13 +122,25 @@ functions {
     vector[4] ev = rep_vector(0.0, 4);
 
     for (n in start:end) {
+      // Build vectors here, only for this subject
+      vector[Tsubj[n]] boundary_subj_n;
+      vector[Tsubj[n]] tau_subj_n;
+    
+      boundary_subj_n[1:block] = rep_vector(boundary1[n], block);
+      tau_subj_n[1:block] = rep_vector(tau1[n], block);
+    
+      if (Tsubj[n] > block) {
+        int rest_len = Tsubj[n] - block;
+        boundary_subj_n[(block+1):Tsubj[n]] = rep_vector(boundary[n], rest_len);
+        tau_subj_n[(block+1):Tsubj[n]] = rep_vector(tau[n], rest_len);
+      }
       real sensitivity = pow(3, drift_con[n]) - 1;
 
       log_lik += igt_ard_model(
           choice[n, 1:Tsubj[n]], wins[n, 1:Tsubj[n]], losses[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
           ev, Tsubj[n],
           sensitivity, update[n], wgt_pun[n], wgt_rew[n],
-          boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n], wd[n], ws[n],
+          boundary_subj_n, tau_subj_n, urgency[n], wd[n], ws[n],
           win_indices_all, lose_indices_all, other_indices
       );
     }
@@ -236,32 +248,14 @@ model {
   wgt_pun_pr ~ normal(0, 1);
   wgt_rew_pr ~ normal(0, 1);
   update_pr ~ normal(0, 1);
-
-  // Subject- and trial-specific vectors for the likelihood
-  // This is an array of N vectors, each of max length T
-  array[N] vector[T] boundary_subj;
-  array[N] vector[T] tau_subj;
-
-  // Build boundary/tau vectors for all subjects
-  for (n in 1:N) {
-    // First block [cite: 49-50]
-    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
-    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
-    
-    // Rest of trials (if any) [cite: 51]
-    if (Tsubj[n] > block) {
-      int rest_len = Tsubj[n] - block;
-      boundary_subj[n][(block+1):Tsubj[n]] = rep_vector(boundary[n], rest_len);
-      tau_subj[n][(block+1):Tsubj[n]]      = rep_vector(tau[n], rest_len);
-    }
-  }
   
   // Likelihood using parallelization
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum, subject_indices, grainsize,
                        Tsubj, choice, wins, losses, RT,
                        win_indices_all, lose_indices_all, other_indices,
-                       boundary_subj, tau_subj,
+                       boundary1, boundary,
+		       tau1, tau,
                        drift_con, update, wgt_pun, wgt_rew,
                        urgency, wd, ws);
 }

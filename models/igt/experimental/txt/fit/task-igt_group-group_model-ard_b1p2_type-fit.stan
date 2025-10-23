@@ -106,12 +106,24 @@ functions {
                    array[] int Tsubj, array[,] int choice,
                    array[,] real RT,
                    array[,] int win_indices_all, array[,] int lose_indices_all,
-                   array[] vector boundary_subj,
-                   array[] vector tau_subj,
+                   array[] real boundary1, array[] real boundary,
+                   array[] real tau1, array[] real tau,
                    array[] real drift_con, array[] real urgency,
                    array[] real V1, array[] real V2, array[] real V3, array[] real V4) {
     real log_lik = 0.0;
     for (n in start:end) {
+      // Build vectors here, only for this subject
+      vector[Tsubj[n]] boundary_subj_n;
+      vector[Tsubj[n]] tau_subj_n;
+    
+      boundary_subj_n[1:block] = rep_vector(boundary1[n], block);
+      tau_subj_n[1:block] = rep_vector(tau1[n], block);
+    
+      if (Tsubj[n] > block) {
+        int rest_len = Tsubj[n] - block;
+        boundary_subj_n[(block+1):Tsubj[n]] = rep_vector(boundary[n], rest_len);
+        tau_subj_n[(block+1):Tsubj[n]] = rep_vector(tau[n], rest_len);
+      }
       vector[4] deck_values;
       deck_values[1] = V1[n];
       deck_values[2] = V2[n];
@@ -124,7 +136,7 @@ functions {
           choice[n, 1:Tsubj[n]], RT[n, 1:Tsubj[n]],
           Tsubj[n],
           sensitivity, deck_values,
-          boundary_subj[n][1:Tsubj[n]], tau_subj[n][1:Tsubj[n]], urgency[n],
+          boundary_subj_n, tau_subj_n, urgency[n],
           win_indices_all, lose_indices_all
       );
     }
@@ -232,31 +244,14 @@ model {
   V2_pr ~ normal(0, 1);
   V3_pr ~ normal(0, 1);
   V4_pr ~ normal(0, 1);
-
-  // Subject- and trial-specific vectors for the likelihood
-  array[N] vector[T] boundary_subj;
-  array[N] vector[T] tau_subj;
-
-  // Build boundary/tau vectors for all subjects
-  for (n in 1:N) {
-    // First block
-    boundary_subj[n][1:block] = rep_vector(boundary1[n], block);
-    tau_subj[n][1:block]      = rep_vector(tau1[n], block);
-    
-    // Rest of trials (if any)
-    if (Tsubj[n] > block) {
-      int rest_len = Tsubj[n] - block;
-      boundary_subj[n][(block+1):Tsubj[n]] = rep_vector(boundary[n], rest_len);
-      tau_subj[n][(block+1):Tsubj[n]]      = rep_vector(tau[n], rest_len);
-    }
-  }
   
   // Likelihood using parallelization
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum, subject_indices, grainsize,
                        Tsubj, choice, RT,
                        win_indices_all, lose_indices_all,
-                       boundary_subj, tau_subj,
+                       boundary1, boundary,
+		       tau1, tau,
                        drift_con, urgency,
                        V1, V2, V3, V4);
 }
