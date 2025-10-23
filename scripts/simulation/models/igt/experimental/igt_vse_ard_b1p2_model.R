@@ -35,7 +35,6 @@ igtVSEARDB1P2Model <- R6::R6Class("igtVSEARDB1P2Model",
                                         urgency = list(range = c(0.001, 20)),
                                         wd = list(range = c(0.001, 10)),
                                         ws = list(range = c(0.001, 10)),
-                                        drift_con = list(range = c(0, 5)),
                                         gain = list(range = c(0, 1)),
                                         loss = list(range = c(0, 10)),
                                         decay = list(range = c(0, 1)),
@@ -66,11 +65,9 @@ igtVSEARDB1P2Model <- R6::R6Class("igtVSEARDB1P2Model",
                                         c(1, 2, 3)
                                       )
                                       
-                                      # Calculate sensitivity
-                                      sensitivity <- 3^parameters$drift_con - 1
-                                      scaled_urgency <- parameters$urgency * sensitivity
-                                      scaled_wswd_plus <- (parameters$ws + parameters$wd) * sensitivity
-                                      scaled_wswd_minus <- (parameters$ws - parameters$wd) * sensitivity
+                                      # Calculate intermediate
+                                      wswd_plus <- (parameters$ws + parameters$wd)
+                                      wswd_minus <- (parameters$ws - parameters$wd)
                                       
                                       for (t in 1:n_trials) {
                                         # Determine block-specific parameters
@@ -92,9 +89,9 @@ igtVSEARDB1P2Model <- R6::R6Class("igtVSEARDB1P2Model",
                                           for (j in 1:3) {
                                             other_deck_idx <- other_indices[[i]][j]
                                             combined_other <- ev_exploit[other_deck_idx] + ev_explore[other_deck_idx]
-                                            drift_rates[k] <- scaled_urgency + 
-                                              scaled_wswd_plus * combined_ev[i] + 
-                                              scaled_wswd_minus * combined_other
+                                            drift_rates[k] <- parameters$urgency + 
+                                              wswd_plus * combined_ev[i] + 
+                                              wswd_minus * combined_other
                                             k <- k + 1
                                           }
                                         }
@@ -177,11 +174,9 @@ igtVSEARDB1P2Model <- R6::R6Class("igtVSEARDB1P2Model",
                                         c(1, 2, 3)
                                       )
                                       
-                                      # Calculate sensitivity
-                                      sensitivity <- 3^parameters$drift_con - 1
-                                      scaled_urgency <- parameters$urgency * sensitivity
-                                      scaled_wswd_plus <- (parameters$ws + parameters$wd) * sensitivity
-                                      scaled_wswd_minus <- (parameters$ws - parameters$wd) * sensitivity
+                                      # Calculate intermediate
+                                      wswd_plus <- (parameters$ws + parameters$wd)
+                                      wswd_minus <- (parameters$ws - parameters$wd)
                                       
                                       for (t in 1:n_trials) {
                                         choice <- choices[t]
@@ -213,9 +208,9 @@ igtVSEARDB1P2Model <- R6::R6Class("igtVSEARDB1P2Model",
                                             for (j in 1:3) {
                                               other_deck_idx <- other_indices[[i]][j]
                                               combined_other <- ev_exploit[other_deck_idx] + ev_explore[other_deck_idx]
-                                              drift_rates[k] <- scaled_urgency + 
-                                                scaled_wswd_plus * combined_ev[i] + 
-                                                scaled_wswd_minus * combined_other
+                                              drift_rates[k] <- parameters$urgency + 
+                                                wswd_plus * combined_ev[i] + 
+                                                wswd_minus * combined_other
                                               k <- k + 1
                                             }
                                           }

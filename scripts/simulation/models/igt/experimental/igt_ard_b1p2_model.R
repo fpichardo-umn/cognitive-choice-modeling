@@ -34,7 +34,6 @@ igtStaticARDB1P2Model <- R6::R6Class("igtStaticARDB1P2Model",
                                            tau1 = list(range = c(0, Inf)),
                                            tau = list(range = c(0, Inf)),
                                            urgency = list(range = c(0.001, 20)),
-                                           drift_con = list(range = c(0, 5)),
                                            V1 = list(range = c(-10, 10)),
                                            V2 = list(range = c(-10, 10)),
                                            V3 = list(range = c(-10, 10)),
@@ -56,10 +55,6 @@ igtStaticARDB1P2Model <- R6::R6Class("igtStaticARDB1P2Model",
                                          deck_values <- c(parameters$V1, parameters$V2, 
                                                           parameters$V3, parameters$V4)
                                          
-                                         # Calculate sensitivity
-                                         sensitivity <- 3^parameters$drift_con - 1
-                                         scaled_urgency <- parameters$urgency * sensitivity
-                                         
                                          for (t in 1:n_trials) {
                                            # Determine block-specific parameters
                                            if (t <= block_cutoff) {
@@ -77,8 +72,8 @@ igtStaticARDB1P2Model <- R6::R6Class("igtStaticARDB1P2Model",
                                            k <- 1
                                            for (i in 1:4) {
                                              for (j in 1:3) {
-                                               drift_rates[k] <- scaled_urgency + 
-                                                 deck_values[i] * sensitivity
+                                               drift_rates[k] <- parameters$urgency + 
+                                                 deck_values[i]
                                                k <- k + 1
                                              }
                                            }
@@ -135,10 +130,6 @@ igtStaticARDB1P2Model <- R6::R6Class("igtStaticARDB1P2Model",
                                          deck_values <- c(parameters$V1, parameters$V2, 
                                                           parameters$V3, parameters$V4)
                                          
-                                         # Calculate sensitivity
-                                         sensitivity <- 3^parameters$drift_con - 1
-                                         scaled_urgency <- parameters$urgency * sensitivity
-                                         
                                          for (t in 1:n_trials) {
                                            choice <- choices[t]
                                            rt <- RTs[t]
@@ -164,8 +155,8 @@ igtStaticARDB1P2Model <- R6::R6Class("igtStaticARDB1P2Model",
                                              k <- 1
                                              for (i in 1:4) {
                                                for (j in 1:3) {
-                                                 drift_rates[k] <- scaled_urgency + 
-                                                   deck_values[i] * sensitivity
+                                                 drift_rates[k] <- parameters$urgency + 
+                                                   deck_values[i]
                                                  k <- k + 1
                                                }
                                              }

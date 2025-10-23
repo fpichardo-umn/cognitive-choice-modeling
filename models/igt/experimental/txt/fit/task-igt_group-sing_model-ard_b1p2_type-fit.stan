@@ -73,13 +73,12 @@ functions {
   real igt_ard_model(
       array[] int choice, array[] real RT,
       int T,
-      real sensitivity, vector deck_values,
+      vector deck_values,
       vector boundaries, vector taus, real urgency,
       array[,] int win_indices_all,
       array[,] int lose_indices_all) {
 
     real log_lik = 0.0;
-    real scaled_urgency = urgency * sensitivity;
 
     for (t in 1:T) {
       vector[12] drift_rates;
@@ -88,7 +87,7 @@ functions {
         // All 3 accumulators for deck i have the same drift
         // based on static preference V[i]
         for (j in 1:3) {
-          drift_rates[k] = scaled_urgency + deck_values[i] * sensitivity;
+          drift_rates[k] = urgency + deck_values[i];
           k += 1;
         }
       }
@@ -140,7 +139,6 @@ parameters {
   real tau1_pr;
   real tau_pr;
   real urgency_pr;
-  real drift_con_pr;
   
   // Static deck preferences
   real V1_pr;
@@ -156,7 +154,6 @@ transformed parameters {
   real<lower=0> tau1;
   real<lower=0> tau;
   real<lower=0.001, upper=20> urgency;
-  real<lower=0, upper=5> drift_con;
   
   // Static deck preferences (can be negative or positive)
   real<lower=-10, upper=10> V1;
@@ -169,9 +166,7 @@ transformed parameters {
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
   tau1 = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau  = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
-
   urgency = inv_logit(urgency_pr) * 19.999 + 0.001;
-  drift_con = inv_logit(drift_con_pr) * 5;
   
   // Transform deck preferences from (-10, 10) range
   V1 = inv_logit(V1_pr) * 20 - 10;
@@ -187,7 +182,6 @@ model {
   tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   urgency_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
   
   // Priors on static deck preferences
   V1_pr ~ normal(0, 1);
@@ -216,12 +210,10 @@ model {
   deck_values[3] = V3;
   deck_values[4] = V4;
   
-  real sensitivity = pow(3, drift_con) - 1;
-  
   // Likelihood
   target += igt_ard_model(choice, RT,
                        T,
-                       sensitivity, deck_values,
+                       deck_values,
                        boundary_vec, tau_vec, urgency,
                        win_indices_all, lose_indices_all);
 }

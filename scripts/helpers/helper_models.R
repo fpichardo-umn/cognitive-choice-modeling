@@ -711,42 +711,42 @@ get_igt_defaults = function() {
   
   models[["igt_sing_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, param_sets$ssm_only), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$ssm_only), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_ev_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, param_sets$ev), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$ev), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_pvldelta_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_pvldecay_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_decay), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_decay), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_vppdelta_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta, param_sets$vpp_base), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta, param_sets$vpp_base), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_vppdecay_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_decay, param_sets$vpp_base), "con"),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_decay, param_sets$vpp_base), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -763,7 +763,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_vse_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$pvl_decay, param_sets$vse_orig), "con"),
+    params = setdiff(c(param_sets$rd_b1p2, param_sets$pvl_decay, param_sets$vse_orig), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )

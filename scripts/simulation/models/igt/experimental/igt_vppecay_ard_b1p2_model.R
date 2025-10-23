@@ -36,7 +36,6 @@ igtVPPDECAYARDB1P2Model <- R6::R6Class("igtVPPDECAYARDB1P2Model",
                                              urgency = list(range = c(0.001, 20)),
                                              wd = list(range = c(0.001, 10)),
                                              ws = list(range = c(0.001, 10)),
-                                             drift_con = list(range = c(0, 5)),
                                              decay = list(range = c(0, 1)),
                                              gain = list(range = c(0, 1)),
                                              loss = list(range = c(0, 10)),
@@ -69,11 +68,9 @@ igtVPPDECAYARDB1P2Model <- R6::R6Class("igtVPPDECAYARDB1P2Model",
                                              c(1, 2, 3)
                                            )
                                            
-                                           # Calculate sensitivity
-                                           sensitivity <- 3^parameters$drift_con - 1
-                                           scaled_urgency <- parameters$urgency * sensitivity
-                                           scaled_wswd_plus <- (parameters$ws + parameters$wd) * sensitivity
-                                           scaled_wswd_minus <- (parameters$ws - parameters$wd) * sensitivity
+                                           # Calculate 
+                                           wswd_plus <- (parameters$ws + parameters$wd)
+                                           wswd_minus <- (parameters$ws - parameters$wd)
                                            
                                            for (t in 1:n_trials) {
                                              # Determine block-specific parameters
@@ -97,9 +94,9 @@ igtVPPDECAYARDB1P2Model <- R6::R6Class("igtVPPDECAYARDB1P2Model",
                                                  combined_value_other <- parameters$w * ev[other_deck_idx] + 
                                                    (1 - parameters$w) * pers[other_deck_idx]
                                                  
-                                                 drift_rates[k] <- scaled_urgency + 
-                                                   scaled_wswd_plus * combined_value_i + 
-                                                   scaled_wswd_minus * combined_value_other
+                                                 drift_rates[k] <- parameters$urgency + 
+                                                   wswd_plus * combined_value_i + 
+                                                   wswd_minus * combined_value_other
                                                  k <- k + 1
                                                }
                                              }
@@ -188,11 +185,9 @@ igtVPPDECAYARDB1P2Model <- R6::R6Class("igtVPPDECAYARDB1P2Model",
                                              c(1, 2, 3)
                                            )
                                            
-                                           # Calculate sensitivity
-                                           sensitivity <- 3^parameters$drift_con - 1
-                                           scaled_urgency <- parameters$urgency * sensitivity
-                                           scaled_wswd_plus <- (parameters$ws + parameters$wd) * sensitivity
-                                           scaled_wswd_minus <- (parameters$ws - parameters$wd) * sensitivity
+                                           # Calculate
+                                           wswd_plus <- (parameters$ws + parameters$wd)
+                                           wswd_minus <- (parameters$ws - parameters$wd)
                                            
                                            for (t in 1:n_trials) {
                                              choice <- choices[t]
@@ -225,9 +220,9 @@ igtVPPDECAYARDB1P2Model <- R6::R6Class("igtVPPDECAYARDB1P2Model",
                                                    combined_value_other <- parameters$w * ev[other_deck_idx] + 
                                                      (1 - parameters$w) * pers[other_deck_idx]
                                                    
-                                                   drift_rates[k] <- scaled_urgency + 
-                                                     scaled_wswd_plus * combined_value_i + 
-                                                     scaled_wswd_minus * combined_value_other
+                                                   drift_rates[k] <- parameters$urgency + 
+                                                     wswd_plus * combined_value_i + 
+                                                     wswd_minus * combined_value_other
                                                    k <- k + 1
                                                  }
                                                }

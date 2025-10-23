@@ -73,7 +73,7 @@ functions {
   real igt_ard_model(
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
       vector ev, vector ef, int T,
-      real sensitivity, real Arew, real Apun, real K,
+      real Arew, real Apun, real K,
       real betaF, real betaP,
       vector boundaries, vector taus, real urgency, real wd, real ws,
       array[,] int win_indices_all,
@@ -90,11 +90,8 @@ functions {
     array[T] real sign_outcome;
     real K_tr = pow(3, K) - 1;
 
-    real scaled_urgency = urgency * sensitivity;
-    real scaled_wswd_plus = (ws + wd) * sensitivity;
-    real scaled_wswd_minus = (ws - wd) * sensitivity;
-    real scaled_betaF = betaF * sensitivity;
-    real scaled_betaP = betaP * sensitivity;
+    real wswd_plus = (ws + wd);
+    real wswd_minus = (ws - wd);
 
     for (t in 1:T) {
       sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
@@ -104,12 +101,12 @@ functions {
       vector[12] drift_rates;
       int k = 1;
       for (i in 1:4) {
-        real combined_value = local_ev[i] + local_ef[i] * scaled_betaF + pers[i] * scaled_betaP;
-        drift_rates[k:k+2] = scaled_urgency +
-                             scaled_wswd_plus * combined_value +
-                             scaled_wswd_minus * (local_ev[other_indices[i]] + 
-                                                   local_ef[other_indices[i]] * scaled_betaF + 
-                                                   pers[other_indices[i]] * scaled_betaP);
+        real combined_value = local_ev[i] + local_ef[i] * betaF + pers[i] * betaP;
+        drift_rates[k:k+2] = urgency +
+                             wswd_plus * combined_value +
+                             wswd_minus * (local_ev[other_indices[i]] + 
+                                                   local_ef[other_indices[i]] * betaF + 
+                                                   pers[other_indices[i]] * betaP);
         k += 3;
       }
 
@@ -185,7 +182,7 @@ parameters {
   real urgency_pr;
   real wd_pr;
   real ws_pr;
-  real drift_con_pr;
+
   real Arew_pr;
   real Apun_pr;
   real K_pr;
@@ -202,7 +199,7 @@ transformed parameters {
   real<lower=0.001, upper=20> urgency;
   real<lower=0.001, upper=10> wd;
   real<lower=0.001, upper=10> ws;
-  real<lower=0, upper=5> drift_con;
+
   real<lower=0, upper=1> Arew;
   real<lower=0, upper=1> Apun;
   real<lower=0, upper=5> K;
@@ -219,7 +216,6 @@ transformed parameters {
   wd = inv_logit(wd_pr) * 9.999 + 0.001;
   ws = inv_logit(ws_pr) * 9.999 + 0.001;
 
-  drift_con = inv_logit(drift_con_pr) * 5;
   Arew      = inv_logit(Arew_pr);
   Apun      = inv_logit(Apun_pr);
   K         = inv_logit(K_pr) * 5;
@@ -236,7 +232,7 @@ model {
   urgency_pr ~ normal(0, 1);
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
+
   Arew_pr ~ normal(0, 1);
   Apun_pr ~ normal(0, 1);
   K_pr ~ normal(0, 1);
@@ -260,11 +256,10 @@ model {
   // Likelihood with ORL learning
   vector[4] ev = rep_vector(0.0, 4);
   vector[4] ef = rep_vector(0.0, 4);
-  real sensitivity = pow(3, drift_con) - 1;
   
   target += igt_ard_model(choice, wins, losses, RT,
                        ev, ef, T,
-                       sensitivity, Arew, Apun, K,
+                       Arew, Apun, K,
                        betaF, betaP,
                        boundary_vec, tau_vec, urgency, wd, ws,
                        win_indices_all, lose_indices_all, other_indices);

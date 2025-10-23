@@ -35,7 +35,6 @@ igtORLARDB1P2Model <- R6::R6Class("igtORLARDB1P2Model",
                                         urgency = list(range = c(0.001, 20)),
                                         wd = list(range = c(0.001, 10)),
                                         ws = list(range = c(0.001, 10)),
-                                        drift_con = list(range = c(0, 5)),
                                         Arew = list(range = c(0, 1)),
                                         Apun = list(range = c(0, 1)),
                                         K = list(range = c(0, 5)),
@@ -67,13 +66,9 @@ igtORLARDB1P2Model <- R6::R6Class("igtORLARDB1P2Model",
                                         c(1, 2, 3)
                                       )
                                       
-                                      # Calculate sensitivity and K transformation
-                                      sensitivity <- 3^parameters$drift_con - 1
-                                      scaled_urgency <- parameters$urgency * sensitivity
-                                      scaled_wswd_plus <- (parameters$ws + parameters$wd) * sensitivity
-                                      scaled_wswd_minus <- (parameters$ws - parameters$wd) * sensitivity
-                                      scaled_betaF <- parameters$betaF * sensitivity
-                                      scaled_betaP <- parameters$betaP * sensitivity
+                                      # Calculate 
+                                      wswd_plus <- (parameters$ws + parameters$wd)
+                                      wswd_minus <- (parameters$ws - parameters$wd)
                                       K_tr <- 3^parameters$K - 1
                                       
                                       for (t in 1:n_trials) {
@@ -94,15 +89,15 @@ igtORLARDB1P2Model <- R6::R6Class("igtORLARDB1P2Model",
                                           for (j in 1:3) {
                                             other_deck_idx <- other_indices[[i]][j]
                                             # Combined value for deck i
-                                            combined_value_i <- ev[i] + ef[i] * scaled_betaF + pers[i] * scaled_betaP
+                                            combined_value_i <- ev[i] + ef[i] * parameters$betaF + pers[i] * parameters$betaP
                                             # Combined value for other deck
                                             combined_value_other <- ev[other_deck_idx] + 
-                                              ef[other_deck_idx] * scaled_betaF + 
-                                              pers[other_deck_idx] * scaled_betaP
+                                              ef[other_deck_idx] * parameters$betaF + 
+                                              pers[other_deck_idx] * parameters$betaP
                                             
-                                            drift_rates[k] <- scaled_urgency + 
-                                              scaled_wswd_plus * combined_value_i + 
-                                              scaled_wswd_minus * combined_value_other
+                                            drift_rates[k] <- parameters$urgency + 
+                                              wswd_plus * combined_value_i + 
+                                              wswd_minus * combined_value_other
                                             k <- k + 1
                                           }
                                         }
@@ -193,13 +188,9 @@ igtORLARDB1P2Model <- R6::R6Class("igtORLARDB1P2Model",
                                         c(1, 2, 3)
                                       )
                                       
-                                      # Calculate sensitivity and K transformation
-                                      sensitivity <- 3^parameters$drift_con - 1
-                                      scaled_urgency <- parameters$urgency * sensitivity
-                                      scaled_wswd_plus <- (parameters$ws + parameters$wd) * sensitivity
-                                      scaled_wswd_minus <- (parameters$ws - parameters$wd) * sensitivity
-                                      scaled_betaF <- parameters$betaF * sensitivity
-                                      scaled_betaP <- parameters$betaP * sensitivity
+                                      # Calculate
+                                      wswd_plus <- (parameters$ws + parameters$wd)
+                                      wswd_minus <- (parameters$ws - parameters$wd)
                                       K_tr <- 3^parameters$K - 1
                                       
                                       for (t in 1:n_trials) {
@@ -229,15 +220,15 @@ igtORLARDB1P2Model <- R6::R6Class("igtORLARDB1P2Model",
                                             for (j in 1:3) {
                                               other_deck_idx <- other_indices[[i]][j]
                                               # Combined value for deck i
-                                              combined_value_i <- ev[i] + ef[i] * scaled_betaF + pers[i] * scaled_betaP
+                                              combined_value_i <- ev[i] + ef[i] * parameters$betaF + pers[i] * parameters$betaP
                                               # Combined value for other deck
                                               combined_value_other <- ev[other_deck_idx] + 
-                                                ef[other_deck_idx] * scaled_betaF + 
-                                                pers[other_deck_idx] * scaled_betaP
+                                                ef[other_deck_idx] * parameters$betaF + 
+                                                pers[other_deck_idx] * parameters$betaP
                                               
-                                              drift_rates[k] <- scaled_urgency + 
-                                                scaled_wswd_plus * combined_value_i + 
-                                                scaled_wswd_minus * combined_value_other
+                                              drift_rates[k] <- parameters$urgency + 
+                                                wswd_plus * combined_value_i + 
+                                                wswd_minus * combined_value_other
                                               k <- k + 1
                                             }
                                           }

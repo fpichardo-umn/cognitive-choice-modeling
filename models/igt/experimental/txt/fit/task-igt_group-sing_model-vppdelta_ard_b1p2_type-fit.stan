@@ -73,7 +73,7 @@ functions {
   real igt_ard_model(
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
       vector ev, vector pers, int T,
-      real sensitivity, real update, real gain, real loss,
+      real update, real gain, real loss,
       real epP, real epN, real K, real w,
       vector boundaries, vector taus, real urgency, real wd, real ws,
       array[,] int win_indices_all,
@@ -84,9 +84,8 @@ functions {
     vector[4] local_pers = pers;
     real log_lik = 0.0;
 
-    real scaled_urgency = urgency * sensitivity;
-    real scaled_wswd_plus = (ws + wd) * sensitivity;
-    real scaled_wswd_minus = (ws - wd) * sensitivity;
+    real wswd_plus = (ws + wd);
+    real wswd_minus = (ws - wd);
 
     for (t in 1:T) {
       vector[12] drift_rates;
@@ -99,9 +98,9 @@ functions {
           // Combined value for other deck
           real combined_value_other = w * local_ev[other_deck_idx] + (1 - w) * local_pers[other_deck_idx];
           
-          drift_rates[k] = scaled_urgency +
-                           scaled_wswd_plus * combined_value_i +
-                           scaled_wswd_minus * combined_value_other;
+          drift_rates[k] = urgency +
+                           wswd_plus * combined_value_i +
+                           wswd_minus * combined_value_other;
           k += 1;
         }
       }
@@ -176,7 +175,7 @@ parameters {
   real urgency_pr;
   real wd_pr;
   real ws_pr;
-  real drift_con_pr;
+
   real update_pr;
   real gain_pr;
   real loss_pr;
@@ -195,7 +194,7 @@ transformed parameters {
   real<lower=0.001, upper=20> urgency;
   real<lower=0.001, upper=10> wd;
   real<lower=0.001, upper=10> ws;
-  real<lower=0, upper=5> drift_con;
+
   real<lower=0, upper=1> update;
   real<lower=0, upper=1> gain;
   real<lower=0, upper=10> loss;
@@ -214,7 +213,6 @@ transformed parameters {
   wd = inv_logit(wd_pr) * 9.999 + 0.001;
   ws = inv_logit(ws_pr) * 9.999 + 0.001;
 
-  drift_con = inv_logit(drift_con_pr) * 5;
   update    = inv_logit(update_pr);
   gain      = inv_logit(gain_pr);
   loss      = inv_logit(loss_pr) * 10;
@@ -233,7 +231,7 @@ model {
   urgency_pr ~ normal(0, 1);
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
+
   update_pr ~ normal(0, 1);
   gain_pr ~ normal(0, 1);
   loss_pr ~ normal(0, 1);
@@ -259,11 +257,10 @@ model {
   // Likelihood with VPP learning
   vector[4] ev = rep_vector(0.0, 4);
   vector[4] pers = rep_vector(0.0, 4);
-  real sensitivity = pow(3, drift_con) - 1;
   
   target += igt_ard_model(choice, wins, losses, RT,
                        ev, pers, T,
-                       sensitivity, update, gain, loss,
+                       update, gain, loss,
                        epP, epN, K, w,
                        boundary_vec, tau_vec, urgency, wd, ws,
                        win_indices_all, lose_indices_all, other_indices);

@@ -73,7 +73,7 @@ functions {
   real igt_ard_model(
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
       vector ev_init, int T,
-      real sensitivity, real update, real loss, real gain,
+      real update, real loss, real gain,
       vector boundaries, vector taus, real urgency, real wd, real ws,
       array[,] int win_indices_all,
       array[,] int lose_indices_all,
@@ -82,17 +82,16 @@ functions {
     vector[4] local_ev = ev_init;
     real log_lik = 0.0;
 
-    real scaled_urgency = urgency * sensitivity;
-    real scaled_wswd_plus = (ws + wd) * sensitivity;
-    real scaled_wswd_minus = (ws - wd) * sensitivity;
+    real wswd_plus = (ws + wd);
+    real wswd_minus = (ws - wd);
 
     for (t in 1:T) {
       vector[12] drift_rates;
       int k = 1;
       for (i in 1:4) {
-        drift_rates[k:k+2] = scaled_urgency +
-                             scaled_wswd_plus * local_ev[i] +
-                             scaled_wswd_minus * local_ev[other_indices[i]];
+        drift_rates[k:k+2] = urgency +
+                             wswd_plus * local_ev[i] +
+                             wswd_minus * local_ev[other_indices[i]];
         k += 3;
       }
 
@@ -153,7 +152,7 @@ parameters {
   real urgency_pr;
   real wd_pr;
   real ws_pr;
-  real drift_con_pr;
+
   real loss_pr;
   real gain_pr;
   real update_pr;
@@ -168,7 +167,7 @@ transformed parameters {
   real<lower=0.001, upper=20> urgency;
   real<lower=0.001, upper=10> wd;
   real<lower=0.001, upper=10> ws;
-  real<lower=0, upper=5> drift_con;
+
   real<lower=0, upper=10> loss;
   real<lower=0, upper=2> gain;
   real<lower=0, upper=1> update;
@@ -183,7 +182,6 @@ transformed parameters {
   wd = inv_logit(wd_pr) * 9.999 + 0.001;
   ws = inv_logit(ws_pr) * 9.999 + 0.001;
 
-  drift_con = inv_logit(drift_con_pr) * 5;
   loss      = inv_logit(loss_pr) * 10;
   gain      = inv_logit(gain_pr) * 2;
   update    = inv_logit(update_pr);
@@ -198,7 +196,7 @@ model {
   urgency_pr ~ normal(0, 1);
   wd_pr ~ normal(0, 1);
   ws_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
+
   loss_pr ~ normal(0, 1);
   gain_pr ~ normal(0, 1);
   update_pr ~ normal(0, 1);
@@ -219,11 +217,10 @@ model {
   
   // Likelihood with EV learning
   vector[4] ev_init = rep_vector(0.0, 4);
-  real sensitivity = pow(3, drift_con) - 1;
   
   target += igt_ard_model(choice, wins, losses, RT,
                        ev_init, T,
-                       sensitivity, update, loss, gain,
+                       update, loss, gain,
                        boundary_vec, tau_vec, urgency, wd, ws,
                        win_indices_all, lose_indices_all, other_indices);
 }
