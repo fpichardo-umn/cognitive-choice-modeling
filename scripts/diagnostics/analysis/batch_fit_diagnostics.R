@@ -101,11 +101,17 @@ aggregate_batch_diagnostics <- function(subject_summaries, thresholds) {
   })
   rhat_values <- rhat_values[!is.na(rhat_values)]
   
-  # ESS statistics
-  ess_values <- sapply(valid_summaries, function(x) {
-    if (!is.null(x$min_ess_ratio)) x$min_ess_ratio else NA_real_
+  # ESS_bulk statistics
+  ess_bulk_values <- sapply(valid_summaries, function(x) {
+    if (!is.null(x$min_ess_bulk)) x$min_ess_bulk else NA_real_
   })
-  ess_values <- ess_values[!is.na(ess_values)]
+  ess_bulk_values <- ess_bulk_values[!is.na(ess_bulk_values)]
+  
+  # ESS_tail statistics
+  ess_tail_values <- sapply(valid_summaries, function(x) {
+    if (!is.null(x$min_ess_tail)) x$min_ess_tail else NA_real_
+  })
+  ess_tail_values <- ess_tail_values[!is.na(ess_tail_values)]
   
   # Divergence statistics
   div_rates <- sapply(valid_summaries, function(x) {
@@ -151,16 +157,28 @@ aggregate_batch_diagnostics <- function(subject_summaries, thresholds) {
       pct_problematic = sum(rhat_values > thresholds$thresholds$rhat$problematic, na.rm = TRUE) / length(rhat_values) * 100
     ),
     
-    ess = list(
-      min = min(ess_values, na.rm = TRUE),
-      max = max(ess_values, na.rm = TRUE),
-      median = median(ess_values, na.rm = TRUE),
-      mean = mean(ess_values, na.rm = TRUE),
-      q10 = quantile(ess_values, 0.10, na.rm = TRUE),
-      q25 = quantile(ess_values, 0.25, na.rm = TRUE),
-      q75 = quantile(ess_values, 0.75, na.rm = TRUE),
-      n_problematic = sum(ess_values < thresholds$thresholds$ess_ratio$problematic, na.rm = TRUE),
-      pct_problematic = sum(ess_values < thresholds$thresholds$ess_ratio$problematic, na.rm = TRUE) / length(ess_values) * 100
+    ess_bulk = list(
+      min = min(ess_bulk_values, na.rm = TRUE),
+      max = max(ess_bulk_values, na.rm = TRUE),
+      median = median(ess_bulk_values, na.rm = TRUE),
+      mean = mean(ess_bulk_values, na.rm = TRUE),
+      q10 = quantile(ess_bulk_values, 0.10, na.rm = TRUE),
+      q25 = quantile(ess_bulk_values, 0.25, na.rm = TRUE),
+      q75 = quantile(ess_bulk_values, 0.75, na.rm = TRUE),
+      n_critical = sum(ess_bulk_values < thresholds$thresholds$ess_bulk$critical, na.rm = TRUE),
+      pct_critical = sum(ess_bulk_values < thresholds$thresholds$ess_bulk$critical, na.rm = TRUE) / length(ess_bulk_values) * 100
+    ),
+    
+    ess_tail = list(
+      min = min(ess_tail_values, na.rm = TRUE),
+      max = max(ess_tail_values, na.rm = TRUE),
+      median = median(ess_tail_values, na.rm = TRUE),
+      mean = mean(ess_tail_values, na.rm = TRUE),
+      q10 = quantile(ess_tail_values, 0.10, na.rm = TRUE),
+      q25 = quantile(ess_tail_values, 0.25, na.rm = TRUE),
+      q75 = quantile(ess_tail_values, 0.75, na.rm = TRUE),
+      n_critical = sum(ess_tail_values < thresholds$thresholds$ess_tail$critical, na.rm = TRUE),
+      pct_critical = sum(ess_tail_values < thresholds$thresholds$ess_tail$critical, na.rm = TRUE) / length(ess_tail_values) * 100
     ),
     
     divergences = list(
@@ -216,18 +234,21 @@ aggregate_parameter_diagnostics <- function(subject_analyses) {
   
   # Initialize aggregation matrices
   rhat_matrix <- matrix(NA_real_, nrow = n_subjects, ncol = n_params)
-  ess_matrix <- matrix(NA_real_, nrow = n_subjects, ncol = n_params)
+  ess_bulk_matrix <- matrix(NA_real_, nrow = n_subjects, ncol = n_params)
+  ess_tail_matrix <- matrix(NA_real_, nrow = n_subjects, ncol = n_params)
   mcse_matrix <- matrix(NA_real_, nrow = n_subjects, ncol = n_params)
   
   colnames(rhat_matrix) <- all_params
-  colnames(ess_matrix) <- all_params
+  colnames(ess_bulk_matrix) <- all_params
+  colnames(ess_tail_matrix) <- all_params
   colnames(mcse_matrix) <- all_params
   
   # Fill matrices
   for (i in seq_along(valid_analyses)) {
     param_df <- valid_analyses[[i]]$parameters
     rhat_matrix[i, ] <- param_df$rhat
-    ess_matrix[i, ] <- param_df$ess_bulk_ratio
+    ess_bulk_matrix[i, ] <- param_df$ess_bulk  # Use absolute counts
+    ess_tail_matrix[i, ] <- param_df$ess_tail  # Use absolute counts
     mcse_matrix[i, ] <- param_df$mcse_ratio
   }
   
@@ -238,10 +259,14 @@ aggregate_parameter_diagnostics <- function(subject_analyses) {
     rhat_median = apply(rhat_matrix, 2, median, na.rm = TRUE),
     rhat_max = apply(rhat_matrix, 2, max, na.rm = TRUE),
     rhat_n_problematic = colSums(rhat_matrix > 1.1, na.rm = TRUE),
-    ess_mean = colMeans(ess_matrix, na.rm = TRUE),
-    ess_median = apply(ess_matrix, 2, median, na.rm = TRUE),
-    ess_min = apply(ess_matrix, 2, min, na.rm = TRUE),
-    ess_n_problematic = colSums(ess_matrix < 0.3, na.rm = TRUE),
+    ess_bulk_mean = colMeans(ess_bulk_matrix, na.rm = TRUE),
+    ess_bulk_median = apply(ess_bulk_matrix, 2, median, na.rm = TRUE),
+    ess_bulk_min = apply(ess_bulk_matrix, 2, min, na.rm = TRUE),
+    ess_bulk_n_critical = colSums(ess_bulk_matrix < 100, na.rm = TRUE),
+    ess_tail_mean = colMeans(ess_tail_matrix, na.rm = TRUE),
+    ess_tail_median = apply(ess_tail_matrix, 2, median, na.rm = TRUE),
+    ess_tail_min = apply(ess_tail_matrix, 2, min, na.rm = TRUE),
+    ess_tail_n_critical = colSums(ess_tail_matrix < 100, na.rm = TRUE),
     mcse_mean = colMeans(mcse_matrix, na.rm = TRUE),
     mcse_median = apply(mcse_matrix, 2, median, na.rm = TRUE),
     mcse_max = apply(mcse_matrix, 2, max, na.rm = TRUE),
@@ -252,7 +277,8 @@ aggregate_parameter_diagnostics <- function(subject_analyses) {
   # Identify consistently problematic parameters
   param_summary$is_problematic <- (
     param_summary$rhat_n_problematic > n_subjects * 0.1 |
-    param_summary$ess_n_problematic > n_subjects * 0.1 |
+    param_summary$ess_bulk_n_critical > n_subjects * 0.1 |
+    param_summary$ess_tail_n_critical > n_subjects * 0.1 |
     param_summary$mcse_n_problematic > n_subjects * 0.1
   )
   
@@ -282,8 +308,10 @@ identify_problematic_subjects_batch <- function(subject_summaries, thresholds, n
     status = sapply(valid_summaries, function(x) x$status),
     worst_rhat = sapply(valid_summaries, function(x) x$worst_rhat %||% NA_real_),
     median_rhat = sapply(valid_summaries, function(x) x$median_rhat %||% NA_real_),
-    min_ess_ratio = sapply(valid_summaries, function(x) x$min_ess_ratio %||% NA_real_),
-    median_ess_ratio = sapply(valid_summaries, function(x) x$median_ess_ratio %||% NA_real_),
+    min_ess_bulk = sapply(valid_summaries, function(x) x$min_ess_bulk %||% NA_real_),
+    min_ess_tail = sapply(valid_summaries, function(x) x$min_ess_tail %||% NA_real_),
+    min_ess_bulk_ratio = sapply(valid_summaries, function(x) x$min_ess_bulk_ratio %||% NA_real_),
+    min_ess_tail_ratio = sapply(valid_summaries, function(x) x$min_ess_tail_ratio %||% NA_real_),
     divergence_count = sapply(valid_summaries, function(x) x$divergence_count %||% 0),
     divergence_rate = sapply(valid_summaries, function(x) x$divergence_rate %||% 0),
     worst_mcse_ratio = sapply(valid_summaries, function(x) x$worst_mcse_ratio %||% NA_real_),
@@ -316,18 +344,22 @@ identify_problematic_subjects_batch <- function(subject_summaries, thresholds, n
 #' @param aggregate Aggregated batch diagnostics
 #' @return Character string: "PASS", "WARN", or "FAIL"
 determine_batch_status <- function(aggregate) {
+  # Handle missing percentages
+  pct_fail <- aggregate$status$pct_fail %||% 0
+  pct_warn <- aggregate$status$pct_warn %||% 0
+  
   # If more than 20% failed, batch fails
-  if (aggregate$status$pct_fail > 20) {
+  if (!is.na(pct_fail) && pct_fail > 20) {
     return("FAIL")
   }
   
   # If more than 50% have warnings or failures, batch fails
-  if ((aggregate$status$pct_warn + aggregate$status$pct_fail) > 50) {
+  if (!is.na(pct_fail) && !is.na(pct_warn) && (pct_warn + pct_fail) > 50) {
     return("FAIL")
   }
   
   # If more than 10% failed or more than 30% warned, batch warns
-  if (aggregate$status$pct_fail > 10 || aggregate$status$pct_warn > 30) {
+  if ((!is.na(pct_fail) && pct_fail > 10) || (!is.na(pct_warn) && pct_warn > 30)) {
     return("WARN")
   }
   
@@ -378,11 +410,20 @@ create_batch_recommendations <- function(batch_analysis) {
                         "  Consider increasing adapt_delta or reparameterizing model.")
   }
   
-  if (agg$ess$pct_problematic > 10) {
+  if (!is.null(agg$ess_bulk) && !is.null(agg$ess_bulk$pct_critical) && 
+      !is.na(agg$ess_bulk$pct_critical) && agg$ess_bulk$pct_critical > 10) {
     recommendations <- c(recommendations,
-                        sprintf("• %.1f%% of subjects have low effective sample sizes.",
-                               agg$ess$pct_problematic),
-                        "  Consider running more iterations.")
+                        sprintf("• %.1f%% of subjects have critically low ESS_bulk (<100).",
+                               agg$ess_bulk$pct_critical),
+                        "  Run more iterations for reliable estimates.")
+  }
+  
+  if (!is.null(agg$ess_tail) && !is.null(agg$ess_tail$pct_critical) && 
+      !is.na(agg$ess_tail$pct_critical) && agg$ess_tail$pct_critical > 10) {
+    recommendations <- c(recommendations,
+                        sprintf("• %.1f%% of subjects have critically low ESS_tail (<100).",
+                               agg$ess_tail$pct_critical),
+                        "  Run more iterations for reliable quantile estimates.")
   }
   
   # Parameter-specific recommendations
