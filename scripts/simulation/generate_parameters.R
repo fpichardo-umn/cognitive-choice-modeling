@@ -102,8 +102,11 @@ if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")) {
   
   model_fit <- tryCatch({
     fit <- readRDS(fit_file)
-    if (grepl("batch", opt$group)) {
+    # Detect batch files by checking if "batch" is in the fit_file path
+    # This handles the case where GROUP_TYPE="sing" but the file is actually a batch file
+    if (grepl("batch", fit_file) || grepl("batch", opt$group)) {
       fit$subjects <- names(fit)
+      cat("Detected batch fit file. Added subjects field to fit object.\n")
     }
     fit
   }, error = function(e) {

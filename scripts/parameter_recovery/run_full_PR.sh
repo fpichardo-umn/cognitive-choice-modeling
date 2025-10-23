@@ -313,6 +313,51 @@ fi
 # Construct full model name: task_grouptype_model
 FULL_MODEL_NAME="${TASK}_${GROUP_TYPE}_${MODEL}"
 
+# Function to find the latest batch file for sing (batch) fits
+find_latest_batch_file() {
+    local task=$1
+    local source=$2
+    local session=$3
+    local model=$4
+    local type=${5:-"fit"}
+    
+    # Construct the search directory
+    local fit_dir="Data/safe/${source}"
+    if [ ! -z "$session" ]; then
+        fit_dir="${fit_dir}/ses-${session}"
+    fi
+    fit_dir="${fit_dir}/fits/${type}/${task}/canonical/${model}"
+    
+    # Check if directory exists
+    if [ ! -d "$fit_dir" ]; then
+        echo ""
+        return
+    fi
+    
+    # Construct pattern for batch files
+    local ses_part=""
+    if [ ! -z "$session" ]; then
+        ses_part="ses-${session}_"
+    fi
+    local pattern="task-${task}_cohort-${source}_${ses_part}group-batch_[0-9][0-9][0-9]_model-${model}_type-${type}_desc-output.rds"
+    
+    # Find all matching files and get the latest one (highest batch number)
+    local latest_file=$(find "$fit_dir" -maxdepth 1 -name "$pattern" 2>/dev/null | sort -V | tail -1)
+    
+    echo "$latest_file"
+}
+
+# For batch mode (sing), find the actual batch file that was created by combine_batch_fits.R
+BATCH_FIT_FILE=""
+if [ "$FIT_APPROACH" == "batch" ]; then
+    BATCH_FIT_FILE=$(find_latest_batch_file "$TASK" "$SOURCE" "$SESSION" "$MODEL" "fit")
+    if [ -z "$BATCH_FIT_FILE" ]; then
+        echo "Warning: No batch fit file found. Parameter generation may fail if using empirical methods (mbSPSepse, etc.)."
+    else
+        echo "Found batch fit file for parameter generation: $BATCH_FIT_FILE"
+    fi
+fi
+
 # Define file paths based on naming conventions
 PARAM_FILE="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-${N_SUBJECTS_PR}.rds"
 PARAM_GLOB="Outputs/${TASK}/simulation/parameters/task-${TASK}_cohort-${SOURCE}${SESSION_STRING}_group-${GROUP_TYPE}_model-${MODEL}_type-params_desc-${METHOD}_n-*.rds"
@@ -436,7 +481,11 @@ print_genparams_options() {
     echo "    n_subjects = $N_SUBJECTS_PR,"
     echo "    method = '$METHOD',"
     echo "    output_dir = NULL,"
-    echo "    fit_file = NULL,"
+    if [ "$FIT_APPROACH" == "batch" ] && [ ! -z "$BATCH_FIT_FILE" ]; then
+        echo "    fit_file = '$BATCH_FIT_FILE',  # Batch fit file"
+    else
+        echo "    fit_file = NULL,"
+    fi
     echo "    params = NULL,"
     echo "    seed = $SEED,"
     echo "    config = NULL,"
@@ -449,6 +498,9 @@ print_genparams_options() {
     echo ""
     echo "Full model name: $FULL_MODEL_NAME"
     echo "Output file: $PARAM_FILE"
+    if [ "$FIT_APPROACH" == "batch" ] && [ ! -z "$BATCH_FIT_FILE" ]; then
+        echo "Batch fit file: $BATCH_FIT_FILE"
+    fi
     echo ""
     echo "Command that would be executed:"
     echo "Rscript scripts/simulation/generate_parameters.R \\"
@@ -462,6 +514,9 @@ print_genparams_options() {
     echo "    --n_subjects $N_SUBJECTS_PR \\"
     echo "    --method $METHOD \\"
     echo "    --seed $SEED \\"
+    if [ "$FIT_APPROACH" == "batch" ] && [ ! -z "$BATCH_FIT_FILE" ]; then
+        echo "    --fit_file $BATCH_FIT_FILE \\"
+    fi
     if [ ! -z "$EXCLUDE_FILE" ]; then
         echo "    --exclude_file $EXCLUDE_FILE"
     fi
@@ -695,6 +750,10 @@ run_pr_genparams() {
         "--method $METHOD"
         "--seed $SEED"
     )
+    # For batch fits, pass the actual batch file path
+    if [ "$FIT_APPROACH" == "batch" ] && [ ! -z "$BATCH_FIT_FILE" ]; then
+        CMD_ARGS+=("--fit_file $BATCH_FIT_FILE")
+    fi
     if [ ! -z "$EXCLUDE_FILE" ]; then
         CMD_ARGS+=("--exclude_file $EXCLUDE_FILE")
     fi
