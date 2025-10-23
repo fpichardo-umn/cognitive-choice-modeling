@@ -46,7 +46,7 @@ opt <- list(
   dry_run = FALSE,
   check_iter = 20000,
   init = FALSE,
-  min_valid_rt_pct = 0.8,
+  min_valid_rt_pct = 0.7,
   subid = "9104700"#"1002"#"9104700"
 )
 

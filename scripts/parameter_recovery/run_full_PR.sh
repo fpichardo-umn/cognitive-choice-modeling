@@ -323,7 +323,7 @@ find_latest_batch_file() {
     local ses_part=""
     [ -n "$session" ] && ses_part="ses-${session}_"
 
-    local latest_file=$(find "$fit_dir" -maxdepth 1 -regex ".*/task-${task}_cohort-${source}_${ses_part}group-batch_[0-9][0-9][0-9]_model-${model}_type-${type}_desc-output\.rds" 2>/dev/null | sort -V | tail -1)
+    local latest_file=$(find "$fit_dir" -maxdepth 1 -regex ".*task-${task}_cohort-${source}_${ses_part}group-batch_[0-9][0-9][0-9]_model-${model}_type-${type}_desc-output\.rds" 2>/dev/null | sort -V | tail -1)
 
     echo "$latest_file"
 }
