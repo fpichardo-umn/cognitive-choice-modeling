@@ -93,6 +93,11 @@ if [ "$GROUP_TYPE" != "sing" ] && [ "$GROUP_TYPE" != "group" ] && [ "$GROUP_TYPE
   print_usage
 fi
 
+# For batch mode (sing), individual fitting is required
+if [ "$GROUP_TYPE" == "sing" ]; then
+   NO_INDIV=false
+fi
+
 # --- Set up Directories and Paths ---
 SUBMIT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 SCRIPT_DIR="${SUBMIT_DIR}/.."
