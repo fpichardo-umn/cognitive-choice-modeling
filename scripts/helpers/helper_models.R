@@ -737,6 +737,20 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_vppdelta_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta, param_sets$vpp_base), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_vppdecay_ard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_decay, param_sets$vpp_base), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_orl_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
