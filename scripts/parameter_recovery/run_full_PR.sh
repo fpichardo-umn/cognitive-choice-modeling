@@ -321,12 +321,11 @@ find_latest_batch_file() {
     local model=$4
     local type=${5:-"fit"}
     
-    # Construct the search directory
-    local fit_dir="Data/safe/${source}"
+    # Construct the search directory - matches where combine_batch_fits.R saves files
+    local fit_dir="Outputs/${task}/fits/${type}/${source}"
     if [ ! -z "$session" ]; then
         fit_dir="${fit_dir}/ses-${session}"
     fi
-    fit_dir="${fit_dir}/fits/${type}/${task}/canonical/${model}"
     
     # Check if directory exists
     if [ ! -d "$fit_dir" ]; then
