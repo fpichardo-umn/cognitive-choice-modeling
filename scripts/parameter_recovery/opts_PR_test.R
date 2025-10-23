@@ -1,4 +1,4 @@
-opt_model = "orl_rd_b1p2"
+opt_model = "vse_ard_b1p2"
 # =======
 #opt_model = "orl"
 
@@ -6,7 +6,7 @@ opt_task = "igt"
 opt_cohort = "adb"
 opt_session = "00"
 opt_nsubs = 50#182#92
-opt_group = "hier"
+opt_group = "sing"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 opt_n_trials = 80
@@ -46,8 +46,8 @@ opt <- list(
   dry_run = FALSE,
   check_iter = 20000,
   init = FALSE,
-  min_valid_rt_pct = 0.8#,
-  #subid = "1002"#"9104700"
+  min_valid_rt_pct = 0.8,
+  subid = "9104700"#"1002"#"9104700"
 )
 
 # Gen Params
