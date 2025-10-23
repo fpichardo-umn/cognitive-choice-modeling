@@ -1,0 +1,378 @@
+---
+title: "MCMC Diagnostics Report - Batch Fit"
+subtitle: "{{MODEL}} - {{TASK}} - {{COHORT}} ({{N_SUBJECTS}} subjects)"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(knitr)
+  library(here)
+})
+
+# Source helper functions
+source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_helpers.R"))
+
+# Load diagnostic results
+diagnostic_results <- readRDS("{{DIAGNOSTIC_FILE}}")
+
+# Load thresholds
+thresholds <- load_diagnostic_thresholds()
+```
+
+---
+
+# Executive Summary
+
+## Overall Status
+
+```{r overall-status, results='asis'}
+status <- diagnostic_results$overall_status
+cat(format_status_badge(status))
+```
+
+## Model Information
+
+```{r model-info}
+info_df <- data.frame(
+  Item = c("Task", "Cohort", "Model", "Total Subjects", "Valid Subjects", "Failed Analyses"),
+  Value = c(
+    "{{TASK}}",
+    "{{COHORT}}",
+    "{{MODEL}}",
+    as.character(diagnostic_results$n_subjects),
+    as.character(diagnostic_results$aggregate$n_valid),
+    as.character(diagnostic_results$aggregate$n_errors)
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(info_df, col.names = NULL)
+```
+
+## Quick Summary
+
+```{r quick-summary}
+agg <- diagnostic_results$aggregate
+
+summary_df <- data.frame(
+  Metric = c("Subjects PASS", "Subjects WARN", "Subjects FAIL", "Overall Status"),
+  Value = c(
+    sprintf("%d (%.1f%%)", agg$status$pass, agg$status$pct_pass),
+    sprintf("%d (%.1f%%)", agg$status$warn, agg$status$pct_warn),
+    sprintf("%d (%.1f%%)", agg$status$fail, agg$status$pct_fail),
+    diagnostic_results$overall_status
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(summary_df, col.names = c("", ""))
+```
+
+**Bottom Line:** `r if(diagnostic_results$overall_status == "PASS") "✓ Batch diagnostics look good. Most subjects have converged successfully." else if(diagnostic_results$overall_status == "WARN") "⚠ Some subjects have diagnostic warnings. Review problematic subjects below." else "✗ Significant diagnostic issues across batch. Many subjects have convergence problems."`
+
+---
+
+# Aggregate Statistics
+
+## R-hat Distribution Across Subjects
+
+**Interpretation:** Each subject fit independently. These statistics show the *worst* R-hat value for each subject.
+
+```{r rhat-stats}
+agg <- diagnostic_results$aggregate
+
+cat(sprintf("- **Best (minimum)**: %.4f\n", agg$rhat$min))
+cat(sprintf("- **Worst (maximum)**: %.4f\n", agg$rhat$max))
+cat(sprintf("- **Median**: %.4f\n", agg$rhat$median))
+cat(sprintf("- **Mean**: %.4f\n", agg$rhat$mean))
+cat(sprintf("- **75th percentile**: %.4f\n", agg$rhat$q75))
+cat(sprintf("- **90th percentile**: %.4f\n\n", agg$rhat$q90))
+
+cat(sprintf("**Subjects with R-hat > %.2f**: %d (%.1f%%)\n\n", 
+            thresholds$thresholds$rhat$problematic, 
+            agg$rhat$n_problematic, 
+            agg$rhat$pct_problematic))
+
+if (agg$rhat$pct_problematic > 10) {
+  cat("⚠ **Warning**: More than 10% of subjects have high R-hat values.\n")
+}
+```
+
+## ESS Distribution Across Subjects
+
+**Interpretation:** Effective Sample Size measures the number of *independent* samples. These show the *minimum* ESS for each subject.
+
+```{r ess-stats}
+cat("### ESS Bulk (Center of Distribution)\n\n")
+cat(sprintf("- **Worst (minimum)**: %.0f\n", agg$ess_bulk$min))
+cat(sprintf("- **Median**: %.0f\n", agg$ess_bulk$median))
+cat(sprintf("- **Mean**: %.0f\n", agg$ess_bulk$mean))
+cat(sprintf("- **25th percentile**: %.0f\n", agg$ess_bulk$q25))
+cat(sprintf("- **75th percentile**: %.0f\n\n", agg$ess_bulk$q75))
+
+cat(sprintf("**Subjects with ESS_bulk < %d**: %d (%.1f%%)\n\n",
+            thresholds$thresholds$ess_bulk$critical,
+            agg$ess_bulk$n_critical,
+            agg$ess_bulk$pct_critical))
+
+cat("### ESS Tail (Quantiles/Extremes)\n\n")
+cat(sprintf("- **Worst (minimum)**: %.0f\n", agg$ess_tail$min))
+cat(sprintf("- **Median**: %.0f\n", agg$ess_tail$median))
+cat(sprintf("- **Mean**: %.0f\n", agg$ess_tail$mean))
+cat(sprintf("- **25th percentile**: %.0f\n", agg$ess_tail$q25))
+cat(sprintf("- **75th percentile**: %.0f\n\n", agg$ess_tail$q75))
+
+cat(sprintf("**Subjects with ESS_tail < %d**: %d (%.1f%%)\n\n",
+            thresholds$thresholds$ess_tail$critical,
+            agg$ess_tail$n_critical,
+            agg$ess_tail$pct_critical))
+
+if (agg$ess_bulk$pct_critical > 10 || agg$ess_tail$pct_critical > 10) {
+  cat("⚠ **Warning**: More than 10% of subjects have critically low ESS. Run more iterations.\n")
+}
+```
+
+## Divergences
+
+```{r divergence-stats}
+div <- agg$divergences
+
+cat(sprintf("- **Subjects with divergences**: %d (%.1f%%)\n", 
+            div$n_with_divergences, div$pct_with_divergences))
+cat(sprintf("- **Median divergence rate**: %.4f%%\n", div$median_rate * 100))
+cat(sprintf("- **Maximum divergence rate**: %.4f%%\n", div$max_rate * 100))
+cat(sprintf("- **Subjects with high divergence rate (>%.2f%%)**: %d (%.1f%%)\n\n",
+            thresholds$thresholds$divergence_rate$problematic * 100,
+            div$n_problematic,
+            div$pct_problematic))
+
+if (div$pct_problematic > 5) {
+  cat("⚠ **Action needed**: Many subjects have high divergence rates.\n")
+  cat("- Increase `adapt_delta` to 0.99 or higher\n")
+  cat("- Consider model reparameterization\n")
+}
+```
+
+## Monte Carlo Standard Error
+
+```{r mcse-stats}
+mcse <- agg$mcse
+
+cat(sprintf("- **Median MCSE/SD ratio**: %.4f\n", mcse$median_ratio))
+cat(sprintf("- **90th percentile MCSE/SD ratio**: %.4f\n", mcse$q90))
+cat(sprintf("- **Worst MCSE/SD ratio**: %.4f\n\n", mcse$max_ratio))
+
+cat(sprintf("**Subjects with high MCSE ratio (>%.2f)**: %d (%.1f%%)\n\n",
+            thresholds$thresholds$mcse_ratio$problematic,
+            mcse$n_problematic,
+            mcse$pct_problematic))
+
+if (mcse$pct_problematic > 10) {
+  cat("⚠ **Warning**: High MCSE indicates uncertain estimates. Run more iterations.\n")
+}
+```
+
+```{r ebfmi-stats, eval=!is.null(agg$ebfmi)}
+if (!is.null(agg$ebfmi)) {
+  cat("## Energy Bayesian Fraction of Missing Information (EBFMI)\n\n")
+  
+  cat(sprintf("- **Minimum**: %.3f\n", agg$ebfmi$min))
+  cat(sprintf("- **Median**: %.3f\n", agg$ebfmi$median))
+  cat(sprintf("- **Mean**: %.3f\n\n", agg$ebfmi$mean))
+  
+  cat(sprintf("**Subjects with low EBFMI (<%.2f)**: %d (%.1f%%)\n\n",
+              thresholds$thresholds$ebfmi$acceptable,
+              agg$ebfmi$n_problematic,
+              agg$ebfmi$pct_problematic))
+  
+  if (agg$ebfmi$pct_problematic > 10) {
+    cat("⚠ **Warning**: Low EBFMI suggests funnel geometry. Consider non-centered parameterization.\n")
+  }
+}
+```
+
+---
+
+# Problematic Subjects
+
+These subjects have the most severe diagnostic issues:
+
+```{r worst-subjects}
+worst <- diagnostic_results$problematic_subjects$worst
+
+if (nrow(worst) > 0) {
+  display_df <- worst %>%
+    select(subject_id, status, worst_rhat, min_ess_bulk, min_ess_tail, divergence_count, problem_score) %>%
+    mutate(
+      worst_rhat = sprintf("%.4f", worst_rhat),
+      min_ess_bulk = sprintf("%.0f", min_ess_bulk),
+      min_ess_tail = sprintf("%.0f", min_ess_tail),
+      divergence_count = as.integer(divergence_count),
+      problem_score = sprintf("%.1f", problem_score)
+    )
+  
+  kable(display_df, row.names = FALSE,
+        col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Bulk", "Min ESS Tail", "Divergences", "Problem Score"))
+} else {
+  cat("✓ **All subjects passed diagnostics!**\n")
+}
+```
+
+---
+
+# Parameter-Level Analysis
+
+**Interpretation:** These statistics aggregate each parameter *across all subjects*. This identifies which parameters are consistently problematic.
+
+```{r param-analysis, eval=!is.null(diagnostic_results$parameter_summary)}
+if (!is.null(diagnostic_results$parameter_summary)) {
+  param_sum <- diagnostic_results$parameter_summary$summary
+  
+  if (diagnostic_results$parameter_summary$n_problematic_params > 0) {
+    cat(sprintf("**Consistently problematic parameters**: %d\n\n", 
+                diagnostic_results$parameter_summary$n_problematic_params))
+    
+    prob_params <- param_sum[param_sum$is_problematic, ]
+    
+    display_params <- prob_params %>%
+      select(parameter, rhat_max, ess_bulk_min, ess_tail_min, rhat_n_problematic, 
+             ess_bulk_n_critical, ess_tail_n_critical) %>%
+      mutate(
+        rhat_max = sprintf("%.4f", rhat_max),
+        ess_bulk_min = sprintf("%.0f", ess_bulk_min),
+        ess_tail_min = sprintf("%.0f", ess_tail_min),
+        pct_rhat_prob = sprintf("%.0f%%", rhat_n_problematic / diagnostic_results$aggregate$n_valid * 100),
+        pct_ess_bulk_prob = sprintf("%.0f%%", ess_bulk_n_critical / diagnostic_results$aggregate$n_valid * 100),
+        pct_ess_tail_prob = sprintf("%.0f%%", ess_tail_n_critical / diagnostic_results$aggregate$n_valid * 100)
+      ) %>%
+      select(parameter, rhat_max, pct_rhat_prob, ess_bulk_min, pct_ess_bulk_prob, ess_tail_min, pct_ess_tail_prob)
+    
+    kable(head(display_params, 20), row.names = FALSE,
+          col.names = c("Parameter", "Max R-hat", "% High R-hat", "Min ESS Bulk", "% Low ESS Bulk", "Min ESS Tail", "% Low ESS Tail"))
+    
+    cat("\n**What this means**: If a parameter appears here, it had diagnostic issues in >10% of subjects. This suggests the parameter may be difficult to estimate or the model may need adjustment.\n\n")
+  } else {
+    cat("✓ **No consistently problematic parameters**. All parameters converged well across subjects.\n\n")
+  }
+}
+```
+
+---
+
+# All Subjects Summary
+
+```{r all-subjects}
+all_subjects <- diagnostic_results$problematic_subjects$all
+
+# Sort by problem score
+all_subjects <- all_subjects[order(all_subjects$problem_score, decreasing = TRUE), ]
+
+if (nrow(all_subjects) <= 50) {
+  display_df <- all_subjects %>%
+    select(subject_id, status, worst_rhat, min_ess_bulk, min_ess_tail, divergence_count, problem_score) %>%
+    mutate(
+      worst_rhat = sprintf("%.4f", worst_rhat),
+      min_ess_bulk = sprintf("%.0f", ifelse(is.na(min_ess_bulk), 0, min_ess_bulk)),
+      min_ess_tail = sprintf("%.0f", ifelse(is.na(min_ess_tail), 0, min_ess_tail)),
+      divergence_count = as.integer(divergence_count),
+      problem_score = sprintf("%.1f", problem_score)
+    )
+  
+  kable(display_df, row.names = FALSE,
+        col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Bulk", "Min ESS Tail", "Divergences", "Problem Score"))
+} else {
+  cat(sprintf("\n**Table too large (%d subjects).** Showing top 50:\n\n", nrow(all_subjects)))
+  
+  display_df <- head(all_subjects, 50) %>%
+    select(subject_id, status, worst_rhat, min_ess_bulk, min_ess_tail, divergence_count, problem_score) %>%
+    mutate(
+      worst_rhat = sprintf("%.4f", worst_rhat),
+      min_ess_bulk = sprintf("%.0f", ifelse(is.na(min_ess_bulk), 0, min_ess_bulk)),
+      min_ess_tail = sprintf("%.0f", ifelse(is.na(min_ess_tail), 0, min_ess_tail)),
+      divergence_count = as.integer(divergence_count),
+      problem_score = sprintf("%.1f", problem_score)
+    )
+  
+  kable(display_df, row.names = FALSE,
+        col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Bulk", "Min ESS Tail", "Divergences", "Problem Score"))
+  
+  cat(sprintf("\n*Full table with all %d subjects available in CSV export.*\n", nrow(all_subjects)))
+}
+```
+
+---
+
+# Recommendations
+
+```{r recommendations}
+if (!is.null(diagnostic_results$recommendations)) {
+  for (i in seq_along(diagnostic_results$recommendations)) {
+    cat(sprintf("%d. %s\n", i, diagnostic_results$recommendations[i]))
+  }
+} else {
+  cat("No specific recommendations.\n")
+}
+```
+
+---
+
+# Technical Details
+
+## Batch Structure
+
+```{r batch-info}
+cat(sprintf("- **Fit type**: Batch (independent subject fits)\n"))
+cat(sprintf("- **Total subjects**: %d\n", diagnostic_results$n_subjects))
+cat(sprintf("- **Valid analyses**: %d\n", diagnostic_results$aggregate$n_valid))
+cat(sprintf("- **Failed analyses**: %d\n\n", diagnostic_results$aggregate$n_errors))
+
+if (diagnostic_results$aggregate$n_errors > 0) {
+  cat("⚠ **Note**: Some subjects failed analysis. Check logs for details.\n")
+}
+```
+
+## Status Distribution
+
+```{r status-breakdown}
+status_df <- data.frame(
+  Status = c("PASS", "WARN", "FAIL"),
+  Count = c(
+    diagnostic_results$aggregate$status$pass,
+    diagnostic_results$aggregate$status$warn,
+    diagnostic_results$aggregate$status$fail
+  ),
+  Percentage = sprintf("%.1f%%", c(
+    diagnostic_results$aggregate$status$pct_pass,
+    diagnostic_results$aggregate$status$pct_warn,
+    diagnostic_results$aggregate$status$pct_fail
+  )),
+  stringsAsFactors = FALSE
+)
+
+kable(status_df)
+```
+
+---
+
+**Report generated:** `r format(Sys.time(), "%Y-%m-%d %H:%M:%S")`
