@@ -74,7 +74,7 @@ if (grepl("batch", opt$group)){
 model_obj <- initialize_model(model_name, task, task_obj, dirs$SIM_DIR, group_type)
 
 # Handle model fit loading for empirical-based methods
-if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")) {
+if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE")) {
   if (is.null(opt$fit_file)) {
     # Try to construct default path using BIDS-inspired filename
     fit_file <- file.path(dirs$DATA_DIR, "fits", "fit", opt$cohort, paste0("ses-", opt$session), 

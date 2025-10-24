@@ -355,6 +355,9 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                }
                              }
                              
+                             # Reset idx
+                             result$idx = seq(length(result$idx))
+                             
                              return(result)
                            },
                            
