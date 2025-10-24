@@ -715,6 +715,16 @@ run_pr_genparams() {
       fi
   fi
     echo "Generating parameters for parameter recovery ($FULL_MODEL_NAME)..."
+    # For batch mode (sing), find the actual batch file that was created by combine_batch_fits.R
+    BATCH_FIT_FILE=""
+    if [ "$FIT_APPROACH" == "batch" ]; then
+        BATCH_FIT_FILE=$(find_latest_batch_file "$TASK" "$SOURCE" "$SESSION" "$MODEL" "fit")
+        if [ -z "$BATCH_FIT_FILE" ]; then
+            echo "Warning: No batch fit file found. Parameter generation may fail if using empirical methods (mbSPSepse, etc.)."
+        else
+            echo "Found batch fit file for parameter generation: $BATCH_FIT_FILE"
+        fi
+    fi
     
     if [ "$DRY_RUN" = true ]; then
         print_genparams_options

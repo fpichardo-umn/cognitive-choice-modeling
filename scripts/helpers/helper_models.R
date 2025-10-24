@@ -774,7 +774,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_orl_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
                        param_sets$orl_igt), 
                      c("con", "drift_con")),
@@ -784,7 +784,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_orlp_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
                        param_sets$orl_igt), 
                      c("con", "drift_con")),
@@ -850,7 +850,7 @@ get_igt_defaults = function() {
   
   models[["igt_group_orl_ard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_hier_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
                        param_sets$orl_igt), 
                      c("con", "drift_con")),
@@ -925,7 +925,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_orl_lard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rd_b1p2, param_sets$orl_base, 
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
                        param_sets$orl_igt), 
                      c("con", "drift_con", "ws")),
@@ -952,6 +952,16 @@ get_igt_defaults = function() {
   models[["igt_sing_pvldelta_pard_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$ard_b1p2, param_sets$pvl_delta), c("con", "drift_con", "ws", "wd")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_orl_pard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$orl_base, 
+                       param_sets$orl_base, param_sets$orl_delta, 
+                       param_sets$orl_igt), 
+                     c("con", "drift_con", "ws", "wd")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
