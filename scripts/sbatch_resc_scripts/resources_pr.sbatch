@@ -42,6 +42,7 @@ METHOD=${METHOD:-"mbSPSepse"}
 SUBS_LIST=${SUBS_LIST:-""}
 NO_INDIV=${NO_INDIV:-true}
 SEED=${SEED:-$SLURM_JOB_ID}
+SIM_CONFIG=${SIM_CONFIG:-"sim"}
 
 # Change to the submit directory
 cd ${SLURM_SUBMIT_DIR}
@@ -101,6 +102,7 @@ CMD_ARGS+=("--check-iter" "$check_iter")
 CMD_ARGS+=("--n-warmup" "$n_warmup")
 CMD_ARGS+=("--fit-config" "$FIT_CONFIG")
 CMD_ARGS+=("--data-config" "$DATA_CONFIG")
+CMD_ARGS+=("--sim-config" "$SIM_CONFIG")
 CMD_ARGS+=("--method" "$METHOD")
 CMD_ARGS+=("--rt_method" "$rt_method")
 CMD_ARGS+=("--rt_min" "$RTbound_min_ms")

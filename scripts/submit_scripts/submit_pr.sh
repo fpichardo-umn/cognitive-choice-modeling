@@ -28,6 +28,7 @@ print_usage() {
   echo ""
   echo "Configuration & PR Options:"
   echo "  -F    Fit config name (default: default)"
+  echo "  -I    Sim fit config name for recovery (default: sim)"
   echo "  -D    Data config name (default: default)"
   echo "  -M    Parameter generation method (default: mbSPSepse)"
   echo "  -f    Subject file in Data/raw/{source}/ses-{ses}/ (default: subject_ids_all.txt)"
@@ -53,12 +54,13 @@ N_SUBJECTS_PR=200
 N_TRIALS=100
 NO_INDIV=true
 FIT_CONFIG="default"
+SIM_CONFIG="sim"
 DATA_CONFIG="default"
 METHOD="mbSPSepse"
 SUBS_FILE="subject_ids_all.txt"
 
 # --- Parse Command Line Arguments ---
-while getopts ":k:m:s:e:g:S:c:F:D:M:f:N:n:T:idh" opt; do
+while getopts ":k:m:s:e:g:S:c:F:I:D:M:f:N:n:T:idh" opt; do
   case $opt in
     k) TASK=$OPTARG ;;
     m) MODEL=$OPTARG ;;
@@ -68,6 +70,7 @@ while getopts ":k:m:s:e:g:S:c:F:D:M:f:N:n:T:idh" opt; do
     S) SESSION=$OPTARG ;;
     c) COMPONENTS=$OPTARG ;;
     F) FIT_CONFIG=$OPTARG ;;
+    I) SIM_CONFIG=$OPTARG ;;
     D) DATA_CONFIG=$OPTARG ;;
     M) METHOD=$OPTARG ;;
     f) SUBS_FILE=$OPTARG ;;
@@ -127,6 +130,7 @@ if $DRY_RUN; then
   echo "Session: $SESSION"
   echo "---"
   echo "Fit config: $FIT_CONFIG"
+  echo "Sim fit config: $SIM_CONFIG"
   echo "Data config: $DATA_CONFIG"
   echo "Fit Subjects: $N_SUBJECTS_FIT"
   echo "PR Method: $METHOD"
@@ -141,7 +145,7 @@ if $DRY_RUN; then
   echo "  --mail-user=$USER_EMAIL \\"
   echo "  --output=\"${LOG_DIR}/${JOB_NAME}_%j.out\" \\"
   echo "  --error=\"${LOG_DIR}/${JOB_NAME}_%j.err\" \\"
-  echo "  --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS_FIT=$N_SUBJECTS_FIT,N_SUBJECTS_PR=$N_SUBJECTS_PR,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \\"
+  echo "  --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS_FIT=$N_SUBJECTS_FIT,N_SUBJECTS_PR=$N_SUBJECTS_PR,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,SIM_CONFIG=$SIM_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \\"
   echo "  $BATCH_SCRIPT"
   echo "====== DRY RUN COMPLETED ======"
 else
@@ -154,7 +158,7 @@ else
     --mail-user=$USER_EMAIL \
     --output="${LOG_DIR}/${JOB_NAME}_%j.out" \
     --error="${LOG_DIR}/${JOB_NAME}_%j.err" \
-    --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS_FIT=$N_SUBJECTS_FIT,N_SUBJECTS_PR=$N_SUBJECTS_PR,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \
+    --export=ALL,TASK=$TASK,MODEL=$MODEL,SOURCE=$SOURCE,USER_EMAIL=$USER_EMAIL,GROUP_TYPE=$GROUP_TYPE,COMPONENTS=${COMPONENTS//,/;},SESSION=$SESSION,N_SUBJECTS_FIT=$N_SUBJECTS_FIT,N_SUBJECTS_PR=$N_SUBJECTS_PR,N_TRIALS=$N_TRIALS,NO_INDIV=$NO_INDIV,FIT_CONFIG=$FIT_CONFIG,SIM_CONFIG=$SIM_CONFIG,DATA_CONFIG=$DATA_CONFIG,METHOD=$METHOD,SUBS_FILE=$SUBS_FILE \
     $BATCH_SCRIPT)
 
   if [ $? -eq 0 ]; then

@@ -38,6 +38,7 @@ EXCLUDE_FILE=""
 RTMETHOD="mark"
 RTBOUND_MIN_MS=50
 RTBOUND_MAX_MS=4000
+SIM_CONFIG="sim"
 
 # Help message
 show_help() {
@@ -160,6 +161,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --data-config|--data_config)
             DATA_CONFIG="$2"
+            shift 2
+            ;;
+        --sim-config|--sim_config)
+            SIM_CONFIG="$2"
             shift 2
             ;;
         --parallel)
@@ -802,7 +807,7 @@ run_pr_recovery() {
         exit 1
     fi
     
-    source "./scripts/configs/fit_params_sim.conf"
+    source "./scripts/configs/fit_params_${SIM_CONFIG}.conf"
     
     # Build command arguments
     CMD_ARGS=(
