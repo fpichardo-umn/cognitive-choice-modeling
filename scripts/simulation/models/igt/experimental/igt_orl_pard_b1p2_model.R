@@ -8,14 +8,8 @@ suppressPackageStartupMessages({
 # (12 Accumulators, 3 per deck, "All-Win-First")
 # For a deck to be chosen, ALL 3 of its accumulators must finish before 
 # ALL 9 accumulators from the other 3 decks.
-#
-# --- MODEL VARIANT ---
-# This version implements the ORL-ARD model where the perseverance
-# component (pers * betaP) is treated as a simple additive bias,
-# applied *after* the wd advantage scaling, which operates
-# only on the value-based utility (ev + ef * betaF).
 
-igtORLLARDB1P2Model <- R6::R6Class("igtORLLARDB1P2Model",
+igtORLPARDB1P2Model <- R6::R6Class("igtORLPARDB1P2Model",
                                          inherit = ModelBase,
                                          
                                          public = list(
@@ -41,7 +35,6 @@ igtORLLARDB1P2Model <- R6::R6Class("igtORLLARDB1P2Model",
                                                tau1 = list(range = c(0, Inf)),
                                                tau = list(range = c(0, Inf)),
                                                urgency = list(range = c(0.001, 20)),
-                                               wd = list(range = c(0.001, 10)),
                                                Arew = list(range = c(0, 1)),
                                                Apun = list(range = c(0, 1)),
                                                K = list(range = c(0, 5)),
@@ -99,7 +92,7 @@ igtORLLARDB1P2Model <- R6::R6Class("igtORLLARDB1P2Model",
                                                    
                                                    # 2. Calculate advantage-scaled drift based ONLY on value-utility
                                                    advantage_drift <- parameters$urgency + 
-                                                     parameters$wd * (value_utility[i] - value_utility[other_deck_idx])
+                                                     (value_utility[i] - value_utility[other_deck_idx])
                                                    
                                                    # 3. Add the perseverance bias *after* the advantage scaling
                                                    drift_rates[k] <- advantage_drift + pers[i] * parameters$betaP
@@ -231,7 +224,7 @@ igtORLLARDB1P2Model <- R6::R6Class("igtORLLARDB1P2Model",
                                                        
                                                        # 2. Calculate advantage-scaled drift based ONLY on value-utility
                                                        advantage_drift <- parameters$urgency + 
-                                                         parameters$wd * (value_utility[i] - value_utility[other_deck_idx])
+                                                         (value_utility[i] - value_utility[other_deck_idx])
                                                        
                                                        # 3. Add the perseverance bias *after* the advantage scaling
                                                        drift_rates[k] <- advantage_drift + pers[i] * parameters$betaP
