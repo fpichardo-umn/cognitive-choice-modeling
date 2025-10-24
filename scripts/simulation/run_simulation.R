@@ -76,7 +76,13 @@ params <- readRDS(param_file)
 
 # Initialize task and model
 task <- initialize_task(task_name, dirs$SIM_DIR)
-model <- initialize_model(model_name, task_name, task, dirs$SIM_DIR)
+
+if (grepl("batch", opt$group)){
+  group_type = "sing"
+} else {
+  group_type = opt$group
+}
+model <- initialize_model(model_name, task_name, task, dirs$SIM_DIR, group_type)
 
 # Build task_params from command line RT bounds
 task_params <- list(

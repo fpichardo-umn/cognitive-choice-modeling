@@ -65,7 +65,13 @@ sim_data <- readRDS(opt$sim_data)
 
 # Initialize task and model
 task <- initialize_task(opt$task, dirs$PR_DIR)
-model <- initialize_model(opt$model, task, dirs$PR_DIR)
+
+if (grepl("batch", opt$group)){
+  group_type = "sing"
+} else {
+  group_type = opt$group
+}
+model <- initialize_model(opt$model, task, dirs$PR_DIR, group_type)
 
 # Determine model type directly from model object if possible, otherwise infer it
 model_type <- model$model_type

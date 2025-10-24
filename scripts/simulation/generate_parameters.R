@@ -65,7 +65,13 @@ source_required_files(dirs$SIM_DIR, opt$task)
 
 # Initialize task and model objects
 task_obj <- initialize_task(task, dirs$SIM_DIR)
-model_obj <- initialize_model(model_name, task, task_obj, dirs$SIM_DIR)
+
+if (grepl("batch", opt$group)){
+  group_type = "sing"
+} else {
+  group_type = opt$group
+}
+model_obj <- initialize_model(model_name, task, task_obj, dirs$SIM_DIR, group_type)
 
 # Handle model fit loading for empirical-based methods
 if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")) {

@@ -56,11 +56,25 @@ setup_directories <- function(task, create_missing = TRUE) {
 }
 
 # Model initialization function
-initialize_model <- function(model_name, task_name, task, SIM_DIR) {
+initialize_model <- function(model_name, task_name, task, SIM_DIR, group_type = "hier") {
   model <- NULL
   source_path <- file.path(SIM_DIR, "models", task_name, 
-                           check_model_status(task_name, "hier", model_name), 
+                           check_model_status(task_name, group_type, model_name), 
                            paste0(task_name, "_", model_name, "_model.R"))
+  
+  # If the file doesn't exist, try again
+  if (!file.exists(source_path)) {
+    if (group_type == "hier"){
+      group_type = "sing"
+    } else {
+      group_type = "hier"
+    }
+    source_path <- file.path(
+      SIM_DIR, "models", task_name,
+      check_model_status(task_name, group_type, model_name),
+      paste0(task_name, "_", model_name, "_model.R")
+    )
+  }
   
   # Check if model file exists
   if (!file.exists(source_path)) {
