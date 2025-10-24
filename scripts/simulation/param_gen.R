@@ -261,7 +261,7 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                available_subjects = seq(max_value)
                              }
                              
-                             selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
+                             selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
                              
                              result <- data.table(idx = selected_subjects)
                              
@@ -275,19 +275,141 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                              
                              return(result)
                            },
+                           #' Weighted Posterior Sampling - samples based on posterior density
+                           weighted_posterior_sps = function(model_fit, n_subjects) {
+                             params <- self$config$parameters
+                             
+                             if ("subjects" %in% names(model_fit)) {
+                               # Batch group handling
+                               available_subjects <- model_fit$subjects
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
+                               
+                               result <- data.table(idx = selected_subjects)
+                               
+                               for (subject in selected_subjects) {
+                                 # Get posterior draws for this subject
+                                 subject_fit <- model_fit[[subject]]
+                                 posterior_draws <- subject_fit$draws
+                                 
+                                 # Check if log posterior density is available
+                                 if ("lp__" %in% dimnames(posterior_draws)[[3]]) {
+                                   log_density <- as.vector(posterior_draws[,, "lp__"])
+                                   
+                                   # Convert to probability weights (normalize to prevent underflow)
+                                   max_log <- max(log_density)
+                                   weights <- exp(log_density - max_log)
+                                   weights <- weights / sum(weights)  # Normalize
+                                   
+                                   # Sample one iteration based on posterior density
+                                   selected_iter <- sample(1:length(log_density), size = 1, prob = weights)
+                                 } else {
+                                   # Fallback to random if lp__ not available
+                                   warning(paste("lp__ not found for subject", subject, "- using random sampling"))
+                                   selected_iter <- sample(1:dim(posterior_draws)[1], 1)
+                                 }
+                                 
+                                 # Extract all parameters from that iteration
+                                 for (param_name in names(params)) {
+                                   samples <- as.vector(posterior_draws[,, param_name])
+                                   result[idx == subject, (param_name) := samples[selected_iter]]
+                                 }
+                               }
+                               
+                             } else {
+                               # Non-batch handling
+                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__|_subj", model_fit$all_params)]
+                               filtered_params <- filtered_params[grepl("\\[", filtered_params)]
+                               
+                               matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
+                               max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
+                               available_subjects <- seq(max_value)
+                               
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
+                               result <- data.table(idx = selected_subjects)
+                               
+                               # Check if lp__ is available
+                               if ("lp__" %in% model_fit$all_params) {
+                                 log_density <- as.vector(model_fit$draws[,, "lp__"])
+                                 max_log <- max(log_density)
+                                 weights <- exp(log_density - max_log)
+                                 weights <- weights / sum(weights)
+                               } else {
+                                 warning("lp__ not found - using random sampling")
+                                 weights <- NULL
+                               }
+                               
+                               for (subject in selected_subjects) {
+                                 # Sample one iteration (weighted if possible)
+                                 if (!is.null(weights)) {
+                                   selected_iter <- sample(1:length(log_density), size = 1, prob = weights)
+                                 } else {
+                                   selected_iter <- sample(1:dim(model_fit$draws)[1], 1)
+                                 }
+                                 
+                                 # Extract parameters for this subject at this iteration
+                                 for (param_name in names(params)) {
+                                   filtered_param <- model_fit$all_params[grepl(paste0("^", param_name, "\\[", subject, "\\]"), model_fit$all_params)]
+                                   samples <- as.vector(model_fit$draws[,, filtered_param])
+                                   result[idx == subject, (param_name) := samples[selected_iter]]
+                                 }
+                               }
+                             }
+                             
+                             return(result)
+                           },
                            
                            tuple_based_sps = function(model_fit, n_subjects, min_percentile = 50) {
                              params <- self$config$parameters
-                             result <- data.table(idx = 1:n_subjects)
                              
-                             # Get high-probability parameter combinations
-                             iterations <- self$find_high_prob_iterations(model_fit, names(params), min_percentile)
-                             selected_iterations <- sample(iterations, n_subjects, replace = FALSE)
-                             
-                             result <- data.table(idx = selected_subjects)
-                             for (param_name in names(params)) {
-                               samples <- self$extract_posterior(model_fit, param_name)
-                               result[[param_name]] <- samples[selected_iterations]
+                             if ("subjects" %in% names(model_fit)) {
+                               # Batch group handling
+                               available_subjects <- model_fit$subjects
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
+                               
+                               result <- data.table(idx = selected_subjects)
+                               
+                               for (subject in selected_subjects) {
+                                 # For THIS subject, find high-prob iterations
+                                 subject_params <- list()
+                                 for (param_name in names(params)) {
+                                   samples <- self$extract_posterior(model_fit, param_name, subject)
+                                   subject_params[[param_name]] <- samples
+                                 }
+                                 
+                                 # Find iterations where all params are above threshold
+                                 n_iterations <- length(subject_params[[1]])
+                                 high_prob <- rep(TRUE, n_iterations)
+                                 
+                                 for (param_name in names(params)) {
+                                   threshold <- quantile(subject_params[[param_name]], min_percentile/100)
+                                   high_prob <- high_prob & (subject_params[[param_name]] >= threshold)
+                                 }
+                                 
+                                 good_iterations <- which(high_prob)
+                                 if (length(good_iterations) == 0) {
+                                   stop(sprintf("No high-probability iterations found for subject %s", subject))
+                                 }
+                                 
+                                 # Sample one good iteration
+                                 selected_iter <- sample(good_iterations, 1)
+                                 
+                                 # Extract all parameters from that iteration
+                                 for (param_name in names(params)) {
+                                   result[idx == subject, (param_name) := subject_params[[param_name]][selected_iter]]
+                                 }
+                               }
+                               
+                             } else {
+                               # Non-batch handling (your original code works here)
+                               iterations <- self$find_high_prob_iterations(model_fit, names(params), min_percentile)
+                               selected_iterations <- sample(iterations, n_subjects, replace = FALSE)
+                               
+                               result <- data.table(idx = selected_iterations)
+                               
+                               for (param_name in names(params)) {
+                                 samples <- self$extract_posterior(model_fit, param_name)
+                                 result[[param_name]] <- samples[selected_iterations]
+                               }
                              }
                              
                              return(result)
@@ -348,13 +470,13 @@ EPSEGenerator <- R6Class("EPSEGenerator",
 #' @return Data table of generated parameters
 generate_parameters <- function(
     model,
-    method = c("ssFPSE", "mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE"),
+    method = c("ssFPSE", "mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE"),
     model_fit = NULL,
     n_subjects = 100
 ) {
   
   # Check if method requires model_fit
-  epse_methods <- c("mbSPSepse", "sbSPSepse", "tSPSepse", "hpsEPSE")
+  epse_methods <- c("mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE")
   if (method %in% epse_methods && is.null(model_fit)) {
     stop(sprintf("Method %s requires model_fit object", method))
   }
@@ -369,6 +491,7 @@ generate_parameters <- function(
                      "mbSPSepse" = generator$median_based_sps(model_fit, n_subjects),
                      "sbSPSepse" = generator$simulation_based_sps(model_fit, n_subjects),
                      "tSPSepse" = generator$tuple_based_sps(model_fit, n_subjects),
+                     "wpSPSepse" = generator$weighted_posterior_sps(model_fit, n_subjects),
                      "hpsEPSE" = generator$hierarchical_posterior_sim(model_fit, n_subjects)
     )
   }
