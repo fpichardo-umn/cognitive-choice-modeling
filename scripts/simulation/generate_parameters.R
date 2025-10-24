@@ -22,7 +22,7 @@ option_list = list(
   make_option(c("--session"), type="character", default=NULL,
               help="Session identifier [default: %default]"),
   make_option(c("-n", "--n_subjects"), type="integer", default=100),
-  make_option(c("-d", "--method"), type="character", default="mbSPSepse"),
+  make_option(c("-d", "--method"), type="character", default="wpSPSepse"),
   make_option(c("-o", "--output_dir"), type="character", default=NULL, help="./Data/sim/params/"),
   make_option(c("-f", "--fit_file"), type="character", default=NULL, 
               help="Path to fit data (required for EPSE methods)"),
