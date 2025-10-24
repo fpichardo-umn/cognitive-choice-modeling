@@ -940,6 +940,15 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  # ---- pARD B1P2 Models ----
+  
+  models[["igt_sing_ev_pard_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$ard_b1p2, param_sets$ev), c("con", "drift_con", "ws", "wd")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   # ---- RD B1P2 Models ----
   models[["igt_sing_rd_b1p2"]] <- list(
     data = setdiff(unique(c(data_types$with_rt_igt, data_types$basic_igt)), c("wins", "losses")),
