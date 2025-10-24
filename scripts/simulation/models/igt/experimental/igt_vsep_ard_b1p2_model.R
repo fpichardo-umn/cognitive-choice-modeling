@@ -289,4 +289,5 @@ igtVSEPARDB1P2Model <- R6::R6Class("igtVSEPARDB1P2Model",
                                       
                                       return(list(trial_loglik = trial_loglik, total_loglik = sum(trial_loglik)))
                                     }
+  )
 )

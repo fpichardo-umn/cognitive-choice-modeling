@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
 # For a deck to be chosen, ALL 3 of its accumulators must finish before 
 # ALL 9 accumulators from the other 3 decks.
 
-igtStaticARDB1P2Model <- R6::R6Class("igtStaticARDB1P2Model",
+igtARDB1P2Model <- R6::R6Class("igtARDB1P2Model",
                                      inherit = ModelBase,
                                      
                                      public = list(

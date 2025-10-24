@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
 # applied *after* the wd/ws advantage scaling, which operates
 # only on the value-based utility (ev + ef * betaF).
 
-igtORLPARDB1P2PersSepModel <- R6::R6Class("igtORLPARDB1P2PersSepModel",
+igtORLPARDB1P2Model <- R6::R6Class("igtORLPARDB1P2Model",
                                          inherit = ModelBase,
                                          
                                          public = list(
