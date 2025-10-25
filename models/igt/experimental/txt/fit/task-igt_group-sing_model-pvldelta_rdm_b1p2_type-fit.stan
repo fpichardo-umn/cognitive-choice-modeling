@@ -59,7 +59,8 @@ functions {
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
       vector ev_init, int T,
       real gain, real loss, real update,
-      vector boundaries, vector taus) {
+      vector boundaries, vector taus,
+      real, urgency) {
 
     vector[4] local_ev = ev_init;
     vector[4] drift_rates;
@@ -68,7 +69,7 @@ functions {
 
     for (t in 1:T) {
       // Transform EV to positive drift rates using softplus
-      drift_rates = log1p_exp(local_ev);
+      drift_rates = urgency + log1p_exp(local_ev);
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
@@ -109,6 +110,7 @@ parameters {
   real boundary_pr;
   real tau1_pr;
   real tau_pr;
+  real urgency_pr;
   
   // PVL-Delta RL parameters
   real gain_pr;    // Value sensitivity
@@ -122,6 +124,7 @@ transformed parameters {
   real<lower=0.001, upper=5> boundary;
   real<lower=0> tau1;
   real<lower=0> tau;
+  real<lower=0.001, upper=20> urgency;
   
   // PVL-Delta
   real<lower=0, upper=2> gain;
@@ -133,6 +136,7 @@ transformed parameters {
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
+  urgency   = inv_logit(urgency_pr) * 19.999 + 0.001;
   
   gain = inv_logit(gain_pr) * 2;
   loss = inv_logit(loss_pr) * 10;
@@ -145,6 +149,7 @@ model {
   boundary_pr ~ normal(0, 1);
   tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
+  urgency_pr ~ normal(0, 1);
   
   gain_pr ~ normal(0, 1);
   loss_pr ~ normal(0, 1);
@@ -172,6 +177,7 @@ model {
       choice, wins, losses, RT,
       ev_init, T,
       gain, loss, update,
-      boundary_vec, tau_vec
+      boundary_vec, tau_vec,
+      urgency
   );
 }

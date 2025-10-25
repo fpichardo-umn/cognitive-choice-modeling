@@ -33,6 +33,7 @@ igtPVLDeltaRDMB1P2Model <- R6::R6Class("igtPVLDeltaRDMB1P2Model",
                                              boundary = list(range = c(0.001, 5)),
                                              tau1 = list(range = c(0, Inf)),
                                              tau = list(range = c(0, Inf)),
+                                             urgency = list(range = c(0.001, 20)),
                                              gain = list(range = c(0, 2)),
                                              loss = list(range = c(0, 10)),
                                              update = list(range = c(0, 1))
@@ -61,7 +62,7 @@ igtPVLDeltaRDMB1P2Model <- R6::R6Class("igtPVLDeltaRDMB1P2Model",
                                              }
                                              
                                              # Transform EV to positive drift rates using softplus
-                                             drift_rates <- log1p(exp(ev))
+                                             drift_rates <- parameters$urgency + log1p(exp(ev))
                                              
                                              # Ensure all drift rates are positive
                                              drift_rates <- pmax(drift_rates, 0.001)
@@ -135,7 +136,7 @@ igtPVLDeltaRDMB1P2Model <- R6::R6Class("igtPVLDeltaRDMB1P2Model",
                                                } else {
                                                  
                                                  # Transform EV to positive drift rates using softplus
-                                                 drift_rates <- log1p(exp(ev))
+                                                 drift_rates <- parameters$urgency + log1p(exp(ev))
                                                  
                                                  # Ensure all drift rates are positive
                                                  drift_rates <- pmax(drift_rates, 0.001)

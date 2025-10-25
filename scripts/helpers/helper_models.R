@@ -977,14 +977,14 @@ get_igt_defaults = function() {
   
   models[["igt_sing_ev_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, param_sets$ev), c("con", "drift_con", "urgency")),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$ev), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
   
   models[["igt_sing_pvldelta_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta), c("con", "drift_con", "urgency")),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -994,7 +994,7 @@ get_igt_defaults = function() {
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
                        param_sets$orl_igt), 
-                     c("con", "drift_con", "urgency")),
+                     c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )

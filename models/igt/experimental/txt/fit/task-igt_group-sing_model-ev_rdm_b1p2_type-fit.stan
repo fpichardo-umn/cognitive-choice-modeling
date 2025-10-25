@@ -59,7 +59,8 @@ functions {
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
       vector ev_init, int T,
       real update, real wgt_pun, real wgt_rew,
-      vector boundaries, vector taus) {
+      vector boundaries, vector taus,
+      real, urgency) {
 
     vector[4] local_ev = ev_init;
     vector[4] drift_rates;
@@ -67,7 +68,7 @@ functions {
 
     for (t in 1:T) {
       // Apply softplus transformation to ensure positive drift rates
-      drift_rates = log1p_exp(local_ev);
+      drift_rates = urgency + log1p_exp(local_ev);
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
@@ -104,6 +105,8 @@ parameters {
   real boundary_pr;
   real tau1_pr;
   real tau_pr;
+  real urgency_pr;
+
   real wgt_pun_pr;
   real wgt_rew_pr;
   real update_pr;
@@ -114,6 +117,8 @@ transformed parameters {
   real<lower=0.001, upper=5> boundary;
   real<lower=0> tau1;
   real<lower=0> tau;
+  real<lower=0.001, upper=20> urgency;
+
   real<lower=0, upper=1> wgt_pun;
   real<lower=0, upper=1> wgt_rew;
   real<lower=0, upper=1> update;
@@ -123,6 +128,8 @@ transformed parameters {
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
+  urgency   = inv_logit(urgency_pr) * 19.999 + 0.001;
+
   wgt_pun   = inv_logit(wgt_pun_pr);
   wgt_rew   = inv_logit(wgt_rew_pr);
   update    = inv_logit(update_pr);
@@ -134,6 +141,8 @@ model {
   boundary_pr ~ normal(0, 1);
   tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
+  urgency_pr ~ normal(0, 1);
+
   wgt_pun_pr ~ normal(0, 1);
   wgt_rew_pr ~ normal(0, 1);
   update_pr ~ normal(0, 1);
@@ -160,6 +169,7 @@ model {
       choice, wins, abs(losses), RT,
       ev_init, T,
       update, wgt_pun, wgt_rew,
-      boundary_vec, tau_vec
+      boundary_vec, tau_vec,
+      urgency
   );
 }
