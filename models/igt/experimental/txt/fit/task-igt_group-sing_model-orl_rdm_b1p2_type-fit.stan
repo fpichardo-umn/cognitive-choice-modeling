@@ -34,7 +34,7 @@ functions {
   }
   
   // Single trial likelihood: chosen option wins race
-  real rdm_trial_lp(real RT, int choice, real tau, real boundary, 
+  real rdm_trial(real RT, int choice, real tau, real boundary, 
                     vector drift_rates) {
     real t = fmax(RT - tau, 1e-3);
     if (t <= 1e-5) return negative_infinity();
@@ -88,7 +88,7 @@ functions {
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
-        log_lik += rdm_trial_lp(RT[t], choice[t], taus[t], 
+        log_lik += rdm_trial(RT[t], choice[t], taus[t], 
                                 boundaries[t], drift_rates);
       }
       
