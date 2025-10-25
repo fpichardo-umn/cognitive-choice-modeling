@@ -46,7 +46,7 @@ functions {
     real log_survival_prod = 0.0;
     for (j in 1:4) {
       if (j != choice) {
-        real cdf_loser = race_cdf(t, boundary, drift_rates[j]);
+        real cdf_loser = race_cdf(t | boundary, drift_rates[j]);
         log_survival_prod += log1m(cdf_loser);
       }
     }
