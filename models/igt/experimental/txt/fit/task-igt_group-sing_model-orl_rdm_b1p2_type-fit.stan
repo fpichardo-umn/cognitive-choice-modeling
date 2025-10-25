@@ -163,7 +163,7 @@ transformed parameters {
   real<lower=0.001, upper=5> boundary;
   real<lower=0> tau1;
   real<lower=0> tau;
-  real<lower=0.001, upper=20> urgency;
+  real<lower=0.1, upper=20> urgency;
   
   // ORL
   real<lower=0, upper=1> Arew;
@@ -175,7 +175,7 @@ transformed parameters {
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
-  urgency   = inv_logit(urgency_pr) * 19.999 + 0.001;
+  urgency   = inv_logit(urgency_pr) * 19.9 + 0.1;
   
   Arew = inv_logit(Arew_pr);
   Apun = inv_logit(Apun_pr);
