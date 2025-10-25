@@ -1013,7 +1013,7 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
-  models[["igt_sing_or2l_rdm_b1p2"]] <- list(
+  models[["igt_sing_orl2_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
