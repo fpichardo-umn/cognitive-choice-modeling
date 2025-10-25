@@ -989,6 +989,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_pvldecay_rdm_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_orl_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl_base, 
@@ -998,6 +1005,35 @@ get_igt_defaults = function() {
     non_pr_params = NULL,
     exclude_params = NULL
   )
+  
+  models[["igt_sing_vppdelta_rdm_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta, param_sets$vpp_base), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_vppdecay_rdm_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vpp_base), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_vse_rdm_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_orig), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_lagvsedelta_rdm_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta, param_sets$vse_lag), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   
   # ---- RD B1P2 Models ----
   models[["igt_sing_rd_b1p2"]] <- list(
