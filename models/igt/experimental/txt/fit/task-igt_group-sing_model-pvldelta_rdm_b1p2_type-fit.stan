@@ -60,7 +60,7 @@ functions {
       vector ev_init, int T,
       real gain, real loss, real update,
       vector boundaries, vector taus,
-      real, urgency) {
+      real urgency) {
 
     vector[4] local_ev = ev_init;
     vector[4] drift_rates;

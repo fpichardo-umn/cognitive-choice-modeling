@@ -60,7 +60,7 @@ functions {
       vector ev_init, vector ef_init, int T,
       real Arew, real Apun, real K, real betaF, real betaP,
       vector boundaries, vector taus,
-      real, urgency) {
+      real urgency) {
 
     vector[4] local_ev = ev_init;
     vector[4] local_ef = ef_init;
