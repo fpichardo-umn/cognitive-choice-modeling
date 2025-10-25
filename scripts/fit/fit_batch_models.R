@@ -38,6 +38,10 @@ option_list = list(
               help="Run subjects in parallel (uses multiple cores)"),
   make_option(c("-c", "--cores"), type="integer", default=4, 
               help="Number of cores to use for parallel processing (default: 4)"),
+  make_option(c("--no_retry"), action="store_true", default=FALSE,
+              help="Disable automatic retry of failed subjects"),
+  make_option(c("--keep_checkpoints"), action="store_true", default=FALSE,
+              help="Keep checkpoint files after successful fits (for debugging)"),
   make_option(c("--n_trials"), type = "integer", default = 120, help = "Number of trials"),
   make_option(c("--RTbound_min_ms"), type = "integer", default = 50, help = "Min RT bound in ms"),
   make_option(c("--RTbound_max_ms"), type = "integer", default = 4000, help = "Max RT bound in ms"),
@@ -105,7 +109,6 @@ log_dir <- file.path(PROJ_DIR, "log_files", opt$task, "fit")
 dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Create log file with BIDS-style naming
-# Create BIDS-style log filename
 log_filename <- generate_bids_filename(
   prefix = "batch_processing",
   cohort = opt$source,
@@ -150,6 +153,8 @@ if (!is.null(opt$ses)) {
 }
 log_message(sprintf("Fit config: %s, Data config: %s", opt$fit_config, opt$data_config))
 log_message(sprintf("Overwrite mode: %s", if(opt$overwrite) "ON (re-fit all)" else "OFF (skip existing fits)"))
+log_message(sprintf("Retry mode: %s", if(opt$no_retry) "DISABLED" else "ENABLED"))
+log_message(sprintf("Checkpoint cleanup: %s", if(opt$keep_checkpoints) "DISABLED (keep all)" else "ENABLED (clean successful)"))
 
 # Validate subject indices
 invalid_indices <- subject_indices[subject_indices > length(subject_ids) | subject_indices < 1]
@@ -160,13 +165,11 @@ if (length(invalid_indices) > 0) {
   log_message(sprintf("Continuing with valid indices only (%d subjects)", length(subject_indices)))
 }
 
-# Source the config files (similar to the bash script)
+# Source the config files
 fit_config_file <- file.path(SCRIPT_DIR, "configs", paste0("fit_params_", opt$fit_config, ".conf"))
 data_config_file <- file.path(SCRIPT_DIR, "configs", paste0("data_params_", opt$data_config, ".conf"))
 
 # Parse the conf files to extract parameters
-# This is a simplified version - in a real implementation, you might need to adapt 
-# this to match the exact structure of your conf files
 parse_conf_file <- function(file_path) {
   if (!file.exists(file_path)) {
     log_message(sprintf("WARNING: Config file not found: %s", file_path))
@@ -210,13 +213,54 @@ parse_conf_file <- function(file_path) {
 fit_params <- parse_conf_file(fit_config_file)
 data_params <- parse_conf_file(data_config_file)
 
+# Function to get checkpoint file path for a subject
+get_checkpoint_path <- function(subject_id, opt) {
+  model_status <- if (!is.null(opt$model_status)) opt$model_status else "canonical"
+  fit_dir <- file.path(get_safe_data_dir(), opt$source)
+  if (!is.null(opt$ses)) {
+    fit_dir <- file.path(fit_dir, paste0("ses-", opt$ses))
+  }
+  fit_dir <- file.path(fit_dir, "fits", opt$type, opt$task, model_status, opt$model)
+  
+  fit_filename <- sprintf("sub-%s_task-%s_model-%s_fit.rds", subject_id, opt$task, opt$model)
+  fit_path <- file.path(fit_dir, fit_filename)
+  checkpoint_path <- paste0(tools::file_path_sans_ext(fit_path), "_checkpoint.rds")
+  
+  return(checkpoint_path)
+}
+
+# Check for existing checkpoint files at start
+check_existing_checkpoints <- function(subject_indices, subject_ids, opt) {
+  existing_checkpoints <- c()
+  
+  for (index in subject_indices) {
+    subject_id <- subject_ids[index]
+    if (is.na(subject_id) || subject_id == "") next
+    
+    checkpoint_path <- get_checkpoint_path(subject_id, opt)
+    if (file.exists(checkpoint_path)) {
+      existing_checkpoints <- c(existing_checkpoints, subject_id)
+    }
+  }
+  
+  return(existing_checkpoints)
+}
+
+# Check for existing checkpoints
+existing_checkpoints <- check_existing_checkpoints(subject_indices, subject_ids, opt)
+if (length(existing_checkpoints) > 0) {
+  log_message(sprintf("WARNING: Found %d checkpoint files from previous runs:", length(existing_checkpoints)))
+  log_message(sprintf("  Subjects: %s", paste(existing_checkpoints, collapse = ", ")))
+  log_message("These may indicate incomplete fits that need attention.")
+}
+
 # Function to process a single subject
 fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params, data_params) {
   subject_id <- subject_ids[index]
   
   if (is.na(subject_id) || subject_id == "") {
     log_message(sprintf("ERROR: Could not find subject ID for index %d", index))
-    return(NULL)
+    return(list(success = FALSE, subject_id = NA))
   }
   
   # Construct expected output path to check if fit already exists
@@ -235,7 +279,7 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
   if (file.exists(fit_path) && !opt$overwrite) {
     log_message(sprintf("Skipping subject %s (index: %d) - fit already exists at: %s", 
                         subject_id, index, fit_path))
-    return(TRUE)  # Return success since the fit exists
+    return(list(success = TRUE, subject_id = subject_id))  # Return success since the fit exists
   }
   
   if (file.exists(fit_path) && opt$overwrite) {
@@ -308,15 +352,19 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
   
   if (result == 0) {
     log_message(sprintf("Successfully processed subject %s", subject_id))
-    return(TRUE)
+    return(list(success = TRUE, subject_id = subject_id))
   } else {
     log_message(sprintf("ERROR: Failed to process subject %s (index: %d)", subject_id, index))
-    return(FALSE)
+    return(list(success = FALSE, subject_id = subject_id))
   }
 }
 
 # Process subjects (either sequentially or in parallel)
 start_time <- Sys.time()
+
+log_message("========================================")
+log_message("FIRST PASS: Processing all subjects")
+log_message("========================================")
 
 if (opt$parallel && !opt$dry_run) {
   log_message(sprintf("Processing subjects in parallel with %d cores", opt$cores))
@@ -325,7 +373,7 @@ if (opt$parallel && !opt$dry_run) {
   cl <- makeCluster(min(opt$cores, total_subjects))
   
   # Export necessary variables and functions to the cluster
-  clusterExport(cl, c("log_message", "SCRIPT_DIR", "opt", "fit_params", "data_params"))
+  clusterExport(cl, c("log_message", "SCRIPT_DIR", "opt", "fit_params", "data_params", "get_safe_data_dir"))
   
   # Process subjects in parallel
   results <- parLapply(cl, subject_indices, function(index) {
@@ -335,33 +383,141 @@ if (opt$parallel && !opt$dry_run) {
   # Close cluster
   stopCluster(cl)
   
-  # Count successful/failed subjects
-  successful <- sum(unlist(results))
-  failed <- total_subjects - successful
 } else {
   # Process subjects sequentially
-  successful <- 0
-  failed <- 0
+  results <- list()
   
   for (i in seq_along(subject_indices)) {
     index <- subject_indices[i]
     log_message(sprintf("Processing subject %d of %d", i, total_subjects))
     
     result <- fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params)
-    
-    if (!is.null(result) && result) {
-      successful <- successful + 1
-    } else {
-      failed <- failed + 1
-    }
+    results[[i]] <- result
   }
 }
 
-# Combine batch results
-if (!opt$dry_run && successful > 0) {
-  log_message("Combining batch of data...")
+# Extract successful and failed indices
+first_pass_success <- sapply(results, function(x) !is.null(x) && x$success)
+first_pass_successful <- sum(first_pass_success)
+first_pass_failed_indices <- subject_indices[!first_pass_success]
+first_pass_failed <- length(first_pass_failed_indices)
+
+log_message(sprintf("First pass complete: %d successful, %d failed", 
+                    first_pass_successful, first_pass_failed))
+
+# Retry failed subjects if retry is enabled
+retry_successful <- 0
+retry_failed <- 0
+permanently_failed_indices <- c()
+
+if (first_pass_failed > 0 && !opt$no_retry && !opt$dry_run) {
+  log_message("")
+  log_message("========================================")
+  log_message(sprintf("RETRY PASS: Retrying %d failed subjects", first_pass_failed))
+  log_message("========================================")
   
-  # Build command arguments for combine script with proper source and session parameters
+  # Optional: Add a brief delay to let system resources settle
+  Sys.sleep(5)
+  
+  if (opt$parallel) {
+    log_message(sprintf("Processing retry subjects in parallel with %d cores", opt$cores))
+    
+    # Create cluster
+    cl <- makeCluster(min(opt$cores, first_pass_failed))
+    
+    # Export necessary variables and functions to the cluster
+    clusterExport(cl, c("log_message", "SCRIPT_DIR", "opt", "fit_params", "data_params", "get_safe_data_dir"))
+    
+    # Process failed subjects in parallel
+    retry_results <- parLapply(cl, first_pass_failed_indices, function(index) {
+      fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params)
+    })
+    
+    # Close cluster
+    stopCluster(cl)
+    
+  } else {
+    # Process failed subjects sequentially
+    retry_results <- list()
+    
+    for (i in seq_along(first_pass_failed_indices)) {
+      index <- first_pass_failed_indices[i]
+      log_message(sprintf("Retrying subject %d of %d", i, first_pass_failed))
+      
+      result <- fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params)
+      retry_results[[i]] <- result
+    }
+  }
+  
+  # Extract retry statistics
+  retry_success <- sapply(retry_results, function(x) !is.null(x) && x$success)
+  retry_successful <- sum(retry_success)
+  retry_failed <- first_pass_failed - retry_successful
+  permanently_failed_indices <- first_pass_failed_indices[!retry_success]
+  
+  log_message(sprintf("Retry pass complete: %d recovered, %d permanently failed", 
+                      retry_successful, retry_failed))
+  
+  if (retry_failed > 0) {
+    failed_subject_ids <- sapply(retry_results[!retry_success], function(x) x$subject_id)
+    log_message(sprintf("Permanently failed subjects: %s", 
+                        paste(failed_subject_ids, collapse = ", ")))
+  }
+}
+
+# Checkpoint cleanup
+if (!opt$keep_checkpoints && !opt$dry_run) {
+  log_message("")
+  log_message("========================================")
+  log_message("CHECKPOINT CLEANUP")
+  log_message("========================================")
+  
+  # Get all successful subject indices (first pass + retry)
+  successful_indices <- c(
+    subject_indices[first_pass_success],
+    if (retry_successful > 0) first_pass_failed_indices[sapply(retry_results, function(x) !is.null(x) && x$success)] else c()
+  )
+  
+  cleaned_count <- 0
+  kept_count <- 0
+  
+  for (index in subject_indices) {
+    subject_id <- subject_ids[index]
+    if (is.na(subject_id) || subject_id == "") next
+    
+    checkpoint_path <- get_checkpoint_path(subject_id, opt)
+    
+    if (file.exists(checkpoint_path)) {
+      if (index %in% successful_indices) {
+        # Delete checkpoint for successful subject
+        if (file.remove(checkpoint_path)) {
+          cleaned_count <- cleaned_count + 1
+          log_message(sprintf("Cleaned checkpoint for subject %s", subject_id))
+        } else {
+          log_message(sprintf("WARNING: Failed to delete checkpoint for subject %s", subject_id))
+        }
+      } else {
+        # Keep checkpoint for failed subject
+        kept_count <- kept_count + 1
+        log_message(sprintf("Keeping checkpoint for failed subject %s at: %s", 
+                            subject_id, checkpoint_path))
+      }
+    }
+  }
+  
+  log_message(sprintf("Checkpoint cleanup complete: %d cleaned, %d kept for debugging", 
+                      cleaned_count, kept_count))
+}
+
+# Combine batch results
+total_successful <- first_pass_successful + retry_successful
+if (!opt$dry_run && total_successful > 0) {
+  log_message("")
+  log_message("========================================")
+  log_message("COMBINING BATCH DATA")
+  log_message("========================================")
+  
+  # Build command arguments for combine script
   combine_args <- c(
     file.path(SCRIPT_DIR, "fit", "combine_batch_fits.R"),
     "-k", opt$task,
@@ -391,7 +547,19 @@ if (!opt$dry_run && successful > 0) {
 # Log completion
 end_time <- Sys.time()
 elapsed <- difftime(end_time, start_time, units = "mins")
-log_message(sprintf("Batch processing complete. Processed %d subjects (%d successful, %d failed) in %.2f minutes.",
-                    total_subjects, successful, failed, as.numeric(elapsed)))
+
+log_message("")
+log_message("========================================")
+log_message("FINAL SUMMARY")
+log_message("========================================")
+log_message(sprintf("Total subjects processed: %d", total_subjects))
+log_message(sprintf("First pass: %d successful, %d failed", first_pass_successful, first_pass_failed))
+if (!opt$no_retry && first_pass_failed > 0 && !opt$dry_run) {
+  log_message(sprintf("Retry pass: %d recovered, %d permanently failed", retry_successful, retry_failed))
+}
+log_message(sprintf("Final results: %d successful, %d failed", 
+                    first_pass_successful + retry_successful, 
+                    retry_failed))
+log_message(sprintf("Total time: %.2f minutes", as.numeric(elapsed)))
 
 cat("Script completed. Exiting explicitly.\n")

@@ -1,4 +1,4 @@
-opt_model = "vse_ard_b1p2"
+opt_model = "ev_rdm_b1p2"
 # =======
 #opt_model = "orl"
 
