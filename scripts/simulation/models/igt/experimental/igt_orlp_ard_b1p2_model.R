@@ -62,8 +62,6 @@ igtORLPARDB1P2Model <- R6::R6Class("igtORLPARDB1P2Model",
                                              ev <- c(0, 0, 0, 0)   # Expected values
                                              ef <- c(0, 0, 0, 0)   # Expected frequencies
                                              pers <- c(0, 0, 0, 0) # Perseverance values
-                                             
-                                             RTbound_max <- task_params$RTbound_max
                                              block_cutoff <- 20
                                              
                                              # Pre-calculate other_indices
@@ -134,10 +132,6 @@ igtORLPARDB1P2Model <- R6::R6Class("igtORLPARDB1P2Model",
                                                
                                                choices[t] <- winning_choice
                                                RTs[t] <- min_max_time + current_tau
-                                               
-                                               if (RTs[t] > RTbound_max) {
-                                                 RTs[t] <- RTbound_max
-                                               }
                                                
                                                # Get outcome for the chosen deck
                                                result <- self$task$generate_deck_outcome(choices[t], t)

@@ -47,8 +47,6 @@ igtARDB1P2Model <- R6::R6Class("igtARDB1P2Model",
                                          RTs <- numeric(n_trials)
                                          wins <- numeric(n_trials)
                                          losses <- numeric(n_trials)
-                                         
-                                         RTbound_max <- task_params$RTbound_max
                                          block_cutoff <- 20
                                          
                                          # Static deck preferences (do not change over trials)
@@ -99,10 +97,6 @@ igtARDB1P2Model <- R6::R6Class("igtARDB1P2Model",
                                            
                                            choices[t] <- winning_choice
                                            RTs[t] <- min_max_time + current_tau
-                                           
-                                           if (RTs[t] > RTbound_max) {
-                                             RTs[t] <- RTbound_max
-                                           }
                                            
                                            # Get outcome for recording (not used for updating)
                                            result <- self$task$generate_deck_outcome(choices[t], t)

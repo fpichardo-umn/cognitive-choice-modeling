@@ -50,8 +50,6 @@ igtEVLARDB1P2Model <- R6::R6Class("igtEVLARDB1P2Model",
                                      
                                      # Initialize Expected Values (EV) for the four decks
                                      ev <- c(0, 0, 0, 0)
-                                     
-                                     RTbound_max <- task_params$RTbound_max
                                      block_cutoff <- 20 # Same as 'block' in Stan model
                                      
                                      # Pre-calculate other_indices (which other decks each deck compares to)
@@ -110,10 +108,6 @@ igtEVLARDB1P2Model <- R6::R6Class("igtEVLARDB1P2Model",
                                        
                                        choices[t] <- winning_choice
                                        RTs[t] <- min_max_time + current_tau
-                                       
-                                       if (RTs[t] > RTbound_max) {
-                                         RTs[t] <- RTbound_max
-                                       }
                                        
                                        # Get outcome for the chosen deck
                                        result <- self$task$generate_deck_outcome(choices[t], t)

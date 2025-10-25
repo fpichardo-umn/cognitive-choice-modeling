@@ -4,11 +4,12 @@ suppressPackageStartupMessages({
   library(statmod)
 })
 
-# Individual PVLdelta-ARD Model (12 Accumulators, 3 per deck, "All-Win-First")
-# For a deck to be chosen, ALL 3 of its accumulators must finish before 
-# ALL 9 accumulators from the other 3 decks.
+# Individual PVLDelta-RDM Model for the Iowa Gambling Task
+# Racing Diffusion Model with PVL-Delta learning (Prospect Theory)
+# 4 accumulators (1 per deck) - first to finish wins
+# Drift rates derived from learned expected values with prospect theory utility
 
-igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
+igtPVLDeltaRDMB1P2Model <- R6::R6Class("igtPVLDeltaRDMB1P2Model",
                                        inherit = ModelBase,
                                        
                                        public = list(
@@ -32,7 +33,6 @@ igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
                                              boundary = list(range = c(0.001, 5)),
                                              tau1 = list(range = c(0, Inf)),
                                              tau = list(range = c(0, Inf)),
-                                             urgency = list(range = c(0.001, 20)),
                                              gain = list(range = c(0, 2)),
                                              loss = list(range = c(0, 10)),
                                              update = list(range = c(0, 1))
@@ -50,14 +50,6 @@ igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
                                            ev <- c(0, 0, 0, 0)
                                            block_cutoff <- 20
                                            
-                                           # Pre-calculate other_indices
-                                           other_indices <- list(
-                                             c(2, 3, 4),
-                                             c(1, 3, 4),
-                                             c(1, 2, 4),
-                                             c(1, 2, 3)
-                                           )
-                                           
                                            for (t in 1:n_trials) {
                                              # Determine block-specific parameters
                                              if (t <= block_cutoff) {
@@ -68,39 +60,23 @@ igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
                                                current_tau <- parameters$tau
                                              }
                                              
-                                             # Calculate 12 drift rates (3 per deck)
-                                             drift_rates <- numeric(12)
-                                             k <- 1
-                                             for (i in 1:4) {
-                                               for (j in 1:3) {
-                                                 other_deck_idx <- other_indices[[i]][j]
-                                                 drift_rates[k] <- parameters$urgency + 
-                                                   (ev[i] - ev[other_deck_idx])
-                                                 k <- k + 1
-                                               }
-                                             }
+                                             # Transform EV to positive drift rates using softplus
+                                             drift_rates <- log1p(exp(ev))
                                              
                                              # Ensure all drift rates are positive
                                              drift_rates <- pmax(drift_rates, 0.001)
                                              
-                                             # Simulate decision times for all 12 accumulators
+                                             # Simulate decision times for all 4 accumulators (Wald process)
                                              mean_times <- current_boundary / drift_rates
                                              shape_param <- current_boundary^2
-                                             decision_times <- statmod::rinvgauss(12, mean = mean_times, shape = shape_param)
+                                             decision_times <- statmod::rinvgauss(4, mean = mean_times, shape = shape_param)
                                              
-                                             # ARD rule: Find the maximum time for each deck
-                                             deck_max_times <- numeric(4)
-                                             for (i in 1:4) {
-                                               accumulator_indices <- ((i-1)*3 + 1):(i*3)
-                                               deck_max_times[i] <- max(decision_times[accumulator_indices])
-                                             }
-                                             
-                                             # The winning deck is the one with the minimum max time
-                                             min_max_time <- min(deck_max_times)
-                                             winning_choice <- sample(which(deck_max_times == min_max_time), 1)
+                                             # Simple race: first accumulator to finish wins
+                                             min_time <- min(decision_times)
+                                             winning_choice <- which.min(decision_times)
                                              
                                              choices[t] <- winning_choice
-                                             RTs[t] <- min_max_time + current_tau
+                                             RTs[t] <- min_time + current_tau
                                              
                                              # Get outcome for the chosen deck
                                              result <- self$task$generate_deck_outcome(choices[t], t)
@@ -110,10 +86,12 @@ igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
                                              wins[t] <- current_win
                                              losses[t] <- current_loss
                                              
-                                             # Update EV using PVL-delta rule
-                                             win_comp <- ifelse(current_win > 0, current_win^parameters$gain, 0)
-                                             loss_comp <- ifelse(current_loss > 0, current_loss^parameters$gain, 0)
-                                             utility <- win_comp - parameters$loss * loss_comp
+                                             # Compute utility using prospect theory
+                                             win_component <- if (current_win == 0) 0 else exp(parameters$gain * log(current_win))
+                                             loss_component <- if (current_loss == 0) 0 else exp(parameters$gain * log(current_loss))
+                                             utility <- win_component - parameters$loss * loss_component
+                                             
+                                             # Update EV for the chosen deck using delta rule
                                              prediction_error <- utility - ev[winning_choice]
                                              ev[winning_choice] <- ev[winning_choice] + parameters$update * prediction_error
                                            }
@@ -137,14 +115,6 @@ igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
                                            # Initialize Expected Values
                                            ev <- c(0, 0, 0, 0)
                                            
-                                           # Pre-calculate other_indices
-                                           other_indices <- list(
-                                             c(2, 3, 4),
-                                             c(1, 3, 4),
-                                             c(1, 2, 4),
-                                             c(1, 2, 3)
-                                           )
-                                           
                                            for (t in 1:n_trials) {
                                              choice <- choices[t]
                                              rt <- RTs[t]
@@ -162,62 +132,49 @@ igtPVLDELTAPARDB1P2Model <- R6::R6Class("igtPVLDELTAPARDB1P2Model",
                                                rt_adj <- rt - current_tau
                                                if (rt_adj <= 1e-5) {
                                                  trial_loglik[t] <- -Inf
-                                                 next
-                                               }
-                                               
-                                               # Calculate 12 drift rates
-                                               drift_rates <- numeric(12)
-                                               k <- 1
-                                               for (i in 1:4) {
-                                                 for (j in 1:3) {
-                                                   other_deck_idx <- other_indices[[i]][j]
-                                                   drift_rates[k] <- parameters$urgency + 
-                                                     (ev[i] - ev[other_deck_idx])
-                                                   k <- k + 1
+                                               } else {
+                                                 
+                                                 # Transform EV to positive drift rates using softplus
+                                                 drift_rates <- log1p(exp(ev))
+                                                 
+                                                 # Ensure all drift rates are positive
+                                                 drift_rates <- pmax(drift_rates, 0.001)
+                                                 
+                                                 # Log-PDF for chosen accumulator
+                                                 winner_drift <- drift_rates[choice]
+                                                 log_pdf_winner <- statmod::dinvgauss(rt_adj,
+                                                                                      mean = current_boundary / winner_drift,
+                                                                                      shape = current_boundary^2,
+                                                                                      log = TRUE)
+                                                 
+                                                 # Sum of log(1-CDF) for losing accumulators
+                                                 log_survival_losers <- 0
+                                                 for (j in 1:4) {
+                                                   if (j != choice) {
+                                                     loser_drift <- drift_rates[j]
+                                                     surv_prob <- 1 - statmod::pinvgauss(rt_adj,
+                                                                                         mean = current_boundary / loser_drift,
+                                                                                         shape = current_boundary^2)
+                                                     log_survival_losers <- log_survival_losers + log(max(surv_prob, 1e-10))
+                                                   }
                                                  }
+                                                 
+                                                 trial_loglik[t] <- log_pdf_winner + log_survival_losers
                                                }
-                                               
-                                               # Ensure all drift rates are positive
-                                               drift_rates <- pmax(drift_rates, 0.001)
-                                               
-                                               # For ARD: All 3 accumulators for chosen deck must win
-                                               winner_indices <- ((choice-1)*3 + 1):(choice*3)
-                                               loser_indices <- setdiff(1:12, winner_indices)
-                                               
-                                               # Log-likelihood: sum of log PDFs for winners
-                                               log_pdf_winners <- 0
-                                               for (idx in winner_indices) {
-                                                 winner_drift <- drift_rates[idx]
-                                                 log_pdf_winners <- log_pdf_winners + 
-                                                   statmod::dinvgauss(rt_adj, 
-                                                                      mean = current_boundary / winner_drift,
-                                                                      shape = current_boundary^2,
-                                                                      log = TRUE)
-                                               }
-                                               
-                                               # Sum of log(1-CDF) for losers
-                                               log_survival_losers <- 0
-                                               for (idx in loser_indices) {
-                                                 loser_drift <- drift_rates[idx]
-                                                 surv_prob <- 1 - statmod::pinvgauss(rt_adj,
-                                                                                     mean = current_boundary / loser_drift,
-                                                                                     shape = current_boundary^2)
-                                                 log_survival_losers <- log_survival_losers + log(max(surv_prob, 1e-10))
-                                               }
-                                               
-                                               trial_loglik[t] <- log_pdf_winners + log_survival_losers
-                                               
                                              } else {
-                                               trial_loglik[t] <- 0 # Ignore trials outside RT bounds or missing
+                                               trial_loglik[t] <- 0  # Ignore trials outside RT bounds or missing
                                              }
                                              
-                                             # Update EV for the chosen deck using PVL-delta rule
+                                             # Update EV for the chosen deck for the next trial
                                              current_win <- wins[t]
                                              current_loss <- abs(losses[t])
                                              
-                                             win_comp <- ifelse(current_win > 0, current_win^parameters$gain, 0)
-                                             loss_comp <- ifelse(current_loss > 0, current_loss^parameters$gain, 0)
-                                             utility <- win_comp - parameters$loss * loss_comp
+                                             # Compute utility using prospect theory
+                                             win_component <- if (current_win == 0) 0 else exp(parameters$gain * log(current_win))
+                                             loss_component <- if (current_loss == 0) 0 else exp(parameters$gain * log(current_loss))
+                                             utility <- win_component - parameters$loss * loss_component
+                                             
+                                             # Update EV using delta rule
                                              prediction_error <- utility - ev[choice]
                                              ev[choice] <- ev[choice] + parameters$update * prediction_error
                                            }

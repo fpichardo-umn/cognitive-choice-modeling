@@ -48,8 +48,6 @@ igtLARDB1P2Model <- R6::R6Class("igtLARDB1P2Model",
                                          
                                          # NO LEARNING: Use static deck values
                                          V <- c(parameters$V1, parameters$V2, parameters$V3, parameters$V4)
-                                         
-                                         RTbound_max <- task_params$RTbound_max
                                          block_cutoff <- 20 # Same as 'block' in Stan model
                                          
                                          # Pre-calculate other_indices (which other decks each deck compares to)
@@ -107,10 +105,6 @@ igtLARDB1P2Model <- R6::R6Class("igtLARDB1P2Model",
                                            
                                            choices[t] <- winning_choice
                                            RTs[t] <- min_max_time + current_tau
-                                           
-                                           if (RTs[t] > RTbound_max) {
-                                             RTs[t] <- RTbound_max
-                                           }
                                            
                                            # NO LEARNING OR UPDATING
                                          }

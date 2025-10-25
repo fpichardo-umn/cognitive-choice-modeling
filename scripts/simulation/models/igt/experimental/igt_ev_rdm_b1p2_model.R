@@ -4,11 +4,12 @@ suppressPackageStartupMessages({
   library(statmod)
 })
 
-# Hierarchical EV-ARD Model (12 Accumulators, 3 per deck, "All-Win-First")
-# For a deck to be chosen, ALL 3 of its accumulators must finish before 
-# ALL 9 accumulators from the other 3 decks.
+# Individual EV-RDM Model for the Iowa Gambling Task
+# Racing Diffusion Model with Expected Value learning
+# 4 accumulators (1 per deck) - first to finish wins
+# Drift rates derived from learned expected values
 
-igtEVPARDB1P2Model <- R6::R6Class("igtEVPARDB1P2Model",
+igtEVRDMB1P2Model <- R6::R6Class("igtEVRDMB1P2Model",
                                  inherit = ModelBase,
                                  
                                  public = list(
@@ -27,13 +28,11 @@ igtEVPARDB1P2Model <- R6::R6Class("igtEVPARDB1P2Model",
                                    },
                                    
                                    get_parameter_info = function() {
-                                     # Parameters matching the Stan model's transformed parameters
                                      return(list(
                                        boundary1 = list(range = c(0.001, 5)),
                                        boundary = list(range = c(0.001, 5)),
-                                       tau1 = list(range = c(0, Inf)),      # Will be constrained by minRT
-                                       tau = list(range = c(0, Inf)),       # Will be constrained by minRT
-                                       urgency = list(range = c(0.001, 20)),
+                                       tau1 = list(range = c(0, Inf)),
+                                       tau = list(range = c(0, Inf)),
                                        wgt_pun = list(range = c(0, 1)),
                                        wgt_rew = list(range = c(0, 1)),
                                        update = list(range = c(0, 1))
@@ -49,15 +48,7 @@ igtEVPARDB1P2Model <- R6::R6Class("igtEVPARDB1P2Model",
                                      
                                      # Initialize Expected Values (EV) for the four decks
                                      ev <- c(0, 0, 0, 0)
-                                     block_cutoff <- 20 # Same as 'block' in Stan model
-                                     
-                                     # Pre-calculate other_indices (which other decks each deck compares to)
-                                     other_indices <- list(
-                                       c(2, 3, 4),  # Deck 1 compares to decks 2, 3, 4
-                                       c(1, 3, 4),  # Deck 2 compares to decks 1, 3, 4
-                                       c(1, 2, 4),  # Deck 3 compares to decks 1, 2, 4
-                                       c(1, 2, 3)   # Deck 4 compares to decks 1, 2, 3
-                                     )
+                                     block_cutoff <- 20
                                      
                                      for (t in 1:n_trials) {
                                        # Determine block-specific parameters
@@ -69,44 +60,23 @@ igtEVPARDB1P2Model <- R6::R6Class("igtEVPARDB1P2Model",
                                          current_tau <- parameters$tau
                                        }
                                        
-                                       # Calculate 12 drift rates (3 per deck)
-                                       # Each accumulator for deck i compares ev[i] to one of the other decks
-                                       drift_rates <- numeric(12)
-                                       k <- 1
-                                       for (i in 1:4) {
-                                         for (j in 1:3) {
-                                           other_deck_idx <- other_indices[[i]][j]
-                                           drift_rates[k] <- parameters$urgency + 
-                                             (ev[i] - ev[other_deck_idx])
-                                           k <- k + 1
-                                         }
-                                       }
+                                       # Transform EV to positive drift rates using softplus: log(1 + exp(ev))
+                                       drift_rates <- log1p(exp(ev))
                                        
                                        # Ensure all drift rates are positive
                                        drift_rates <- pmax(drift_rates, 0.001)
                                        
-                                       # Simulate decision times for all 12 accumulators (Wald process)
+                                       # Simulate decision times for all 4 accumulators (Wald process)
                                        mean_times <- current_boundary / drift_rates
                                        shape_param <- current_boundary^2
-                                       decision_times <- statmod::rinvgauss(12, mean = mean_times, shape = shape_param)
+                                       decision_times <- statmod::rinvgauss(4, mean = mean_times, shape = shape_param)
                                        
-                                       # ARD rule: For a deck to win, ALL 3 of its accumulators must finish
-                                       # before ALL 9 accumulators from other decks
-                                       # Find the maximum time for each deck (slowest of its 3 accumulators)
-                                       deck_max_times <- numeric(4)
-                                       for (i in 1:4) {
-                                         accumulator_indices <- ((i-1)*3 + 1):(i*3)
-                                         deck_max_times[i] <- max(decision_times[accumulator_indices])
-                                       }
-                                       
-                                       # The winning deck is the one with the minimum max time
-                                       # (first deck to have all 3 accumulators finish)
-                                       min_max_time <- min(deck_max_times)
-                                       # Handle potential ties by random sampling
-                                       winning_choice <- sample(which(deck_max_times == min_max_time), 1)
+                                       # Simple race: first accumulator to finish wins
+                                       min_time <- min(decision_times)
+                                       winning_choice <- which.min(decision_times)
                                        
                                        choices[t] <- winning_choice
-                                       RTs[t] <- min_max_time + current_tau
+                                       RTs[t] <- min_time + current_tau
                                        
                                        # Get outcome for the chosen deck
                                        result <- self$task$generate_deck_outcome(choices[t], t)
@@ -141,14 +111,6 @@ igtEVPARDB1P2Model <- R6::R6Class("igtEVPARDB1P2Model",
                                      # Initialize Expected Values
                                      ev <- c(0, 0, 0, 0)
                                      
-                                     # Pre-calculate other_indices
-                                     other_indices <- list(
-                                       c(2, 3, 4),
-                                       c(1, 3, 4),
-                                       c(1, 2, 4),
-                                       c(1, 2, 3)
-                                     )
-                                     
                                      for (t in 1:n_trials) {
                                        choice <- choices[t]
                                        rt <- RTs[t]
@@ -166,55 +128,37 @@ igtEVPARDB1P2Model <- R6::R6Class("igtEVPARDB1P2Model",
                                          rt_adj <- rt - current_tau
                                          if (rt_adj <= 1e-5) {
                                            trial_loglik[t] <- -Inf
-                                           next
-                                         }
-                                         
-                                         # Calculate 12 drift rates
-                                         drift_rates <- numeric(12)
-                                         k <- 1
-                                         for (i in 1:4) {
-                                           for (j in 1:3) {
-                                             other_deck_idx <- other_indices[[i]][j]
-                                             drift_rates[k] <- parameters$urgency + 
-                                               (ev[i] - ev[other_deck_idx])
-                                             k <- k + 1
+                                         } else {
+                                           
+                                           # Transform EV to positive drift rates using softplus
+                                           drift_rates <- log1p(exp(ev))
+                                           
+                                           # Ensure all drift rates are positive
+                                           drift_rates <- pmax(drift_rates, 0.001)
+                                           
+                                           # Log-PDF for chosen accumulator
+                                           winner_drift <- drift_rates[choice]
+                                           log_pdf_winner <- statmod::dinvgauss(rt_adj,
+                                                                                mean = current_boundary / winner_drift,
+                                                                                shape = current_boundary^2,
+                                                                                log = TRUE)
+                                           
+                                           # Sum of log(1-CDF) for losing accumulators
+                                           log_survival_losers <- 0
+                                           for (j in 1:4) {
+                                             if (j != choice) {
+                                               loser_drift <- drift_rates[j]
+                                               surv_prob <- 1 - statmod::pinvgauss(rt_adj,
+                                                                                   mean = current_boundary / loser_drift,
+                                                                                   shape = current_boundary^2)
+                                               log_survival_losers <- log_survival_losers + log(max(surv_prob, 1e-10))
+                                             }
                                            }
+                                           
+                                           trial_loglik[t] <- log_pdf_winner + log_survival_losers
                                          }
-                                         
-                                         # Ensure all drift rates are positive
-                                         drift_rates <- pmax(drift_rates, 0.001)
-                                         
-                                         # For ARD: All 3 accumulators for chosen deck must win
-                                         # Get indices for winners (3 accumulators of chosen deck)
-                                         winner_indices <- ((choice-1)*3 + 1):(choice*3)
-                                         
-                                         # Get indices for losers (9 accumulators from other decks)
-                                         loser_indices <- setdiff(1:12, winner_indices)
-                                         
-                                         # Log-likelihood: sum of log PDFs for winners + sum of log(1-CDF) for losers
-                                         log_pdf_winners <- 0
-                                         for (idx in winner_indices) {
-                                           winner_drift <- drift_rates[idx]
-                                           log_pdf_winners <- log_pdf_winners + 
-                                             statmod::dinvgauss(rt_adj, 
-                                                                mean = current_boundary / winner_drift,
-                                                                shape = current_boundary^2,
-                                                                log = TRUE)
-                                         }
-                                         
-                                         log_survival_losers <- 0
-                                         for (idx in loser_indices) {
-                                           loser_drift <- drift_rates[idx]
-                                           surv_prob <- 1 - statmod::pinvgauss(rt_adj,
-                                                                               mean = current_boundary / loser_drift,
-                                                                               shape = current_boundary^2)
-                                           log_survival_losers <- log_survival_losers + log(max(surv_prob, 1e-10))
-                                         }
-                                         
-                                         trial_loglik[t] <- log_pdf_winners + log_survival_losers
-                                         
                                        } else {
-                                         trial_loglik[t] <- 0 # Ignore trials outside RT bounds or missing
+                                         trial_loglik[t] <- 0  # Ignore trials outside RT bounds or missing
                                        }
                                        
                                        # Update EV for the chosen deck for the next trial
