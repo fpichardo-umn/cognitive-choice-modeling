@@ -614,6 +614,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_lagvsedeltaf"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_delta, param_sets$vse_lag, "betaF"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_lagvsedelta"]] <- list(
     data = data_types$basic_igt,
     params = c(param_sets$pvl_delta, param_sets$vse_lag),
@@ -1030,6 +1037,13 @@ get_igt_defaults = function() {
   models[["igt_sing_lagvsedelta_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta, param_sets$vse_lag), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_lagvsedeltaf_rdm_b1p2"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta, param_sets$vse_lag, "betaF"), c("con", "drift_con")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
