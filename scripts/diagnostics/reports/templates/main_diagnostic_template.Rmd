@@ -1,0 +1,274 @@
+---
+title: "MCMC Diagnostics Report"
+subtitle: "`r sprintf('%s - %s - %s', task, model, cohort)`"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(knitr)
+  library(bayesplot)
+  library(posterior)
+})
+
+# Load diagnostic helpers and visualization functions
+source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_helpers.R"))
+source(file.path(here::here(), "scripts", "diagnostics", "visualization", "convergence_plots.R"))
+source(file.path(here::here(), "scripts", "diagnostics", "visualization", "diagnostic_summary_plots.R"))
+source(file.path(here::here(), "scripts", "diagnostics", "visualization", "subject_comparison_plots.R"))
+
+# Load thresholds and config
+thresholds <- load_diagnostic_thresholds()
+config <- load_report_config()
+```
+
+```{r load-data, include=FALSE}
+# Diagnostic results should be passed to the rendering environment
+# fit object may also be available for plotting
+```
+
+# Executive Summary
+
+## Overall Status
+
+```{r overall-status, results='asis'}
+status <- diagnostic_results$overall_status
+status_badge <- format_status_badge(status)
+cat(status_badge)
+```
+
+## Key Information
+
+```{r key-info}
+if (!is.null(diagnostic_results$metadata)) {
+  meta <- diagnostic_results$metadata
+  
+  info_df <- data.frame(
+    Item = c("Model", "Task", "Cohort", "Fit Type", "Chains", "Iterations", "Parameters"),
+    Value = c(
+      model,
+      task,
+      cohort,
+      fit_type,
+      as.character(meta$n_chains %||% "N/A"),
+      sprintf("%d warmup + %d sampling", meta$n_warmup %||% 0, 
+              (meta$n_iter %||% 0) - (meta$n_warmup %||% 0)),
+      as.character(meta$n_params %||% "N/A")
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  kable(info_df, col.names = c("", ""), caption = "Model Information")
+}
+```
+
+## Quick Assessment
+
+```{r quick-assessment}
+if (diagnostic_results$overall_status == "PASS") {
+  cat("**✓ All diagnostics PASSED**\n\n")
+  cat("The MCMC sampler has converged and is providing reliable estimates. You can proceed with confidence.\n\n")
+} else if (diagnostic_results$overall_status == "WARN") {
+  cat("**⚠ Some diagnostics show WARNINGS**\n\n")
+  cat("Review the specific issues in the sections below. Some parameters or subjects may need attention.\n\n")
+} else {
+  cat("**✗ Critical diagnostic FAILURES detected**\n\n")
+  cat("Do NOT use these results for inference. Address the issues identified below before proceeding.\n\n")
+}
+```
+
+---
+
+# Understanding MCMC Diagnostics
+
+```{r explanations, child='diagnostic_explanations.Rmd'}
+```
+
+---
+
+# Diagnostic Results
+
+```{r results-section, child=results_template}
+# Load the appropriate results template based on fit_type
+# results_template will be set to:
+# - "single_fit_section.Rmd" for single fits
+# - "batch_fit_section.Rmd" for batch fits
+# - "hierarchical_section.Rmd" for hierarchical fits
+```
+
+---
+
+# Recommendations
+
+```{r recommendations}
+if (!is.null(diagnostic_results$recommendations)) {
+  for (i in seq_along(diagnostic_results$recommendations)) {
+    cat(sprintf("%d. %s\n", i, diagnostic_results$recommendations[i]))
+  }
+} else {
+  cat("No specific recommendations at this time.\n")
+}
+```
+
+## Additional Actions
+
+```{r additional-actions}
+if (diagnostic_results$overall_status == "FAIL") {
+  cat("### Immediate Actions Required\n\n")
+  cat("1. **Do not proceed with inference** - Results may be biased or unreliable\n")
+  cat("2. **Review specific issues** in the sections above\n")
+  cat("3. **Consider the following**:\n")
+  cat("   - Increase sampling iterations\n")
+  cat("   - Adjust MCMC parameters (adapt_delta, max_treedepth)\n")
+  cat("   - Reparameterize the model\n")
+  cat("   - Check for model identifiability issues\n\n")
+} else if (diagnostic_results$overall_status == "WARN") {
+  cat("### Suggested Actions\n\n")
+  cat("1. **Review flagged parameters/subjects** carefully\n")
+  cat("2. **Consider**:\n")
+  cat("   - Running additional iterations for low ESS parameters\n")
+  cat("   - Checking sensitivity of results to problematic parameters\n")
+  cat("   - Excluding subjects with severe issues (if appropriate)\n\n")
+} else {
+  cat("### Next Steps\n\n")
+  cat("1. **Proceed with analysis** - Diagnostics are satisfactory\n")
+  cat("2. **Consider**:\n")
+  cat("   - Posterior predictive checks to validate model fit\n")
+  cat("   - Parameter recovery analysis (if simulated data)\n")
+  cat("   - Model comparison (if multiple models)\n\n")
+}
+```
+
+---
+
+# Technical Details
+
+## Sampling Configuration
+
+```{r sampling-config}
+if (!is.null(diagnostic_results$metadata)) {
+  meta <- diagnostic_results$metadata
+  
+  config_df <- data.frame(
+    Parameter = c("Warmup Iterations", "Sampling Iterations", "Chains", 
+                 "Adapt Delta", "Max Tree Depth", "Total Samples"),
+    Value = c(
+      as.character(meta$n_warmup %||% "N/A"),
+      as.character((meta$n_iter %||% 0) - (meta$n_warmup %||% 0)),
+      as.character(meta$n_chains %||% "N/A"),
+      sprintf("%.3f", meta$adapt_delta %||% NA),
+      as.character(meta$max_treedepth %||% "N/A"),
+      as.character(meta$total_samples %||% "N/A")
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  kable(config_df, col.names = c("Parameter", "Value"), 
+        caption = "MCMC Sampling Configuration")
+}
+```
+
+## Data Filtering
+
+```{r data-filtering}
+if (!is.null(diagnostic_results$metadata$data_filt)) {
+  data_filt <- diagnostic_results$metadata$data_filt
+  
+  filt_df <- data.frame(
+    Parameter = names(data_filt),
+    Value = as.character(data_filt),
+    stringsAsFactors = FALSE
+  )
+  
+  kable(filt_df, col.names = c("Parameter", "Value"),
+        caption = "Data Filtering Parameters")
+}
+```
+
+## Diagnostic Thresholds Used
+
+```{r thresholds-used}
+threshold_df <- data.frame(
+  Metric = c("R-hat (Excellent)", "R-hat (Acceptable)", "R-hat (Problematic)",
+            "ESS Ratio (Good)", "ESS Ratio (Acceptable)", "ESS Ratio (Problematic)",
+            "Divergence Rate (Acceptable)", "Divergence Rate (Borderline)", "Divergence Rate (Problematic)",
+            "MCSE Ratio (Acceptable)", "MCSE Ratio (Borderline)", "MCSE Ratio (Problematic)",
+            "EBFMI (Acceptable)", "EBFMI (Problematic)"),
+  Threshold = c(
+    sprintf("≤ %.2f", thresholds$thresholds$rhat$excellent),
+    sprintf("≤ %.2f", thresholds$thresholds$rhat$acceptable),
+    sprintf("> %.2f", thresholds$thresholds$rhat$problematic),
+    sprintf("≥ %.2f", thresholds$thresholds$ess_ratio$good),
+    sprintf("≥ %.2f", thresholds$thresholds$ess_ratio$acceptable),
+    sprintf("< %.2f", thresholds$thresholds$ess_ratio$problematic),
+    sprintf("≤ %.3f%%", thresholds$thresholds$divergence_rate$acceptable * 100),
+    sprintf("≤ %.2f%%", thresholds$thresholds$divergence_rate$borderline * 100),
+    sprintf("> %.2f%%", thresholds$thresholds$divergence_rate$problematic * 100),
+    sprintf("≤ %.2f%%", thresholds$thresholds$mcse_ratio$acceptable * 100),
+    sprintf("≤ %.2f%%", thresholds$thresholds$mcse_ratio$borderline * 100),
+    sprintf("> %.2f%%", thresholds$thresholds$mcse_ratio$problematic * 100),
+    sprintf("≥ %.2f", thresholds$thresholds$ebfmi$acceptable),
+    sprintf("< %.2f", thresholds$thresholds$ebfmi$problematic)
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(threshold_df, caption = "Diagnostic Thresholds")
+```
+
+## Report Generation
+
+```{r report-info}
+cat(sprintf("- **Report generated**: %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S")))
+cat(sprintf("- **R version**: %s\n", R.version.string))
+cat(sprintf("- **cmdstanr version**: %s\n", 
+            ifelse(requireNamespace("cmdstanr", quietly = TRUE), 
+                  as.character(packageVersion("cmdstanr")), 
+                  "Not available")))
+cat(sprintf("- **posterior version**: %s\n", as.character(packageVersion("posterior"))))
+cat(sprintf("- **bayesplot version**: %s\n", as.character(packageVersion("bayesplot"))))
+```
+
+---
+
+# References and Resources
+
+## Stan Documentation
+
+- [Stan User's Guide](https://mc-stan.org/docs/2_29/stan-users-guide/)
+- [MCMC Warnings and Diagnostics](https://mc-stan.org/misc/warnings.html)
+- [Posterior R Package](https://mc-stan.org/posterior/)
+- [Bayesplot R Package](https://mc-stan.org/bayesplot/)
+
+## Recommended Reading
+
+- Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P. C. (2021). Rank-normalization, folding, and localization: An improved R-hat for assessing convergence of MCMC. *Bayesian Analysis*, 16(2), 667-718.
+- Betancourt, M. (2017). A Conceptual Introduction to Hamiltonian Monte Carlo. arXiv:1701.02434.
+- Gelman, A., & Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. *Statistical Science*, 7(4), 457-472.
+
+---
+
+<div style="text-align: center; color: #666; font-size: 0.9em; margin-top: 2em; padding-top: 1em; border-top: 1px solid #ddd;">
+Generated by the MCMC Diagnostics Pipeline<br>
+Project: Cognitive Choice Modeling
+</div>

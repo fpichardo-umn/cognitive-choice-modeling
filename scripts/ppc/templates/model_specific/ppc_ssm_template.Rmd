@@ -1,0 +1,219 @@
+
+## SSM Component Analysis
+
+This section examines sequential sampling model (SSM) metrics, focusing on response time distributions and decision process parameters.
+
+```{r ssm_setup, include=FALSE}
+# Load task config for SSM-specific analysis
+source(file.path(here::here(), "scripts", "ppc", "helpers", "task_config.R"))
+task_config <- get_task_config(task)
+```
+
+### RT Distribution Analysis
+
+```{r ssm_rt_dist_analysis, echo=FALSE, fig.width=10, fig.height=8}
+# Use the existing RT visualization functions directly
+if (any(ppc_summary$category == "rt")) {
+  # Use the RT distribution visualization function for comprehensive view
+  rt_combined_plot <- plot_rt_combined(ppc_summary)
+  print(rt_combined_plot)
+  
+  # Show individual RT distributions for different response types
+  rt_all <- plot_rt_distributions(ppc_summary, rt_type = "all")
+  print(rt_all)
+  
+  # Task-specific RT analysis
+  if (task_config$type == "play_pass") {
+    # RT by choice type for mIGT
+    rt_play <- plot_rt_distributions(ppc_summary, rt_type = "play")
+    print(rt_play)
+    
+    rt_pass <- plot_rt_distributions(ppc_summary, rt_type = "pass")
+    print(rt_pass)
+  }
+  
+  # Create summary table of RT statistics
+  rt_summary <- ppc_summary %>%
+    filter(category == "rt", session == "session") %>%
+    group_by(statistic) %>%
+    summarize(
+      mean_observed = mean(observed, na.rm = TRUE),
+      mean_predicted = mean(simulated_mean, na.rm = TRUE),
+      mean_difference = mean(observed - simulated_mean, na.rm = TRUE),
+      percent_diff = 100 * mean_difference / mean_observed,
+      pct_extreme = 100 * mean(extreme_ppp, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  kable(rt_summary, caption = "Summary of RT Statistics") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+  
+} else {
+  cat("No RT data found in the summary statistics.\n")
+}
+```
+
+### RT PPP Analysis
+
+```{r rt_ppp_analysis, echo=FALSE, fig.width=10, fig.height=6}
+# Use the existing PPP visualization function for RT data
+if (any(ppc_summary$category == "rt")) {
+  # Create PPP summary plot for RT statistics
+  rt_ppp_plot <- plot_ppp_summary(ppc_summary, category = "rt")
+  print(rt_ppp_plot)
+  
+  # Create PPP heatmap for RT statistics
+  rt_ppp_heatmap <- plot_ppp_heatmap(ppc_summary, category = "rt")
+  print(rt_ppp_heatmap)
+  
+} else {
+  cat("No RT data found for PPP analysis.\n")
+}
+```
+
+### RT Block-Level Analysis
+
+```{r ssm_rt_analysis_by_block, echo=FALSE, fig.width=10, fig.height=8}
+block_types = c("block_1", "block_2", "block_3", "block_4", "block_5", "block_6")
+
+for (block_type in block_types){
+  if (any(ppc_summary$category == "rt")) {
+    # Show individual RT distributions for different response types
+    rt_all <- plot_rt_distributions(ppc_summary %>% filter(session == block_type), rt_type = "all", session_type = block_type)
+    print(rt_all)
+    
+    # RT by choice type if available
+    rt_play <- plot_rt_distributions(ppc_summary %>% filter(session == block_type), rt_type = "play", session_type = block_type)
+    print(rt_play)
+    
+    rt_pass <- plot_rt_distributions(ppc_summary %>% filter(session == block_type), rt_type = "pass", session_type = block_type)
+    print(rt_pass)
+    
+    # Create summary table of RT statistics
+    rt_summary <- ppc_summary %>%
+        filter(category == "rt") %>%
+        group_by(statistic) %>%
+        summarize(
+            mean_observed = mean(observed, na.rm = TRUE),
+            mean_predicted = mean(simulated_mean, na.rm = TRUE),
+            mean_difference = mean(observed - simulated_mean, na.rm = TRUE),
+            percent_diff = 100 * mean_difference / mean_observed,
+            pct_extreme = 100 * mean(extreme_ppp, na.rm = TRUE),
+            .groups = "drop"
+        )
+    
+    kable(rt_summary, caption = paste("Summary of RT Statistics for", block_type)) %>%
+        kable_styling(bootstrap_options = c("striped", "hover"))
+    
+} else {
+    cat("No RT data found in the summary statistics.n")
+}
+}
+```
+
+```{r rt_blocks, echo=FALSE, fig.width=10, fig.height=6}
+# Check if we have block-level RT data
+if (any(ppc_summary$category == "rt" & grepl("block_", ppc_summary$session))) {
+  # Key RT metrics to track across blocks
+  rt_metrics <- c("rt_mean", "rt_mean_play", "rt_mean_pass")
+  
+  # Check which metrics are available in the data
+  available_metrics <- intersect(rt_metrics, unique(ppc_summary$statistic))
+  
+  if (length(available_metrics) > 0) {
+    # Use one metric for learning curve visualization
+    selected_metric <- available_metrics[1]
+    
+    # Create learning curve using the visualization function
+    rt_learning_plot <- plot_block_curve(ppc_summary, statistic = selected_metric)
+    print(rt_learning_plot)
+    
+    play_rt_learning <- plot_block_curve(ppc_summary, statistic = available_metrics[2])
+    print(play_rt_learning)
+    
+    pass_rt_learning <- plot_block_curve(ppc_summary, statistic = available_metrics[3])
+    print(pass_rt_learning)
+  } else {
+    cat("No suitable RT metrics found for block-level analysis.\n")
+  }
+} else {
+  cat("No block-level RT data found.\n")
+}
+```
+
+### Subject-Level RT Analysis
+
+```{r subject_rt, echo=FALSE, fig.width=10, fig.height=8}
+# Use the visualization function to create subject-level RT plots
+if (any(ppc_summary$category == "rt")) {
+  # Get list of subjects
+  subjects <- unique(ppc_summary$subject_id)
+  
+  # Select a sample of subjects to display (max 6)
+  if (length(subjects) > 6) {
+    # Random sample of 6 subjects
+    sample_subjects <- sample(subjects, 6)
+  } else {
+    sample_subjects <- subjects
+  }
+  
+  # Create a plot for each subject
+  for (sub_id in sample_subjects) {
+    # Get subject plots using the visualization function
+    sub_rt_plot <- plot_rt_distributions(ppc_summary, subject_id = sub_id, rt_type = "all")
+    print(sub_rt_plot)
+  }
+  
+  # Extreme PPP values analysis
+  extreme_rt_stats <- ppc_summary %>%
+    filter(category == "rt", session == "session", extreme_ppp == TRUE) %>%
+    group_by(statistic) %>%
+    summarize(
+      count = n(),
+      proportion = n() / length(subjects),
+      avg_ppp = mean(ppp, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(proportion))
+  
+  if (nrow(extreme_rt_stats) > 0) {
+    kable(extreme_rt_stats, caption = "RT Statistics with Extreme PPP Values", digits = 3) %>%
+      kable_styling(bootstrap_options = c("striped", "hover"))
+  } else {
+    cat("No RT statistics show extreme PPP values.\n")
+  }
+  
+} else {
+  cat("No RT data found for subject-level analysis.\n")
+}
+```
+
+### PPP Distribution Across Subjects
+
+```{r ppp_distribution, echo=FALSE, fig.width=10, fig.height=8}
+# Create a heatmap of PPP values across subjects
+if (any(ppc_summary$category == "rt")) {
+  # Use the existing heatmap function
+  ppp_heatmap <- plot_ppp_heatmap(ppc_summary, category = "rt")
+  print(ppp_heatmap)
+  
+  # Calculate overall model fit quality metrics
+  rt_ppp_summary <- ppc_summary %>%
+    filter(category == "rt", session == "session") %>%
+    summarize(
+      total_metrics = n(),
+      extreme_count = sum(extreme_ppp, na.rm = TRUE),
+      extreme_percent = 100 * extreme_count / total_metrics,
+      mean_ppp = mean(ppp, na.rm = TRUE),
+      median_ppp = median(ppp, na.rm = TRUE),
+      std_dev_ppp = sd(ppp, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  kable(rt_ppp_summary, caption = "Overall RT Model Fit Quality", digits = 2) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"))
+  
+} else {
+  cat("No RT data found for PPP distribution analysis.\n")
+}
+```

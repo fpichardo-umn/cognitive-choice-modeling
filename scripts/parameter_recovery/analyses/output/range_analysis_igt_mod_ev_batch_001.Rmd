@@ -1,0 +1,1917 @@
+---
+title: "Enhanced Parameter Range Analysis with Empirical Comparison"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(here)
+library(patchwork) # For combining plots
+library(corrplot) # For correlation plots
+library(viridis) # For better color palettes
+library(reshape2) # For melting data frames
+library(RColorBrewer) # For color brewer palettes
+
+# File paths to recovery and PPC data - will be set by the calling script
+recovery_file <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/sim/recovery/recovery_igt_mod_ev_batch_001.csv"
+ppc_subject_file <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/sim/ppc/ppc_subject_summary_task-igt_mod_model-ev_group-batch_001.csv"
+ppc_model_file <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/sim/ppc/ppc_model_summary_task-igt_mod_model-ev_group-batch_001.csv"
+ppc_block_file <- ""
+
+# Default model type - will be overridden by calling script
+model_type <- "RL"
+
+# Path to empirical data
+empirical_data_path <- "/Users/icd/Library/CloudStorage/Dropbox/Projects/modeling_mIGT/Data/AHRB/participant_stats_wave1.csv"
+
+# Function to analyze recovery by parameter range with fixed bins
+analyze_recovery_by_range <- function(data, parameter_name, n_bins = 5) {
+  # Filter data for the specified parameter
+  param_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Create bins based on true parameter values
+  breaks <- seq(min(param_data$true_value, na.rm = TRUE),
+                unname(quantile(param_data$true_value, 0.8, na.rm = TRUE)),
+                length.out = n_bins)
+  breaks = c(breaks, max(param_data$true_value, na.rm = TRUE))
+  
+  param_data$bin <- cut(param_data$true_value, breaks = breaks, include.lowest = TRUE)
+  
+  # Calculate recovery metrics for each bin
+  bin_stats <- param_data %>%
+    group_by(bin) %>%
+    summarize(
+      bin_min = min(true_value, na.rm = TRUE),
+      bin_max = max(true_value, na.rm = TRUE),
+      bin_center = mean(true_value, na.rm = TRUE),
+      n = n(),
+      correlation = cor(true_value, recovered_value, use = "complete.obs"),
+      rmse = sqrt(mean((true_value - recovered_value)^2, na.rm = TRUE)),
+      bias = mean(recovered_value - true_value, na.rm = TRUE),
+      rel_bias = mean((recovered_value - true_value) / 
+                      pmax(0.001, abs(true_value)), na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  return(bin_stats)
+}
+
+# Function to analyze recovery by parameter range with adaptive binning
+analyze_recovery_by_range_adaptive <- function(data, parameter_name, target_points_per_bin = 20) {
+  # Filter data for the specified parameter
+  param_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Sort data by true parameter values
+  param_data <- param_data[order(param_data$true_value),]
+  
+  # Calculate number of bins based on target points per bin
+  n_bins <- max(3, floor(nrow(param_data) / target_points_per_bin))
+  
+  # Create bins with roughly equal number of points
+  bin_indices <- floor(seq(1, nrow(param_data) + 0.999, length.out = n_bins + 1))
+  
+  # Initialize result dataframe
+  bin_stats <- data.frame(
+    bin = character(),
+    bin_min = numeric(),
+    bin_max = numeric(),
+    bin_center = numeric(),
+    n = integer(),
+    correlation = numeric(),
+    rmse = numeric(),
+    bias = numeric(),
+    rel_bias = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Process each bin
+  for (i in 1:(length(bin_indices) - 1)) {
+    # Get data for this bin
+    start_idx <- bin_indices[i]
+    end_idx <- bin_indices[i+1] - 1
+    bin_data <- param_data[start_idx:end_idx,]
+    
+    # Calculate statistics for this bin
+    bin_min <- min(bin_data$true_value, na.rm = TRUE)
+    bin_max <- max(bin_data$true_value, na.rm = TRUE)
+    
+    # Create bin label
+    bin_label <- if (i == 1) {
+      paste0("[", round(bin_min, 4), ",", round(bin_max, 4), "]")
+    } else {
+      paste0("(", round(bin_min, 4), ",", round(bin_max, 4), "]")
+    }
+    
+    # Calculate recovery metrics
+    bin_stats <- rbind(bin_stats, data.frame(
+      bin = bin_label,
+      bin_min = bin_min,
+      bin_max = bin_max,
+      bin_center = mean(bin_data$true_value, na.rm = TRUE),
+      n = nrow(bin_data),
+      correlation = cor(bin_data$true_value, bin_data$recovered_value, use = "complete.obs"),
+      rmse = sqrt(mean((bin_data$true_value - bin_data$recovered_value)^2, na.rm = TRUE)),
+      bias = mean(bin_data$recovered_value - bin_data$true_value, na.rm = TRUE),
+      rel_bias = mean((bin_data$recovered_value - bin_data$true_value) / 
+                      pmax(0.001, abs(bin_data$true_value)), na.rm = TRUE),
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  return(bin_stats)
+}
+
+# Function to smooth recovery metrics across adjacent bins
+smooth_recovery_metrics <- function(bin_stats, smoothing_window = 3) {
+  # Make a copy of the input data to not modify the original
+  smoothed_stats <- bin_stats
+  
+  # Number of bins
+  n_bins <- nrow(bin_stats)
+  
+  # Only proceed if we have enough bins to smooth
+  if (n_bins < 3) {
+    return(bin_stats)  # Not enough bins to smooth
+  }
+  
+  # Gaussian-like weights: higher weight for central bin, lower for neighbors
+  # Default window size is 3: [0.25, 0.5, 0.25]
+  weights <- dnorm(seq(-smoothing_window + 1, smoothing_window - 1, length.out = smoothing_window * 2 - 1), 
+                  mean = 0, sd = smoothing_window/2)
+  weights <- weights / sum(weights)  # Normalize weights
+  
+  # Initialize arrays for smoothed metrics
+  smoothed_correlation <- numeric(n_bins)
+  smoothed_rmse <- numeric(n_bins)
+  
+  # For each bin, compute smoothed metrics
+  for (i in 1:n_bins) {
+    # Identify neighbors within window
+    start_idx <- max(1, i - smoothing_window + 1)
+    end_idx <- min(n_bins, i + smoothing_window - 1)
+    neighbor_indices <- start_idx:end_idx
+    
+    # Get weight indices (shifted if we're near the edges)
+    weight_start <- max(1, smoothing_window - i + 1)
+    weight_end <- weight_start + length(neighbor_indices) - 1
+    
+    # Compute weighted average for correlation
+    smoothed_correlation[i] <- sum(bin_stats$correlation[neighbor_indices] * 
+                                weights[weight_start:weight_end], na.rm = TRUE) / 
+                             sum(weights[weight_start:weight_end], na.rm = TRUE)
+    
+    # Compute weighted average for RMSE
+    smoothed_rmse[i] <- sum(bin_stats$rmse[neighbor_indices] * 
+                          weights[weight_start:weight_end], na.rm = TRUE) / 
+                       sum(weights[weight_start:weight_end], na.rm = TRUE)
+  }
+  
+  # Update smoothed stats dataframe
+  smoothed_stats$smoothed_correlation <- smoothed_correlation
+  smoothed_stats$smoothed_rmse <- smoothed_rmse
+  
+  return(smoothed_stats)
+}
+
+# Function to find and merge adjacent bins with good recovery properties
+find_optimal_range_with_merging <- function(bin_stats, min_correlation = 0.35, 
+                                           max_rmse_percentile = 0.25, 
+                                           use_smoothed_metrics = TRUE) {
+  # Apply metric smoothing if requested
+  if (use_smoothed_metrics && nrow(bin_stats) >= 3) {
+    bin_stats <- smooth_recovery_metrics(bin_stats)
+    # Use smoothed metrics for evaluation
+    eval_correlation <- bin_stats$smoothed_correlation
+    eval_rmse <- bin_stats$smoothed_rmse
+  } else {
+    # Use original metrics
+    eval_correlation <- bin_stats$correlation
+    eval_rmse <- bin_stats$rmse
+  }
+  
+  # Identify good bins (correlation >= threshold)
+  good_bins <- which(eval_correlation >= min_correlation)
+  
+  if (length(good_bins) == 0) {
+    return(NULL)  # No bins meet the correlation threshold
+  }
+  
+  # Maximum RMSE threshold (for "good enough" bins)
+  max_rmse <- quantile(eval_rmse[good_bins], max_rmse_percentile, na.rm = TRUE)
+  if (is.na(max_rmse)) max_rmse <- max(eval_rmse, na.rm = TRUE)
+  
+  # Find best connected sequence of bins
+  best_range <- NULL
+  best_score <- -Inf
+  
+  # Try each good bin as a starting point
+  for (start_bin in good_bins) {
+    # Search for mergeable sequence starting from this bin
+    end_bin <- start_bin
+    
+    # Growing sequence to the right
+    while (end_bin < nrow(bin_stats) && 
+           (eval_correlation[end_bin + 1] >= min_correlation * 0.8 || # Relaxed correlation threshold
+            (end_bin + 1) %in% good_bins) &&  # or a truly good bin
+           eval_rmse[end_bin + 1] <= max_rmse * 1.2) {  # Relaxed RMSE threshold
+      end_bin <- end_bin + 1
+    }
+    
+    # Growing sequence to the left
+    left_bin <- start_bin
+    while (left_bin > 1 && 
+           (eval_correlation[left_bin - 1] >= min_correlation * 0.8 || # Relaxed correlation threshold
+            (left_bin - 1) %in% good_bins) &&  # or a truly good bin
+           eval_rmse[left_bin - 1] <= max_rmse * 1.2) {  # Relaxed RMSE threshold
+      left_bin <- left_bin - 1
+    }
+    
+    # Calculate average metrics for the sequence
+    sequence_bins <- left_bin:end_bin
+    avg_correlation <- mean(eval_correlation[sequence_bins])
+    avg_rmse <- mean(eval_rmse[sequence_bins])
+    
+    # Calculate range width (relative to full parameter range)
+    range_width <- (bin_stats$bin_max[end_bin] - bin_stats$bin_min[left_bin]) / 
+                  (max(bin_stats$bin_max) - min(bin_stats$bin_min))
+    
+    # Score this range (balance of quality and width)
+    # Higher correlation, lower RMSE, and wider range is better
+    sequence_score <- (avg_correlation * 10) - (avg_rmse * 5) + (range_width * 3)
+    
+    # Only consider sequences with at least one truly good bin
+    if (any(sequence_bins %in% good_bins) && sequence_score > best_score) {
+      best_range <- list(
+        start_bin = left_bin,
+        end_bin = end_bin,
+        optimal_min = bin_stats$bin_min[left_bin],
+        optimal_max = bin_stats$bin_max[end_bin],
+        correlation = avg_correlation,
+        rmse = avg_rmse,
+        n_bins = length(sequence_bins),
+        width_ratio = range_width,
+        score = sequence_score
+      )
+      best_score <- sequence_score
+    }
+  }
+  
+  return(best_range)
+}
+
+# Function to analyze recovery with PPC metrics by parameter range
+analyze_recovery_with_ppc <- function(recovery_data, ppc_data, parameter_name, n_bins = 5, 
+                                      use_adaptive_binning = TRUE, target_points_per_bin = 20) {
+  # Filter data for the specified parameter
+  param_data <- recovery_data[recovery_data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Create bins based on parameter values
+  if(use_adaptive_binning) {
+    bin_stats <- analyze_recovery_by_range_adaptive(recovery_data, parameter_name, target_points_per_bin)
+  } else {
+    bin_stats <- analyze_recovery_by_range(recovery_data, parameter_name, n_bins)
+  }
+  
+  if(is.null(bin_stats) || nrow(bin_stats) == 0) {
+    return(NULL)
+  }
+  
+  # If PPC data is available, join with recovery data to get behavioral metrics by bin
+  if(!is.null(ppc_data) && nrow(ppc_data) > 0) {
+    # For each bin, we need to find the corresponding subjects
+    for(i in 1:nrow(bin_stats)) {
+      # Get subject IDs in this parameter bin
+      subject_ids <- recovery_data$subject_id[
+        recovery_data$parameter == parameter_name & 
+        recovery_data$true_value >= bin_stats$bin_min[i] & 
+        recovery_data$true_value <= bin_stats$bin_max[i]
+      ]
+      
+      # Get PPC data for these subjects
+      bin_ppc <- ppc_data[ppc_data$subject_id %in% subject_ids, ]
+      
+      # If we have behavioral data for this bin
+      if(nrow(bin_ppc) > 0) {
+        # Calculate statistics for key metrics
+        key_metrics <- c(
+          # RL metrics
+          "good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", "total_money", 
+          "avg_outcome", "skip_ratio", "new_good_deck_ratio", "new_bad_deck_ratio",
+          # SSM metrics
+          "rt_play_mean", "rt_skip_mean", "choice_prob"
+        )
+        
+        for(metric in key_metrics) {
+          # Find rows with this metric
+          metric_rows <- bin_ppc[bin_ppc$statistic == metric, ]
+          
+          if(nrow(metric_rows) > 0) {
+            # Calculate mean values and add to bin_stats
+            col_name <- paste0("rl_", metric)
+            bin_stats[i, col_name] <- mean(metric_rows$observed, na.rm = TRUE)
+          }
+        }
+      }
+    }
+  }
+  
+  return(bin_stats)
+}
+
+# Function to compare simulated behavior with empirical data
+compare_to_empirical <- function(bin_ppc, empirical_data, model_type) {
+  library(stats)
+  
+  # List to store abnormal metrics
+  abnormal_metrics <- list()
+  
+  # Define metric mappings based on model type
+  if (model_type == "RL" || model_type == "RL_SSM") {
+    metric_mapping <- list(
+      "rl_good_deck_ratio" = "good_play_percent",
+      "rl_skip_ratio" = "pass_rate", 
+      "rl_total_money" = "total_earnings",
+      "rl_win_stay_ratio" = "win_stay_ratio",
+      "rl_lose_shift_ratio" = "lose_shift_ratio"
+    )
+  } else {
+    metric_mapping <- list()
+  }
+  
+  if (model_type == "SSM" || model_type == "RL_SSM") {
+    rt_mapping <- list(
+      "rt_play_mean" = "rt_mean_play",
+      "rt_skip_mean" = "rt_mean_pass"
+    )
+    # Add RT mappings to main mapping
+    if (model_type == "SSM") {
+      metric_mapping <- rt_mapping
+    } else {
+      metric_mapping <- c(metric_mapping, rt_mapping)
+    }
+  }
+  
+  # For each mapped metric, run statistical tests
+  for (ppc_metric in names(metric_mapping)) {
+    emp_metric <- metric_mapping[[ppc_metric]]
+    
+    # Check if both metrics are available
+    if (ppc_metric %in% colnames(bin_ppc) && emp_metric %in% colnames(empirical_data)) {
+      ppc_values <- bin_ppc[[ppc_metric]][!is.na(bin_ppc[[ppc_metric]])]
+      emp_values <- empirical_data[[emp_metric]][!is.na(empirical_data[[emp_metric]])]
+      
+      # Skip if not enough data
+      if (length(ppc_values) < 5 || length(emp_values) < 5) {
+        next
+      }
+      
+      # Run Kolmogorov-Smirnov test
+      ks_result <- try(ks.test(ppc_values, emp_values), silent = TRUE)
+      
+      # Check if test was successful
+      if (!inherits(ks_result, "try-error") && ks_result$p.value < 0.05) {
+        # Calculate effect size (mean difference normalized by empirical SD)
+        mean_diff <- abs(mean(ppc_values) - mean(emp_values))
+        norm_diff <- mean_diff / max(0.001, sd(emp_values)) # Avoid division by zero
+        
+        abnormal_metrics[[ppc_metric]] <- list(
+          test = "KS-test",
+          p_value = ks_result$p.value,
+          effect_size = norm_diff,
+          direction = ifelse(mean(ppc_values) > mean(emp_values), "higher", "lower")
+        )
+      }
+    }
+  }
+  
+  # Determine overall implausibility
+  is_implausible <- FALSE
+  if (length(abnormal_metrics) >= 3) {
+    is_implausible <- TRUE
+  } else if (length(abnormal_metrics) > 0) {
+    # Check for any very large abnormalities (effect size > 1.5)
+    max_effect <- max(sapply(abnormal_metrics, function(x) x$effect_size))
+    if (max_effect > 1.5) {
+      is_implausible <- TRUE
+    }
+  }
+  
+  # Format most abnormal metrics for display
+  if (length(abnormal_metrics) > 0) {
+    effect_sizes <- sapply(abnormal_metrics, function(x) x$effect_size)
+    sorted_indices <- order(effect_sizes, decreasing = TRUE)
+    sorted_metrics <- names(abnormal_metrics)[sorted_indices]
+    
+    most_abnormal <- paste(
+      sapply(sorted_metrics[1:min(3, length(sorted_metrics))], function(m) {
+        paste0(m, " (", round(abnormal_metrics[[m]]$effect_size, 2), 
+              ", ", abnormal_metrics[[m]]$direction, ")")
+      }),
+      collapse = ", "
+    )
+  } else {
+    most_abnormal <- "None"
+  }
+  
+  return(list(
+    abnormal_metrics = abnormal_metrics,
+    abnormal_count = length(abnormal_metrics),
+    most_abnormal = most_abnormal,
+    is_implausible = is_implausible
+  ))
+}
+
+# Function to analyze recovery with empirical comparison
+analyze_recovery_with_empirical <- function(data, parameter_name, ppc_data, empirical_data, model_type,
+                                           n_bins = 5, use_adaptive_binning = TRUE, target_points_per_bin = 20) {
+  # First run standard range analysis with either fixed or adaptive binning
+  if(use_adaptive_binning) {
+    range_stats <- analyze_recovery_by_range_adaptive(data, parameter_name, target_points_per_bin)
+  } else {
+    range_stats <- analyze_recovery_by_range(data, parameter_name, n_bins)
+  }
+  
+  if(is.null(range_stats) || nrow(range_stats) < 3) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # For each parameter bin, compare simulated behavior to empirical data
+  for (i in 1:nrow(range_stats)) {
+    # Get subject IDs in this parameter bin
+    subject_ids <- data$subject_id[
+      data$parameter == parameter_name & 
+      data$true_value >= range_stats$bin_min[i] & 
+      data$true_value <= range_stats$bin_max[i]
+    ]
+    
+    # Get PPC stats for these subjects
+    bin_ppc <- ppc_data[ppc_data$subject_id %in% subject_ids, ]
+    
+    # Run empirical comparison
+    bin_stats <- compare_to_empirical(bin_ppc, empirical_data, model_type)
+    
+    # Add to range_stats
+    range_stats$abnormal_metrics_count[i] <- bin_stats$abnormal_count
+    range_stats$most_abnormal_metrics[i] <- bin_stats$most_abnormal
+    range_stats$is_implausible[i] <- bin_stats$is_implausible
+  }
+  
+  return(range_stats)
+}
+
+# Function to create a comparison plot of simulated vs empirical data
+plot_empirical_comparison <- function(param_bins, ppc_data, empirical_data, parameter_name, metric, emp_metric) {
+  # Extract data for each bin
+  bin_stats <- list()
+  for (i in 1:nrow(param_bins)) {
+    # Get subject IDs in this bin
+    subject_ids <- ppc_data$subject_id[
+      ppc_data$parameter == parameter_name & 
+      ppc_data$true_value >= param_bins$bin_min[i] & 
+      ppc_data$true_value <= param_bins$bin_max[i]
+    ]
+    
+    # Get metric values for these subjects
+    if (metric %in% colnames(ppc_data)) {
+      bin_values <- ppc_data[[metric]][ppc_data$subject_id %in% subject_ids]
+      bin_stats[[i]] <- list(
+        bin_center = param_bins$bin_center[i],
+        mean = mean(bin_values, na.rm = TRUE),
+        sd = sd(bin_values, na.rm = TRUE),
+        is_implausible = param_bins$is_implausible[i]
+      )
+    }
+  }
+  
+  # Convert to data frame
+  plot_data <- do.call(rbind, lapply(1:length(bin_stats), function(i) {
+    data.frame(
+      bin_center = bin_stats[[i]]$bin_center,
+      mean = bin_stats[[i]]$mean,
+      sd = bin_stats[[i]]$sd,
+      is_implausible = bin_stats[[i]]$is_implausible
+    )
+  }))
+  
+  # Get empirical stats
+  emp_mean <- mean(empirical_data[[emp_metric]], na.rm = TRUE)
+  emp_sd <- sd(empirical_data[[emp_metric]], na.rm = TRUE)
+  emp_lower <- quantile(empirical_data[[emp_metric]], 0.025, na.rm = TRUE)
+  emp_upper <- quantile(empirical_data[[emp_metric]], 0.975, na.rm = TRUE)
+  
+  # Create the plot
+  p <- ggplot(plot_data, aes(x = bin_center, y = mean)) +
+    # Add simulated data points
+    geom_point(aes(color = is_implausible), size = 3) +
+    geom_line() +
+    # Add empirical reference bands
+    geom_hline(yintercept = emp_mean, linetype = "dashed", color = "darkgreen") +
+    geom_ribbon(aes(ymin = emp_mean - emp_sd, ymax = emp_mean + emp_sd), 
+               alpha = 0.2, fill = "darkgreen") +
+    geom_ribbon(aes(ymin = emp_lower, ymax = emp_upper), 
+               alpha = 0.1, fill = "darkgreen") +
+    # Add error bars for simulated data
+    geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                 width = 0.1, alpha = 0.5) +
+    # Styling
+    scale_color_manual(values = c("FALSE" = "blue", "TRUE" = "red")) +
+    labs(
+      title = paste("Effect of", parameter_name, "on", metric),
+      subtitle = "Green band = Empirical distribution (mean ± SD and 95% CI)",
+      x = parameter_name,
+      y = metric,
+      color = "Implausible"
+    ) +
+    theme_minimal()
+  
+  return(p)
+}
+
+# Function to plot recovery without extreme values
+plot_filtered_recovery <- function(data, parameter_name, cutoff_percentile = 0.95) {
+  # Filter data for the specified parameter
+  param_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Calculate error
+  param_data$error <- abs(param_data$recovered_value - param_data$true_value)
+  
+  # Define cutoff
+  cutoff <- quantile(param_data$error, cutoff_percentile, na.rm = TRUE)
+  
+  # Filter out extreme cases
+  filtered_data <- param_data[param_data$error <= cutoff,]
+  
+  # Calculate recovery metrics for filtered data
+  filtered_cor <- cor(filtered_data$true_value, filtered_data$recovered_value, 
+                     use = "complete.obs")
+  filtered_rmse <- sqrt(mean((filtered_data$true_value - filtered_data$recovered_value)^2, 
+                           na.rm = TRUE))
+  
+  # Plot
+  p <- ggplot(filtered_data, aes(x = true_value, y = recovered_value)) +
+    geom_point(alpha = 0.7, color = "blue") +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE, color = "red") +
+    labs(title = paste0(parameter_name, " - Without Extreme Values (top ", 
+                      (1-cutoff_percentile)*100, "%)"),
+         subtitle = paste0("Correlation: ", round(filtered_cor, 3), 
+                         ", RMSE: ", round(filtered_rmse, 3)),
+         x = "True Value", y = "Recovered Value") +
+    theme_minimal()
+  
+  return(p)
+}
+
+# Modified function to identify optimal parameter ranges with merging and smoothing
+find_optimal_ranges <- function(data, min_correlation = 0.35, max_rmse_percentile = 0.25,
+                              use_adaptive_binning = TRUE, use_smoothed_metrics = TRUE,
+                              target_points_per_bin = 20) {
+  # Initialize results data frame
+  param_ranges <- data.frame(
+    parameter = character(),
+    optimal_min = numeric(),
+    optimal_max = numeric(),
+    correlation = numeric(),
+    rmse = numeric(),
+    n_samples = integer(),
+    width_ratio = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Get unique parameters
+  parameters <- unique(data$parameter)
+  
+  # Track parameters with no good ranges
+  no_good_ranges <- character()
+  
+  for (param in parameters) {
+    # Get data for this parameter
+    param_data <- data[data$parameter == param,]
+    
+    if(nrow(param_data) < 10) {
+      warning(paste("Not enough data for parameter", param))
+      next
+    }
+    
+    # Analyze by range with specified binning approach
+    if(use_adaptive_binning) {
+      range_stats <- analyze_recovery_by_range_adaptive(data, param, target_points_per_bin)
+    } else {
+      range_stats <- analyze_recovery_by_range(data, param, n_bins = 5)
+    }
+    
+    if(is.null(range_stats) || nrow(range_stats) == 0) {
+      no_good_ranges <- c(no_good_ranges, param)
+      next
+    }
+    
+    # Find optimal range with merging and smoothing
+    best_range <- find_optimal_range_with_merging(
+      range_stats, 
+      min_correlation = min_correlation,
+      max_rmse_percentile = max_rmse_percentile,
+      use_smoothed_metrics = use_smoothed_metrics
+    )
+    
+    if (!is.null(best_range)) {
+      param_ranges <- rbind(param_ranges, data.frame(
+        parameter = param,
+        optimal_min = best_range$optimal_min,
+        optimal_max = best_range$optimal_max,
+        correlation = best_range$correlation,
+        rmse = best_range$rmse,
+        n_samples = sum(range_stats$n[best_range$start_bin:best_range$end_bin]),
+        width_ratio = best_range$width_ratio,
+        stringsAsFactors = FALSE
+      ))
+    } else {
+      # Remember this parameter had no good ranges
+      no_good_ranges <- c(no_good_ranges, param)
+    }
+  }
+  
+  # If no parameters had good ranges, return NULL instead of empty dataframe
+  if(nrow(param_ranges) == 0) {
+    if(length(no_good_ranges) > 0) {
+      message(paste("No good parameter ranges found for:", paste(no_good_ranges, collapse=", ")))
+    }
+    return(NULL)
+  }
+  
+  return(param_ranges)
+}
+
+# Enhanced find_optimal_ranges that considers empirical plausibility
+find_optimal_ranges_with_empirical <- function(data, ppc_data, empirical_data, model_type,
+                                             min_correlation = 0.35, 
+                                             max_abnormal_count = 2,
+                                             use_adaptive_binning = TRUE,
+                                             use_smoothed_metrics = TRUE,
+                                             target_points_per_bin = 20) {
+  # Initialize results data frame
+  param_ranges <- data.frame(
+    parameter = character(),
+    optimal_min = numeric(),
+    optimal_max = numeric(),
+    correlation = numeric(),
+    rmse = numeric(),
+    abnormal_count = numeric(),
+    n_samples = integer(),
+    width_ratio = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Get unique parameters
+  parameters <- unique(data$parameter)
+  
+  # Track parameters with no good ranges
+  no_good_ranges <- character()
+  
+  for (param in parameters) {
+    # Get data for this parameter
+    param_data <- data[data$parameter == param,]
+    
+    if(nrow(param_data) < 10) {
+      warning(paste("Not enough data for parameter", param))
+      next
+    }
+    
+    # Use empirical comparison with adaptive binning if requested
+    if(use_adaptive_binning) {
+      range_stats <- analyze_recovery_with_empirical(
+        data, param, ppc_data, empirical_data, model_type, use_adaptive_binning = TRUE
+      )
+    } else {
+      range_stats <- analyze_recovery_with_empirical(
+        data, param, ppc_data, empirical_data, model_type, n_bins = 5, use_adaptive_binning = FALSE
+      )
+    }
+    
+    if(is.null(range_stats) || nrow(range_stats) == 0) {
+      no_good_ranges <- c(no_good_ranges, param)
+      next
+    }
+    
+    # Apply smoothing if requested
+    if(use_smoothed_metrics && nrow(range_stats) >= 3) {
+      range_stats <- smooth_recovery_metrics(range_stats)
+      eval_correlation <- range_stats$smoothed_correlation
+      eval_rmse <- range_stats$smoothed_rmse
+    } else {
+      eval_correlation <- range_stats$correlation
+      eval_rmse <- range_stats$rmse
+    }
+    
+    # Find optimal range with merging
+    best_range <- find_optimal_range_with_merging(
+      range_stats, 
+      min_correlation = min_correlation,
+      max_rmse_percentile = 0.25,  # Default RMSE threshold
+      use_smoothed_metrics = use_smoothed_metrics
+    )
+    
+    if (!is.null(best_range)) {
+      # Check empirical plausibility of the merged range
+      range_bins <- best_range$start_bin:best_range$end_bin
+      is_implausible <- any(range_stats$is_implausible[range_bins])
+      
+      # Get average abnormal count for the range
+      abnormal_count <- mean(range_stats$abnormal_metrics_count[range_bins])
+      
+      # If range is empirically plausible, add to results
+      if (!is_implausible && abnormal_count <= max_abnormal_count) {
+        param_ranges <- rbind(param_ranges, data.frame(
+          parameter = param,
+          optimal_min = best_range$optimal_min,
+          optimal_max = best_range$optimal_max,
+          correlation = best_range$correlation,
+          rmse = best_range$rmse,
+          abnormal_count = abnormal_count,
+          n_samples = sum(range_stats$n[range_bins]),
+          width_ratio = best_range$width_ratio,
+          stringsAsFactors = FALSE
+        ))
+      } else {
+        no_good_ranges <- c(no_good_ranges, param)
+      }
+    } else {
+      # Remember this parameter had no good ranges
+      no_good_ranges <- c(no_good_ranges, param)
+    }
+  }
+  
+  # If no parameters had good ranges, return NULL instead of empty dataframe
+  if(nrow(param_ranges) == 0) {
+    if(length(no_good_ranges) > 0) {
+      message(paste("No empirically plausible parameter ranges found for:", 
+                  paste(no_good_ranges, collapse=", ")))
+    }
+    return(NULL)
+  }
+  
+  return(param_ranges)
+}
+
+# Function to test parameter range restriction effectiveness
+test_range_restriction <- function(data, parameter_name, optimal_min, optimal_max) {
+  # Original data for this parameter
+  orig_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(orig_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Calculate original metrics
+  orig_cor <- cor(orig_data$true_value, orig_data$recovered_value, 
+                 use = "complete.obs")
+  orig_rmse <- sqrt(mean((orig_data$true_value - orig_data$recovered_value)^2, 
+                        na.rm = TRUE))
+  
+  # Restricted data
+  restricted_data <- orig_data[orig_data$true_value >= optimal_min & 
+                             orig_data$true_value <= optimal_max,]
+  
+  if(nrow(restricted_data) < 5) {
+    warning(paste("Not enough data in restricted range for", parameter_name))
+    return(NULL)
+  }
+  
+  # Calculate restricted metrics
+  restr_cor <- cor(restricted_data$true_value, restricted_data$recovered_value, 
+                  use = "complete.obs")
+  restr_rmse <- sqrt(mean((restricted_data$true_value - restricted_data$recovered_value)^2, 
+                         na.rm = TRUE))
+  
+  # Create comparison data frame
+  results <- data.frame(
+    metric = c("Correlation", "RMSE"),
+    original = c(orig_cor, orig_rmse),
+    restricted = c(restr_cor, restr_rmse),
+    improvement = c(restr_cor - orig_cor, orig_rmse - restr_rmse),
+    percent_change = c((restr_cor - orig_cor) / abs(orig_cor) * 100,
+                      (orig_rmse - restr_rmse) / orig_rmse * 100)
+  )
+  
+  return(results)
+}
+
+# Function to analyze behavioral metrics by parameter value
+analyze_behavior_by_parameter <- function(recovery_data, ppc_data, parameter_name, 
+                                          n_bins = 5, key_metrics = NULL,
+                                          use_adaptive_binning = TRUE, target_points_per_bin = 20) {
+  # Filter recovery data for the specified parameter
+  param_data <- recovery_data[recovery_data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10 || is.null(ppc_data) || nrow(ppc_data) == 0) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Create bins based on parameter values - use adaptive or fixed binning
+  if(use_adaptive_binning) {
+    # Sort data by parameter value
+    param_data <- param_data[order(param_data$true_value),]
+    
+    # Calculate number of bins
+    n_bins <- max(3, floor(nrow(param_data) / target_points_per_bin))
+    
+    # Create bin indices
+    bin_indices <- floor(seq(1, nrow(param_data) + 0.999, length.out = n_bins + 1))
+    
+    # Create bin labels and assign bins
+    param_data$bin <- NA
+    for (i in 1:(length(bin_indices) - 1)) {
+      start_idx <- bin_indices[i]
+      end_idx <- bin_indices[i+1] - 1
+      
+      bin_min <- param_data$true_value[start_idx]
+      bin_max <- param_data$true_value[end_idx]
+      
+      bin_label <- if (i == 1) {
+        paste0("[", round(bin_min, 4), ",", round(bin_max, 4), "]")
+      } else {
+        paste0("(", round(bin_min, 4), ",", round(bin_max, 4), "]")
+      }
+      
+      param_data$bin[start_idx:end_idx] <- bin_label
+    }
+  } else {
+    # Use fixed bins
+    breaks <- seq(min(param_data$true_value, na.rm = TRUE),
+                  unname(quantile(param_data$true_value, 0.8, na.rm = TRUE)),
+                  length.out = n_bins)
+    breaks = c(breaks, max(param_data$true_value, na.rm = TRUE))
+    
+    param_data$bin <- cut(param_data$true_value, breaks = breaks, include.lowest = TRUE)
+  }
+  
+  # Join with PPC data
+  behavioral_data <- param_data %>%
+    select(subject_id, true_value, bin) %>%
+    inner_join(ppc_data, by = "subject_id")
+  
+  # If key metrics specified, filter for those
+  if(!is.null(key_metrics) && length(key_metrics) > 0) {
+    behavioral_data <- behavioral_data %>%
+      filter(statistic %in% key_metrics | 
+             grepl(paste(key_metrics, collapse = "|"), statistic))
+  }
+  
+  # Calculate average metrics by bin
+  bin_metrics <- behavioral_data %>%
+    group_by(bin, statistic) %>%
+    summarize(
+      bin_min = min(true_value, na.rm = TRUE),
+      bin_max = max(true_value, na.rm = TRUE),
+      bin_center = mean(true_value, na.rm = TRUE),
+      n_subjects = n_distinct(subject_id),
+      mean_observed = mean(observed, na.rm = TRUE),
+      mean_predicted = mean(predicted_mean, na.rm = TRUE),
+      mean_misfit = mean(observed - predicted_mean, na.rm = TRUE),
+      mean_ppp = mean(ppp_value, na.rm = TRUE),
+      extreme_ratio = mean(ppp_extreme, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  return(bin_metrics)
+}
+
+# Function to create correlation matrix between parameters and behavioral metrics
+create_parameter_behavior_correlation <- function(recovery_data, ppc_data) {
+  if(is.null(recovery_data) || is.null(ppc_data) || 
+     nrow(recovery_data) == 0 || nrow(ppc_data) == 0) {
+    return(NULL)
+  }
+  
+  # Extract parameter values
+  param_values <- recovery_data %>%
+    select(subject_id, parameter, true_value) %>%
+    # Convert to wide format
+    pivot_wider(
+      id_cols = subject_id,
+      names_from = parameter,
+      values_from = true_value
+    )
+  
+  # Extract behavioral metrics
+  behavioral_metrics <- ppc_data %>%
+    select(subject_id, statistic, observed) %>%
+    # Convert to wide format
+    pivot_wider(
+      id_cols = subject_id,
+      names_from = statistic,
+      values_from = observed
+    )
+  
+  # Join data
+  combined_data <- inner_join(param_values, behavioral_metrics, by = "subject_id")
+  
+  # Remove subject_id column for correlation
+  combined_data$subject_id <- NULL
+  
+  # Get parameter and metric columns
+  param_cols <- colnames(param_values)[-1]  # Remove subject_id
+  metric_cols <- colnames(behavioral_metrics)[-1]  # Remove subject_id
+  
+  # Calculate correlation matrix
+  correlation_matrix <- cor(combined_data[param_cols], combined_data[metric_cols], 
+                           use = "pairwise.complete.obs")
+  
+  return(correlation_matrix)
+}
+
+# Function to create a nice correlation plot
+plot_correlation_matrix <- function(correlation_matrix, title = "Parameter-Behavior Correlations") {
+  # Check if matrix is not empty
+  if(is.null(correlation_matrix) || nrow(correlation_matrix) == 0 || ncol(correlation_matrix) == 0) {
+    return(NULL)
+  }
+  
+  # Create plot
+  corrplot(correlation_matrix, method = "circle", type = "full", 
+          tl.col = "black", tl.srt = 45, 
+          col = colorRampPalette(c("#4575B4", "white", "#D73027"))(200),
+          title = title,
+          mar = c(0, 0, 2, 0))
+  
+  return(TRUE)
+}
+
+# Function to identify parameters with behavioral significance
+identify_behaviorally_significant_parameters <- function(recovery_data, ppc_data, 
+                                                        correlation_threshold = 0.3,
+                                                        n_metrics_threshold = 2) {
+  # Create correlation matrix
+  corr_matrix <- create_parameter_behavior_correlation(recovery_data, ppc_data)
+  
+  if(is.null(corr_matrix) || nrow(corr_matrix) == 0 || ncol(corr_matrix) == 0) {
+    return(NULL)
+  }
+  
+  # Convert matrix to long format
+  corr_long <- reshape2::melt(corr_matrix) %>%
+    rename(parameter = Var1, behavior = Var2, correlation = value)
+  
+  # Count significant correlations per parameter
+  param_significance <- corr_long %>%
+    group_by(parameter) %>%
+    summarize(
+      n_significant = sum(abs(correlation) >= correlation_threshold, na.rm = TRUE),
+      max_correlation = max(abs(correlation), na.rm = TRUE),
+      mean_correlation = mean(abs(correlation), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    # Flag behaviorally significant parameters
+    mutate(
+      is_significant = n_significant >= n_metrics_threshold & max_correlation >= correlation_threshold
+    ) %>%
+    arrange(desc(n_significant), desc(max_correlation))
+  
+  return(param_significance)
+}
+
+# Function to plot parameters with smoothed metrics and best ranges
+plot_parameter_range_analysis <- function(bin_stats, best_range = NULL, 
+                                         use_smoothed_metrics = TRUE) {
+  # Apply smoothing if not already done
+  if (use_smoothed_metrics && nrow(bin_stats) >= 3 && 
+      !("smoothed_correlation" %in% colnames(bin_stats))) {
+    bin_stats <- smooth_recovery_metrics(bin_stats)
+  }
+  
+  # Plot correlation
+  p1 <- ggplot(bin_stats, aes(x = bin_center)) + 
+    # Original correlation
+    geom_point(aes(y = correlation), color = "blue", size = 3) +
+    geom_line(aes(y = correlation), color = "blue") +
+    # Smoothed correlation if available
+    {if ("smoothed_correlation" %in% colnames(bin_stats)) {
+      list(
+        geom_line(aes(y = smoothed_correlation), color = "red", linetype = "dashed"),
+        geom_point(aes(y = smoothed_correlation), color = "red", shape = 3, size = 2)
+      )
+    }}
+    
+  # Add optimal range if provided
+  if (!is.null(best_range)) {
+    p1 <- p1 + 
+      geom_vline(xintercept = best_range$optimal_min, linetype = "dotted", color = "darkgreen") +
+      geom_vline(xintercept = best_range$optimal_max, linetype = "dotted", color = "darkgreen") +
+      geom_rect(aes(xmin = best_range$optimal_min, xmax = best_range$optimal_max,
+                  ymin = -Inf, ymax = Inf), fill = "darkgreen", alpha = 0.1)
+  }
+  
+  # Finalize correlation plot
+  p1 <- p1 +
+    labs(title = "Parameter Recovery Analysis",
+         subtitle = "Blue = Original metrics, Red = Smoothed metrics, Green = Optimal range",
+         x = "Parameter Value", y = "Correlation") +
+    theme_minimal()
+  
+  # Plot RMSE
+  p2 <- ggplot(bin_stats, aes(x = bin_center)) + 
+    # Original RMSE
+    geom_point(aes(y = rmse), color = "blue", size = 3) +
+    geom_line(aes(y = rmse), color = "blue") +
+    # Smoothed RMSE if available
+    {if ("smoothed_rmse" %in% colnames(bin_stats)) {
+      list(
+        geom_line(aes(y = smoothed_rmse), color = "red", linetype = "dashed"),
+        geom_point(aes(y = smoothed_rmse), color = "red", shape = 3, size = 2)
+      )
+    }}
+  
+  # Add optimal range if provided
+  if (!is.null(best_range)) {
+    p2 <- p2 + 
+      geom_vline(xintercept = best_range$optimal_min, linetype = "dotted", color = "darkgreen") +
+      geom_vline(xintercept = best_range$optimal_max, linetype = "dotted", color = "darkgreen") +
+      geom_rect(aes(xmin = best_range$optimal_min, xmax = best_range$optimal_max,
+                  ymin = -Inf, ymax = Inf), fill = "darkgreen", alpha = 0.1)
+  }
+  
+  # Finalize RMSE plot
+  p2 <- p2 +
+    labs(x = "Parameter Value", y = "RMSE") +
+    theme_minimal()
+  
+  # Combine plots
+  combined_plot <- p1 / p2
+  
+  return(combined_plot)
+}
+
+# Load data if file paths are provided
+has_recovery_data <- FALSE
+has_ppc_data <- FALSE
+has_empirical_data <- file.exists(empirical_data_path)
+
+if (recovery_file != "" && file.exists(recovery_file)) {
+  recovery_data <- read.csv(recovery_file)
+  has_recovery_data <- TRUE
+} else {
+  recovery_data <- data.frame()
+}
+
+if (ppc_subject_file != "" && file.exists(ppc_subject_file) && 
+    ppc_model_file != "" && file.exists(ppc_model_file)) {
+  ppc_subject_data <- read.csv(ppc_subject_file)
+  ppc_model_data <- read.csv(ppc_model_file)
+  has_ppc_data <- TRUE
+  
+  # Map subject IDs if needed
+  if (has_recovery_data) {
+    id_mapping <- setNames(unique(ppc_subject_data$subject_id), unique(recovery_data$subject_id))
+    recovery_data$subject_id = unname(id_mapping[as.character(recovery_data$subject_id)])
+  }
+  
+  # Load block data if available
+  has_block_data <- ppc_block_file != "" && file.exists(ppc_block_file)
+  if (has_block_data) {
+    ppc_block_data <- read.csv(ppc_block_file)
+  }
+} else {
+  ppc_subject_data <- data.frame()
+  ppc_model_data <- data.frame()
+  has_ppc_data <- FALSE
+}
+
+# Load empirical data if available
+if (has_empirical_data) {
+  empirical_data <- read.csv(empirical_data_path)
+  
+  # Filter by minimum trials
+  min_trials <- 100
+  empirical_data <- empirical_data[empirical_data$n_trials >= min_trials,]
+} else {
+  empirical_data <- data.frame()
+}
+
+# Get list of parameters to analyze
+if (has_recovery_data) {
+  parameters <- unique(recovery_data$parameter)
+} else {
+  parameters <- c()
+}
+```
+
+## Overview
+
+This document analyzes how parameter recovery quality varies across different parameter ranges for computational models applied to behavioral tasks. This enhanced analysis integrates:
+
+1. Parameter recovery metrics (correlation, RMSE between true and recovered values)
+2. Realistic behavior (simulated behavior matches observed behavior)
+3. **New:** Empirical comparison with real participant data
+4. **New:** Improved parameter range selection using:
+   - **Adjacent bin merging**: Finds wider parameter ranges by merging neighboring bins with good metrics
+   - **Smoothed metrics**: Applies smoothing across bins to avoid isolated "islands" of good recovery
+
+## Parameter Range Analysis
+
+```{r param_range_analysis, results='asis'}
+if (!has_recovery_data) {
+  cat("No recovery data available. Please provide valid recovery data file path.\n")
+} else {
+  for (param in parameters) {
+    # Use adaptive binning for more precise ranges
+    range_stats <- analyze_recovery_by_range_adaptive(recovery_data, param)
+    
+    if(is.null(range_stats) || nrow(range_stats) == 0) {
+      cat(paste("Insufficient data for parameter:", param, "\n\n"))
+      next
+    }
+    
+    # Display table
+    kable(range_stats, caption = paste("Range-specific recovery metrics for", param),
+          digits = 3) %>% 
+      kable_styling(bootstrap_options = c("striped", "hover")) %>%
+      print()
+    
+    # Find best range with merging and smoothing
+    best_range <- find_optimal_range_with_merging(
+      range_stats,
+      min_correlation = 0.35,
+      max_rmse_percentile = 0.25,
+      use_smoothed_metrics = TRUE
+    )
+    
+    # Plot advanced range analysis with smoothed metrics and optimal range
+    if (!is.null(best_range)) {
+      cat(paste0("\n**Recommended parameter range for ", param, ":** ", 
+               round(best_range$optimal_min, 3), " to ", 
+               round(best_range$optimal_max, 3), 
+               " (covers ", round(best_range$width_ratio * 100), "% of parameter range)\n\n"))
+      
+      # Create and display enhanced visualization
+      p_range <- plot_parameter_range_analysis(range_stats, best_range)
+      print(p_range)
+    } else {
+      cat(paste0("\nNo optimal range found for parameter ", param, 
+               " that meets the minimum correlation threshold.\n\n"))
+    }
+    
+    # Plot recovery excluding extreme values
+    p4 <- plot_filtered_recovery(recovery_data, param)
+    if(!is.null(p4)) {
+      print(p4)
+    } else {
+      cat("Not enough data to create filtered recovery plot for", param, "\n\n")
+    }
+  }
+}
+```
+
+## Behavioral Analysis by Parameter Value
+
+This section analyzes how behavioral metrics vary with different parameter values. It helps identify parameter ranges that produce realistic behavior.
+
+```{r behavior_by_param, results='asis', fig.width=10, fig.height=8}
+# Only run if PPC data is available
+if(has_ppc_data) {
+  # Define key behavioral metrics based on model type
+  if(model_type == "RL") {
+    key_metrics <- c("good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", 
+                    "total_money", "skip_ratio")
+  } else if(model_type == "SSM") {
+    key_metrics <- c("rt_play_mean", "rt_skip_mean", "choice_prob")
+  } else if(model_type == "RL_SSM") {
+    key_metrics <- c("good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", 
+                    "total_money", "rt_play_mean", "rt_skip_mean", "choice_prob")
+  } else {
+    key_metrics <- NULL
+  }
+  
+  # Process each parameter
+  for(param in parameters) {
+    # Analyze behavioral metrics by parameter range with adaptive binning
+    behavior_by_param <- analyze_behavior_by_parameter(
+      recovery_data, 
+      ppc_subject_data, 
+      param,
+      key_metrics = key_metrics,
+      use_adaptive_binning = TRUE
+    )
+    
+    if(is.null(behavior_by_param) || nrow(behavior_by_param) == 0) {
+      cat(paste("Insufficient behavioral data for parameter:", param, "\n\n"))
+      next
+    }
+    
+    # Plot behavioral metrics across parameter ranges
+    for(stat in unique(behavior_by_param$statistic)) {
+      # Extract data for this statistic
+      stat_data <- behavior_by_param %>% filter(statistic == stat)
+      
+      # Only create plot if we have enough data points
+      if(nrow(stat_data) >= 3) {
+        p <- ggplot(stat_data, aes(x = bin_center)) +
+          # Observed values
+          geom_point(aes(y = mean_observed), color = "blue", size = 3) +
+          geom_line(aes(y = mean_observed), color = "blue") +
+          # Predicted values
+          geom_point(aes(y = mean_predicted), color = "red", size = 3) +
+          geom_line(aes(y = mean_predicted), color = "red") +
+          # PPP values on secondary axis
+          geom_line(aes(y = mean_ppp * max(mean_observed, na.rm = TRUE)), 
+                  linetype = "dashed", color = "purple") +
+          geom_point(aes(y = mean_ppp * max(mean_observed, na.rm = TRUE)), 
+                   color = "purple", size = 2) +
+          # Styling
+          labs(title = paste("Effect of", param, "on", stat),
+               subtitle = "Blue = Observed, Red = Predicted, Purple (dashed) = PPP Value",
+               x = param, y = stat) +
+          scale_y_continuous(
+            name = stat,
+            sec.axis = sec_axis(~ . / max(stat_data$mean_observed, na.rm = TRUE), 
+                              name = "PPP Value",
+                              breaks = seq(0, 1, 0.2))
+          ) +
+          theme_minimal()
+        
+        print(p)
+        
+        # Add correlation between parameter and observed behavior
+        if(nrow(stat_data) >= 3) {
+          # Calculate correlation
+          cor_val <- cor(stat_data$bin_center, stat_data$mean_observed, 
+                        use = "pairwise.complete.obs")
+          
+          cat(paste0("\nCorrelation between ", param, " and ", stat, ": **", 
+                   round(cor_val, 3), "**\n\n"))
+        }
+      }
+    }
+  }
+} else {
+  cat("No PPC data available. Cannot perform behavioral analysis.\n")
+}
+```
+
+## Empirical Comparison Analysis
+
+This section compares simulated behavior from different parameter ranges against empirical data from real participants.
+
+```{r empirical_comparison, results='asis', fig.width=10, fig.height=8}
+if (!has_recovery_data) {
+  cat("No recovery data available.\n")
+} else if (!has_ppc_data) {
+  cat("No PPC data available.\n")
+} else if (!has_empirical_data) {
+  cat("No empirical data available.\n")
+} else {
+  # Process each parameter
+  for (param in parameters) {
+    # Analyze with empirical comparison using adaptive binning
+    range_stats_empirical <- analyze_recovery_with_empirical(
+      recovery_data, param, ppc_subject_data, empirical_data, model_type,
+      use_adaptive_binning = TRUE
+    )
+    
+    if(is.null(range_stats_empirical) || nrow(range_stats_empirical) < 3) {
+      cat(paste("Insufficient data for empirical comparison of parameter:", param, "\n\n"))
+      next
+    }
+    
+    # Display enhanced table with empirical metrics
+    kable(range_stats_empirical[, c("bin", "bin_min", "bin_max", "bin_center", "n", 
+                                 "correlation", "rmse", "abnormal_metrics_count", 
+                                 "most_abnormal_metrics", "is_implausible")], 
+          caption = paste("Empirical comparison for", param),
+          digits = 3) %>% 
+      kable_styling(bootstrap_options = c("striped", "hover")) %>%
+      row_spec(which(range_stats_empirical$is_implausible), background = "#ffdddd") %>%
+      print()
+    
+    # Find best range with merging and smoothing
+    best_range <- find_optimal_range_with_merging(
+      range_stats_empirical,
+      min_correlation = 0.35,
+      max_rmse_percentile = 0.25,
+      use_smoothed_metrics = TRUE
+    )
+    
+    # Check if the best range is empirically plausible
+    if (!is.null(best_range)) {
+      range_bins <- best_range$start_bin:best_range$end_bin
+      is_implausible <- any(range_stats_empirical$is_implausible[range_bins])
+      abnormal_count <- mean(range_stats_empirical$abnormal_metrics_count[range_bins])
+      
+      cat(paste0("\n**Recommended parameter range for ", param, ":** ", 
+               round(best_range$optimal_min, 3), " to ", 
+               round(best_range$optimal_max, 3), 
+               " (covers ", round(best_range$width_ratio * 100), "% of parameter range)\n"))
+      
+      cat(paste0("**Empirically plausible:** ", ifelse(!is_implausible, "Yes", "No"), "\n"))
+      cat(paste0("**Average abnormal metrics:** ", round(abnormal_count, 1), "\n\n"))
+    }
+    
+    # Plot correlation and RMSE by parameter range
+    p1 <- ggplot(range_stats_empirical, aes(x = bin_center, y = correlation)) +
+      geom_point(size = 3) +
+      geom_line() +
+      geom_hline(yintercept = 0.5, linetype = "dotted", color = "darkgray") +
+      labs(title = "Parameter Recovery", x = param, y = "Correlation") +
+      theme_minimal()
+    
+    p2 <- ggplot(range_stats_empirical, aes(x = bin_center, y = rmse)) +
+      geom_point(size = 3) +
+      geom_line() +
+      labs(x = param, y = "RMSE") +
+      theme_minimal()
+    
+    # Plot abnormal metrics count
+    p3 <- ggplot(range_stats_empirical, aes(x = bin_center, y = abnormal_metrics_count)) +
+      geom_point(aes(color = is_implausible), size = 3) +
+      geom_line() +
+      geom_hline(yintercept = 3, linetype = "dashed", color = "darkgray") +
+      scale_color_manual(values = c("FALSE" = "blue", "TRUE" = "red")) +
+      labs(title = "Behavioral Abnormality",
+           x = param,
+           y = "Abnormal Metrics Count",
+           color = "Implausible") +
+      theme_minimal()
+    
+    # Add optimal range to plots if available
+    if (!is.null(best_range)) {
+      range_highlight <- list(
+        geom_vline(xintercept = best_range$optimal_min, linetype = "dotted", color = "darkgreen"),
+        geom_vline(xintercept = best_range$optimal_max, linetype = "dotted", color = "darkgreen"),
+        geom_rect(aes(xmin = best_range$optimal_min, xmax = best_range$optimal_max,
+                    ymin = -Inf, ymax = Inf), fill = "darkgreen", alpha = 0.1)
+      )
+      
+      p1 <- p1 + range_highlight
+      p2 <- p2 + range_highlight
+      p3 <- p3 + range_highlight
+    }
+    
+    # Combine plots
+    print((p1 / p2) | p3)
+    
+    # Plot comparison with empirical data for key metrics
+    if (model_type == "RL" || model_type == "RL_SSM") {
+      # Define RL metric mapping
+      metrics <- list(
+        "rl_good_deck_ratio" = "good_play_percent",
+        "rl_skip_ratio" = "pass_rate",
+        "rl_total_money" = "total_earnings"
+      )
+      
+      for (metric_name in names(metrics)) {
+        if (metric_name %in% colnames(ppc_subject_data) && 
+            metrics[[metric_name]] %in% colnames(empirical_data)) {
+          p <- plot_empirical_comparison(
+            range_stats_empirical, ppc_subject_data, empirical_data,
+            param, metric_name, metrics[[metric_name]]
+          )
+          
+          # Add optimal range to plot if available
+          if (!is.null(best_range)) {
+            p <- p + 
+              geom_vline(xintercept = best_range$optimal_min, linetype = "dotted", color = "darkgreen") +
+              geom_vline(xintercept = best_range$optimal_max, linetype = "dotted", color = "darkgreen") +
+              geom_rect(aes(xmin = best_range$optimal_min, xmax = best_range$optimal_max,
+                          ymin = -Inf, ymax = Inf), fill = "darkgreen", alpha = 0.1)
+          }
+          
+          print(p)
+        }
+      }
+    }
+    
+    if (model_type == "SSM" || model_type == "RL_SSM") {
+      # Define RT metric mapping
+      rt_metrics <- list(
+        "rt_play_mean" = "rt_mean_play",
+        "rt_skip_mean" = "rt_mean_pass"
+      )
+      
+      for (metric_name in names(rt_metrics)) {
+        if (metric_name %in% colnames(ppc_subject_data) && 
+            rt_metrics[[metric_name]] %in% colnames(empirical_data)) {
+          p <- plot_empirical_comparison(
+            range_stats_empirical, ppc_subject_data, empirical_data,
+            param, metric_name, rt_metrics[[metric_name]]
+          )
+          
+          # Add optimal range to plot if available
+          if (!is.null(best_range)) {
+            p <- p + 
+              geom_vline(xintercept = best_range$optimal_min, linetype = "dotted", color = "darkgreen") +
+              geom_vline(xintercept = best_range$optimal_max, linetype = "dotted", color = "darkgreen") +
+              geom_rect(aes(xmin = best_range$optimal_min, xmax = best_range$optimal_max,
+                          ymin = -Inf, ymax = Inf), fill = "darkgreen", alpha = 0.1)
+          }
+          
+          print(p)
+        }
+      }
+    }
+    
+    # Detailed analysis for implausible ranges
+    if (any(range_stats_empirical$is_implausible)) {
+      # Create a div for highlighting implausible ranges
+      cat("<div style='padding: 10px; margin: 10px 0; border-left: 3px solid #f0ad4e; background-color: #fcf8e3;'>")
+      cat("<strong>Implausible Parameter Ranges for", param, "</strong>")
+      cat("<p>The following parameter ranges produce behavior that deviates significantly from empirical patterns:</p>")
+      
+      # List implausible ranges and their issues
+      implausible_bins <- which(range_stats_empirical$is_implausible)
+      
+      for (i in implausible_bins) {
+        cat(paste0("<p><strong>Range:</strong> ", 
+                 round(range_stats_empirical$bin_min[i], 3), 
+                 " to ", 
+                 round(range_stats_empirical$bin_max[i], 3), "<br>"))
+        
+        cat(paste0("<strong>Abnormal Metrics:</strong> ", 
+                 range_stats_empirical$most_abnormal_metrics[i], "</p>"))
+      }
+      cat("</div>")
+    }
+    
+    # Store range stats for later use
+    assign(paste0("range_stats_empirical_", param), range_stats_empirical, envir = .GlobalEnv)
+  }
+}
+```
+
+## Integrated Parameter Range Optimization
+
+This section combines parameter recovery metrics with behavioral performance and empirical comparison to identify optimal parameter ranges that balance:
+1. Good parameter recovery (identifiability)
+2. Realistic behavioral predictions (validity)
+3. Consistency with empirical data patterns
+
+```{r integrated_optimization, results='asis', fig.width=10, fig.height=8}
+# Only run if PPC data is available
+if(has_ppc_data) {
+  # Get behavioral significance of parameters
+  behavior_sig <- identify_behaviorally_significant_parameters(
+    recovery_data, 
+    ppc_subject_data,
+    correlation_threshold = 0.3,
+    n_metrics_threshold = 2
+  )
+  
+  # Get recovery quality by range using adaptive binning and our new approaches
+  optimal_ranges <- find_optimal_ranges(
+    recovery_data,
+    min_correlation = 0.35,
+    use_adaptive_binning = TRUE,
+    use_smoothed_metrics = TRUE
+  )
+  
+  # Find optimal ranges with empirical comparison
+  if (has_empirical_data) {
+    optimal_ranges_empirical <- find_optimal_ranges_with_empirical(
+      recovery_data, ppc_subject_data, empirical_data, model_type,
+      min_correlation = 0.35,
+      max_abnormal_count = 2,
+      use_adaptive_binning = TRUE,
+      use_smoothed_metrics = TRUE
+    )
+    
+    # Display empirically-validated optimal ranges
+    if(!is.null(optimal_ranges_empirical) && nrow(optimal_ranges_empirical) > 0) {
+      kable(optimal_ranges_empirical, 
+            caption = "Optimal Parameter Ranges with Empirical Plausibility",
+            digits = 3) %>% 
+        kable_styling(bootstrap_options = c("striped", "hover")) %>%
+        print()
+      
+      # Display range width information
+      cat("\n**Parameter Range Coverage:**\n\n")
+      for (i in 1:nrow(optimal_ranges_empirical)) {
+        param <- optimal_ranges_empirical$parameter[i]
+        width_pct <- round(optimal_ranges_empirical$width_ratio[i] * 100)
+        cat(paste0("- **", param, "**: Covers ", width_pct, "% of the parameter's full range\n"))
+      }
+      cat("\n")
+    } else {
+      cat("No parameter ranges met criteria for empirical plausibility. Consider relaxing constraints.\n\n")
+    }
+  }
+  
+  # Combine both measures
+  if(!is.null(behavior_sig) && !is.null(optimal_ranges) && 
+     nrow(behavior_sig) > 0 && nrow(optimal_ranges) > 0) {
+    
+    integrated_results <- inner_join(
+      optimal_ranges,
+      behavior_sig,
+      by = c("parameter" = "parameter")
+    ) %>%
+    mutate(
+      # Create integrated score combining recovery and behavioral significance
+      integrated_score = (correlation * 10) - (rmse * 5) + (width_ratio * 3) + (max_correlation * 2),
+      # Flag parameters that are both recoverable and behaviorally significant
+      is_optimal = !is.na(correlation) & correlation >= 0.5 & is_significant
+    ) %>%
+    arrange(desc(integrated_score))
+    
+    # Display integrated results
+    if(nrow(integrated_results) > 0) {
+      kable(integrated_results, caption = "Integrated Parameter Optimization Results",
+            digits = 3) %>% 
+        kable_styling(bootstrap_options = c("striped", "hover")) %>%
+        row_spec(which(integrated_results$is_optimal), background = "#e6ffe6") %>%
+        print()
+      
+      # Create visualization
+      p <- ggplot(integrated_results, 
+                 aes(x = correlation, y = max_correlation, size = width_ratio * 10, 
+                     color = is_optimal, label = parameter)) +
+        geom_point(alpha = 0.7) +
+        geom_text(vjust = -1, hjust = 0.5, size = 3, check_overlap = TRUE) +
+        scale_color_manual(values = c("FALSE" = "gray", "TRUE" = "green4")) +
+        scale_size_continuous(name = "Range Width %", range = c(3, 10)) +
+        geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
+        geom_hline(yintercept = 0.3, linetype = "dashed", color = "gray") +
+        coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+        theme_minimal() +
+        labs(title = "Parameter Optimization Map",
+             subtitle = "Size = Parameter Range Width %, Green = Optimal Parameters",
+             x = "Recovery Quality (Correlation)",
+             y = "Behavioral Significance (Max Correlation)")
+      
+      print(p)
+    } else {
+      cat("No parameters met the integrated optimization criteria.\n")
+    }
+    
+    # For optimal parameters, analyze behavior by range
+    optimal_params <- integrated_results %>% 
+      filter(is_optimal) %>% 
+      pull(parameter)
+    
+    if(length(optimal_params) > 0) {
+      for(param in optimal_params) {
+        # Extract optimal range
+        opt_range <- integrated_results %>% 
+          filter(parameter == param) %>% 
+          select(optimal_min, optimal_max, width_ratio)
+        
+        cat(paste0("## Detailed Analysis of Optimal Range for ", param, "\n\n"))
+        cat(paste0("**Optimal Range:** ", round(opt_range$optimal_min, 3), 
+                 " to ", round(opt_range$optimal_max, 3), 
+                 " (covers ", round(opt_range$width_ratio * 100), "% of parameter range)\n\n"))
+        
+        # Analyze recovery metrics by range
+        range_stats <- analyze_recovery_by_range_adaptive(recovery_data, param)
+        
+        if(!is.null(range_stats) && nrow(range_stats) > 0) {
+          # Create and display enhanced visualization
+          p_range <- plot_parameter_range_analysis(
+            range_stats, 
+            list(
+              optimal_min = opt_range$optimal_min,
+              optimal_max = opt_range$optimal_max
+            )
+          )
+          print(p_range)
+          
+          # Add empirical validation if available
+          if (has_empirical_data) {
+            # Get the stored empirical range stats
+            empirical_range_var <- paste0("range_stats_empirical_", param)
+            if (exists(empirical_range_var, envir = .GlobalEnv)) {
+              range_stats_empirical <- get(empirical_range_var, envir = .GlobalEnv)
+              
+              # Check if optimal range is also empirically plausible
+              opt_bins <- which(
+                range_stats_empirical$bin_min <= opt_range$optimal_max & 
+                range_stats_empirical$bin_max >= opt_range$optimal_min
+              )
+              
+              if(length(opt_bins) > 0) {
+                is_implausible <- any(range_stats_empirical$is_implausible[opt_bins])
+                abnormal_count <- mean(range_stats_empirical$abnormal_metrics_count[opt_bins])
+                
+                cat(paste0("**Empirically plausible:** ", ifelse(!is_implausible, "Yes", "No"), "\n"))
+                cat(paste0("**Average abnormal metrics:** ", round(abnormal_count, 1), "\n\n"))
+                
+                if (is_implausible) {
+                  # Display warning
+                  cat("<div style='padding: 10px; margin: 10px 0; border-left: 3px solid #f0ad4e; background-color: #fcf8e3;'>")
+                  cat("<strong>Warning:</strong> The optimal recovery range produces behavior that deviates from empirical patterns.<br>")
+                  cat("Consider using empirically-validated ranges instead.</div>")
+                }
+              } else {
+                cat("**Note:** No direct empirical comparison available for this optimal range.\n\n")
+              }
+            } else {
+              cat("**Note:** Empirical comparison data not available for this parameter.\n\n")
+            }
+          }
+        }
+      }
+    } else {
+      cat("No parameters met criteria for both recovery quality and behavioral significance.\n")
+    }
+  } else {
+    if(is.null(optimal_ranges) || nrow(optimal_ranges) == 0) {
+      cat("No parameter ranges met recovery quality criteria.\n")
+    }
+    if(is.null(behavior_sig) || nrow(behavior_sig) == 0) {
+      cat("No parameters showed significant behavioral influence.\n")
+    }
+  }
+} else {
+  cat("No PPC data available. Cannot perform integrated optimization analysis.\n")
+}
+```
+
+## Recommended Parameter Ranges
+
+Based on the analyses, here are the parameter ranges with optimal recovery that provide a good balance between recovery quality and range width:
+
+```{r optimal_ranges}
+# Get optimal ranges using adaptive binning and our new approaches
+optimal_ranges <- find_optimal_ranges(
+  recovery_data,
+  min_correlation = 0.35,
+  use_adaptive_binning = TRUE,
+  use_smoothed_metrics = TRUE
+)
+
+# Display
+if(!is.null(optimal_ranges) && nrow(optimal_ranges) > 0) {
+  # Add width percentage for clarity
+  optimal_ranges$width_percent <- round(optimal_ranges$width_ratio * 100)
+  
+  knitr::knit_print(kable(optimal_ranges, caption = "Recommended Parameter Ranges with Good Recovery",
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")))
+  
+  # Display range width information
+  cat("\n**Parameter Range Coverage:**\n\n")
+  for (i in 1:nrow(optimal_ranges)) {
+    param <- optimal_ranges$parameter[i]
+    width_pct <- optimal_ranges$width_percent[i]
+    cat(paste0("- **", param, "**: Covers ", width_pct, "% of the parameter's full range\n"))
+  }
+  cat("\n")
+} else {
+  cat("No parameter ranges met the criteria for good recovery (correlation ≥ 0.35).\n")
+  cat("Consider relaxing the minimum correlation threshold or collecting more data.\n\n")
+}
+
+# Add empirically validated ranges if available
+if (has_empirical_data && exists("optimal_ranges_empirical") && !is.null(optimal_ranges_empirical) && 
+    nrow(optimal_ranges_empirical) > 0) {
+  # Add width percentage for clarity
+  optimal_ranges_empirical$width_percent <- round(optimal_ranges_empirical$width_ratio * 100)
+  
+  kable(optimal_ranges_empirical, 
+        caption = "Recommended Parameter Ranges with Good Recovery AND Empirical Plausibility",
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")) %>%
+    print()
+  
+  # Display range width information
+  cat("\n**Parameter Range Coverage with Empirical Plausibility:**\n\n")
+  for (i in 1:nrow(optimal_ranges_empirical)) {
+    param <- optimal_ranges_empirical$parameter[i]
+    width_pct <- optimal_ranges_empirical$width_percent[i]
+    cat(paste0("- **", param, "**: Covers ", width_pct, "% of the parameter's full range\n"))
+  }
+  cat("\n")
+} else if (has_empirical_data) {
+  cat("No parameter ranges met the combined criteria for good recovery and empirical plausibility.\n")
+}
+```
+
+## Effectiveness of Range Restrictions
+
+This section tests how much recovery metrics would improve if parameters were restricted to their optimal ranges:
+
+```{r test_restrictions, results='asis'}
+if(is.null(optimal_ranges) || nrow(optimal_ranges) == 0) {
+  cat("No optimal parameter ranges identified for testing range restrictions.\n")
+} else {
+  for (i in 1:nrow(optimal_ranges)) {
+    param <- optimal_ranges$parameter[i]
+    min_val <- optimal_ranges$optimal_min[i]
+    max_val <- optimal_ranges$optimal_max[i]
+    
+    cat(paste("## Testing Range Restriction for Parameter:", param, "\n\n"))
+    cat(paste("**Optimal range:** ", round(min_val, 3), "to", round(max_val, 3), 
+             " (", optimal_ranges$width_percent[i], "% of parameter range)", "\n\n"))
+    
+    # Test effectiveness of restriction
+    restriction_results <- test_range_restriction(recovery_data, param, min_val, max_val)
+    
+    if(is.null(restriction_results)) {
+      cat(paste("Not enough data to test range restriction effectiveness for parameter:", param, "\n\n"))
+      next
+    }
+    
+    # Display results
+    kable(restriction_results, caption = paste("Impact of Range Restriction for", param),
+          digits = 3) %>% 
+      kable_styling(bootstrap_options = c("striped", "hover")) %>%
+      print()
+    
+    # Create visual comparison
+    # Original vs restricted scatter plots
+    orig_data <- recovery_data[recovery_data$parameter == param,]
+    restricted_data <- orig_data[orig_data$true_value >= min_val & 
+                               orig_data$true_value <= max_val,]
+    
+    p1 <- ggplot(orig_data, aes(x = true_value, y = recovered_value)) +
+      geom_point(alpha = 0.7) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+      geom_smooth(method = "loess", se = TRUE, color = "red") +
+      labs(title = "Original Parameter Range",
+           x = "True Value", y = "Recovered Value") +
+      theme_minimal()
+    
+    p2 <- ggplot(restricted_data, aes(x = true_value, y = recovered_value)) +
+      geom_point(alpha = 0.7) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+      geom_smooth(method = "loess", se = TRUE, color = "red") +
+      labs(title = "Restricted Parameter Range",
+           x = "True Value", y = "Recovered Value") +
+      theme_minimal()
+    
+    print(p1 + p2)
+  }
+}
+```
+
+## Summary of Key Findings
+
+```{r summary_findings}
+# Summarize improvement potential
+improvement_summary <- data.frame(
+  parameter = character(),
+  original_correlation = numeric(),
+  potential_correlation = numeric(),
+  improvement = numeric(),
+  behavioral_significance = character(),
+  is_empirically_plausible = logical(),
+  range_width_percent = numeric(),
+  stringsAsFactors = FALSE
+)
+
+if(!is.null(optimal_ranges) && nrow(optimal_ranges) > 0) {
+  for (i in 1:nrow(optimal_ranges)) {
+    param <- optimal_ranges$parameter[i]
+    min_val <- optimal_ranges$optimal_min[i]
+    max_val <- optimal_ranges$optimal_max[i]
+    width_pct <- optimal_ranges$width_percent[i]
+    
+    # Test effectiveness of restriction
+    restriction_results <- test_range_restriction(recovery_data, param, min_val, max_val)
+    
+    if(is.null(restriction_results)) {
+      next
+    }
+    
+    # Extract correlation improvements
+    cor_row <- restriction_results[restriction_results$metric == "Correlation",]
+    
+    # Check behavioral significance
+    behavioral_sig <- "Unknown"
+    if(has_ppc_data && !is.null(behavior_sig)) {
+      # Get parameter behavioral significance
+      if(param %in% behavior_sig$parameter) {
+        param_sig <- behavior_sig[behavior_sig$parameter == param,]
+        
+        if(param_sig$is_significant) {
+          behavioral_sig <- paste0("High (", param_sig$n_significant, " metrics)")
+        } else if(param_sig$max_correlation >= 0.3) {
+          behavioral_sig <- paste0("Medium (", param_sig$n_significant, " metrics)")
+        } else {
+          behavioral_sig <- "Low"
+        }
+      }
+    }
+    
+    # Check empirical plausibility
+    is_empirically_plausible <- NA
+    if (has_empirical_data) {
+      # Get the stored empirical range stats
+      empirical_range_var <- paste0("range_stats_empirical_", param)
+      if (exists(empirical_range_var, envir = .GlobalEnv)) {
+        range_stats_empirical <- get(empirical_range_var, envir = .GlobalEnv)
+        
+        # Check if optimal range is also empirically plausible
+        opt_bins <- which(
+          range_stats_empirical$bin_min <= max_val & 
+          range_stats_empirical$bin_max >= min_val
+        )
+        
+        if (length(opt_bins) > 0) {
+          is_empirically_plausible <- !any(range_stats_empirical$is_implausible[opt_bins])
+        }
+      }
+    }
+    
+    improvement_summary <- rbind(improvement_summary, data.frame(
+      parameter = param,
+      original_correlation = cor_row$original,
+      potential_correlation = cor_row$restricted,
+      improvement = cor_row$improvement,
+      behavioral_significance = behavioral_sig,
+      is_empirically_plausible = is_empirically_plausible,
+      range_width_percent = width_pct,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# Add priority column
+if(nrow(improvement_summary) > 0) {
+  improvement_summary <- improvement_summary %>%
+    mutate(
+      priority = case_when(
+        behavioral_significance == "Low" & improvement < 0.1 ~ "Low",
+        behavioral_significance == "Low" & improvement >= 0.1 ~ "Medium",
+        behavioral_significance == "Medium" & improvement < 0.1 ~ "Medium",
+        behavioral_significance == "Medium" & improvement >= 0.1 ~ "High",
+        grepl("High", behavioral_significance) & improvement < 0.1 ~ "High",
+        grepl("High", behavioral_significance) & improvement >= 0.1 ~ "Very High",
+        TRUE ~ "Medium"
+      ),
+      final_recommendation = case_when(
+        is_empirically_plausible & priority %in% c("High", "Very High") & range_width_percent >= 20 ~ "Strongly Recommended",
+        is_empirically_plausible & priority %in% c("Medium") & range_width_percent >= 20 ~ "Recommended",
+        is_empirically_plausible & range_width_percent < 20 ~ "Consider for focused studies",
+        !is_empirically_plausible & priority %in% c("High", "Very High") ~ "Consider with caution",
+        !is_empirically_plausible & priority %in% c("Medium") ~ "Not recommended",
+        TRUE ~ "Not recommended"
+      )
+    ) %>%
+    arrange(desc(priority), desc(improvement))
+  
+  # Display
+  kable(improvement_summary, caption = "Parameter Range Restriction Recommendations",
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")) %>%
+    row_spec(which(improvement_summary$final_recommendation == "Strongly Recommended"), background = "#e6ffe6") %>%
+    row_spec(which(improvement_summary$final_recommendation == "Recommended"), background = "#e6ffff") %>%
+    row_spec(which(improvement_summary$final_recommendation == "Consider for focused studies"), background = "#fff9e6") %>%
+    row_spec(which(improvement_summary$final_recommendation == "Consider with caution"), background = "#ffffee") %>%
+    knitr::knit_print()
+  
+  # Provide key insights about each parameter
+  cat("\n## Key Insights and Recommendations\n\n")
+  
+  for(i in 1:nrow(improvement_summary)) {
+    param <- improvement_summary$parameter[i]
+    rec <- improvement_summary$final_recommendation[i]
+    width <- improvement_summary$range_width_percent[i]
+    corr_improvement <- round(improvement_summary$improvement[i] * 100)
+    
+    cat(paste0("### ", param, "\n\n"))
+    
+    # Generate recommendation based on all properties
+    if(rec == "Strongly Recommended") {
+      cat(paste0("**Recommendation:** Restrict parameter ", param, " to the optimal range. This provides a substantial improvement in parameter recovery (", corr_improvement, "% increase in correlation) while maintaining empirically plausible behavior. The range is sufficiently wide (", width, "% of parameter space) for practical use.\n\n"))
+    } else if(rec == "Recommended") {
+      cat(paste0("**Recommendation:** Consider restricting parameter ", param, " to the optimal range. While the improvement in recovery is moderate (", corr_improvement, "% change in correlation), the range is both empirically plausible and reasonably wide (", width, "% of parameter space).\n\n"))
+    } else if(rec == "Consider for focused studies") {
+      cat(paste0("**Recommendation:** The optimal range for parameter ", param, " is quite narrow (only ", width, "% of parameter space), but might be useful for specialized studies where parameter recovery is critical. Empirical plausibility is maintained, but the restricted range might be too constrained for general use.\n\n"))
+    } else if(rec == "Consider with caution") {
+      cat(paste0("**Recommendation:** Use caution with parameter ", param, ". While restricting it improves recovery (", corr_improvement, "% change in correlation), the resulting behavior may not match empirical data. If using this parameter, additional validation is recommended.\n\n"))
+    } else {
+      cat(paste0("**Recommendation:** No range restriction is recommended for parameter ", param, ". Either the improvement in recovery is minimal, the range is too narrow, or the resulting behavior is implausible.\n\n"))
+    }
+  }
+} else {
+  cat("No parameter ranges met criteria for optimization. Consider relaxing the minimum correlation threshold or collecting more data.\n")
+}
+```

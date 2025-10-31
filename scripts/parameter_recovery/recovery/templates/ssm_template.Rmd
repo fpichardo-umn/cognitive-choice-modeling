@@ -1,0 +1,61 @@
+
+### SSM-Specific Parameter Analysis
+
+
+```{r ssm_params, echo=FALSE, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Drift rate parameters
+drift_params <- recovery_data %>%
+  filter(grepl("drift|v|drift_con", parameter, ignore.case = TRUE))
+
+if(nrow(drift_params) > 0) {
+  ggplot(drift_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Drift Rate Parameters") +
+    theme_minimal()
+}
+
+# Boundary/threshold parameters
+boundary_params <- recovery_data %>%
+  filter(grepl("boundary|threshold", parameter, ignore.case = TRUE))
+
+if(nrow(boundary_params) > 0) {
+  ggplot(boundary_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Boundary/Threshold Parameters") +
+    theme_minimal()
+}
+
+# Non-decision time parameters
+ndt_params <- recovery_data %>%
+  filter(grepl("ndt|ter|t0|tau", parameter, ignore.case = TRUE))
+
+if(nrow(ndt_params) > 0) {
+  ggplot(ndt_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Non-Decision Time (Tau) Parameters") +
+    theme_minimal()
+}
+
+# Starting point parameters
+start_params <- recovery_data %>%
+  filter(grepl("beta", parameter, ignore.case = TRUE))
+
+if(nrow(start_params) > 0) {
+  ggplot(start_params, aes(x = true_value, y = recovered_value, color = parameter)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE)  +
+    facet_wrap(~parameter, scales = "free") +
+    labs(title = "Beta or Starting Point Parameters") +
+    theme_minimal()
+}
+```

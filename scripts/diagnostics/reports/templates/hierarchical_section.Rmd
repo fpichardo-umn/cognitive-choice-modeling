@@ -1,0 +1,196 @@
+# Diagnostic Results: Hierarchical Fit
+
+**Model Type**: `r diagnostic_results$fit_type`  
+**Number of Subjects**: `r diagnostic_results$n_subjects`
+
+## Overall Status
+
+```{r echo=FALSE, results='asis'}
+cat(format_status_badge(diagnostic_results$overall_status))
+```
+
+---
+
+## Subject-Level Parameters
+
+### Status Distribution
+
+```{r subj-status, echo=FALSE}
+if (!is.null(diagnostic_results$subject_analysis$aggregate)) {
+  subj_agg <- diagnostic_results$subject_analysis$aggregate
+  cat(sprintf("- **PASS**: %d subjects\n", subj_agg$status$pass))
+  cat(sprintf("- **WARN**: %d subjects\n", subj_agg$status$warn))
+  cat(sprintf("- **FAIL**: %d subjects\n\n", subj_agg$status$fail))
+}
+```
+
+### R-hat Distribution (Subject Parameters)
+
+```{r subj-rhat, echo=FALSE}
+if (!is.null(diagnostic_results$subject_analysis$aggregate$rhat)) {
+  rhat_info <- diagnostic_results$subject_analysis$aggregate$rhat
+  cat(sprintf("- **Median**: %.4f\n", rhat_info$median))
+  cat(sprintf("- **Maximum**: %.4f\n", rhat_info$max))
+  cat(sprintf("- **Problematic subjects**: %d\n\n", rhat_info$n_problematic))
+}
+```
+
+### ESS Distribution (Subject Parameters)
+
+```{r subj-ess, echo=FALSE}
+if (!is.null(diagnostic_results$subject_analysis$aggregate$ess)) {
+  ess_info <- diagnostic_results$subject_analysis$aggregate$ess
+  cat(sprintf("- **Median ESS ratio**: %.3f\n", ess_info$median))
+  cat(sprintf("- **Minimum ESS ratio**: %.3f\n", ess_info$min))
+  cat(sprintf("- **Problematic subjects**: %d\n\n", ess_info$n_problematic))
+}
+```
+
+### Worst Subjects
+
+```{r worst-subj-hier, echo=FALSE, fig.width=10, fig.height=8}
+create_hierarchical_subject_plot(diagnostic_results, top_n = 20)
+```
+
+```{r worst-subj-table, echo=FALSE, results='asis'}
+if (!is.null(diagnostic_results$subject_analysis$worst_subjects)) {
+  worst <- diagnostic_results$subject_analysis$worst_subjects
+  
+  worst_df <- data.frame(
+    subject_id = sapply(worst, function(x) x$subject_id),
+    worst_rhat = sapply(worst, function(x) x$worst_rhat),
+    min_ess_ratio = sapply(worst, function(x) x$min_ess_ratio %||% NA),
+    status = sapply(worst, function(x) x$status),
+    stringsAsFactors = FALSE
+  ) %>%
+    mutate(
+      worst_rhat = round(worst_rhat, 4),
+      min_ess_ratio = round(min_ess_ratio, 3)
+    )
+  
+  knitr::kable(worst_df,
+              col.names = c("Subject", "Worst R-hat", "Min ESS Ratio", "Status"),
+              caption = "Worst Subjects by Problem Score")
+}
+```
+
+---
+
+## Basic Hierarchical Checks
+
+### Hyperparameter Convergence
+
+```{r hyper-check, echo=FALSE}
+if (!is.null(diagnostic_results$basic_checks$hyperparameters)) {
+  hyper_info <- diagnostic_results$basic_checks$hyperparameters
+  cat(sprintf("- **Converged**: %s\n", ifelse(hyper_info$converged, "Yes", "No")))
+  cat(sprintf("- **Worst R-hat**: %.4f\n", hyper_info$worst_rhat))
+  cat(sprintf("- **Status**: %s\n\n", hyper_info$status))
+  
+  if (!hyper_info$converged) {
+    cat("**Warning**: Hyperparameters have not fully converged. This affects all subject-level estimates.\n\n")
+  }
+}
+```
+
+### Divergences
+
+```{r hier-div, echo=FALSE}
+if (!is.null(diagnostic_results$basic_checks$divergences)) {
+  div_info <- diagnostic_results$basic_checks$divergences
+  cat(sprintf("- **Count**: %d\n", div_info$count))
+  cat(sprintf("- **Rate**: %.4f%%\n", div_info$rate * 100))
+  cat(sprintf("- **Status**: %s\n\n", div_info$status))
+}
+```
+
+### Shrinkage Assessment
+
+```{r shrinkage, echo=FALSE}
+if (!is.null(diagnostic_results$shrinkage_check)) {
+  shrink_info <- diagnostic_results$shrinkage_check
+  if (shrink_info$working) {
+    cat("✓ Hierarchical shrinkage appears to be working.\n\n")
+    cat("Parameter variation across subjects:\n\n")
+    
+    for (param_name in names(shrink_info$parameter_info)) {
+      param_info <- shrink_info$parameter_info[[param_name]]
+      cat(sprintf("- **%s**: Range = %.3f, CV = %.3f\n", 
+                  param_name, param_info$range, param_info$cv))
+    }
+    cat("\n")
+  } else {
+    cat("⚠ Unable to assess shrinkage - check hierarchical structure.\n\n")
+  }
+}
+```
+
+---
+
+```{r real-hier-section, echo=FALSE, results='asis', eval=!is.null(diagnostic_results$group_analysis)}
+if (!is.null(diagnostic_results$group_analysis)) {
+  cat("## Group-Level Parameters (Full Hierarchical Analysis)\n\n")
+  cat("### Convergence\n\n")
+  
+  group_info <- diagnostic_results$group_analysis
+  cat(sprintf("- **Parameters**: %d group-level parameters\n", group_info$n_params))
+  cat(sprintf("- **All converged**: %s\n", ifelse(group_info$rhat$all_converged, "Yes", "No")))
+  cat(sprintf("- **Maximum R-hat**: %.4f\n", group_info$rhat$max))
+  cat(sprintf("- **Status**: %s\n\n", group_info$status))
+  
+  if (group_info$status != "PASS") {
+    cat("**Warning**: Group-level parameters have convergence issues. This affects population-level inference.\n\n")
+  }
+  
+  cat("### Group Parameters\n\n")
+  for (i in seq_along(group_info$parameters)) {
+    param <- group_info$parameters[i]
+    rhat_val <- group_info$rhat$values[i]
+    cat(sprintf("- **%s**: R-hat = %.4f", param, rhat_val))
+    if (!is.null(group_info$ess) && length(group_info$ess$ratios) >= i) {
+      ess_ratio <- group_info$ess$ratios[i]
+      cat(sprintf(", ESS ratio = %.3f", ess_ratio))
+    }
+    cat("\n")
+  }
+  cat("\n")
+}
+```
+
+```{r shrinkage-full, echo=FALSE, results='asis', eval=!is.null(diagnostic_results$shrinkage_analysis)}
+if (!is.null(diagnostic_results$shrinkage_analysis)) {
+  cat("### Detailed Shrinkage Analysis\n\n")
+  cat("Full shrinkage analysis performed for real hierarchical model.\n\n")
+  
+  # Additional shrinkage details would go here
+}
+```
+
+---
+
+## Summary
+
+```{r hier-summary, echo=FALSE}
+if (diagnostic_results$overall_status == "PASS") {
+  cat("✓ Hierarchical model diagnostics are satisfactory.\n")
+  cat("✓ Subject-level parameters have converged.\n")
+  if (!is.null(diagnostic_results$basic_checks$hyperparameters) && 
+      diagnostic_results$basic_checks$hyperparameters$converged) {
+    cat("✓ Hyperparameters have converged.\n")
+  }
+} else {
+  cat("⚠ Review diagnostic issues before proceeding with analysis.\n")
+  
+  if (!is.null(diagnostic_results$subject_analysis$aggregate$status)) {
+    fail_count <- diagnostic_results$subject_analysis$aggregate$status$fail
+    if (fail_count > 0) {
+      cat(sprintf("\n- %d subjects have failed diagnostics\n", fail_count))
+    }
+  }
+  
+  if (!is.null(diagnostic_results$basic_checks$hyperparameters) && 
+      !diagnostic_results$basic_checks$hyperparameters$converged) {
+    cat("- Hyperparameters have not converged\n")
+  }
+}
+```

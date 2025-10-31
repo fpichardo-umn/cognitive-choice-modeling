@@ -1,0 +1,177 @@
+# Understanding MCMC Diagnostics
+
+This section provides explanations of the diagnostic metrics used in this report. Each metric helps assess whether the MCMC sampler has properly explored the posterior distribution.
+
+## Divergent Transitions
+
+**What it is:** Divergent transitions occur when the Hamiltonian Monte Carlo (HMC) sampler encounters regions of high curvature in the posterior distribution that it cannot accurately navigate. This happens when the numerical integrator used by HMC becomes unstable.
+
+**What to look for:**
+- Rate < 0.1% (< 0.001) is acceptable
+- Rate < 1% (< 0.01) is borderline - investigate carefully
+- Rate > 1% (> 0.01) is problematic - results may be biased
+
+**What it means:** High divergence rates suggest the sampler is having difficulty exploring the posterior. This often indicates:
+- Model misspecification or non-identifiability
+- Problematic posterior geometry (e.g., funnels, multimodality)
+- Regions where parameters are highly correlated
+
+**What to do:**
+- Increase `adapt_delta` to 0.99 or higher (makes sampler more cautious)
+- Reparameterize the model (e.g., use non-centered parameterization for hierarchical models)
+- Check for non-identifiability in model parameters
+- Investigate parameter correlations with pairs plots
+
+**Reference:** [Stan User's Guide: Divergent Transitions](https://mc-stan.org/docs/2_29/reference-manual/divergent-transitions)
+
+---
+
+## R-hat (Gelman-Rubin Statistic)
+
+**What it is:** R-hat measures convergence by comparing the variance within chains to the variance between chains. It assesses whether multiple chains have converged to the same distribution.
+
+**What to look for:**
+- R-hat < 1.01 is excellent - chains have converged
+- R-hat < 1.05 is acceptable - convergence likely
+- R-hat > 1.1 is problematic - chains have NOT converged
+
+**What it means:** 
+- R-hat ≈ 1.0 indicates chains are mixing well and exploring the same distribution
+- High R-hat indicates chains haven't converged to the same target distribution
+- This could mean: insufficient sampling, multimodal posterior, or initialization problems
+
+**What to do:**
+- Run longer chains (more iterations)
+- Check initialization - try different initial values
+- Investigate whether posterior is multimodal
+- Examine traceplots for the problematic parameters
+
+**Reference:** [Stan User's Guide: R-hat](https://mc-stan.org/docs/2_29/reference-manual/notation-for-samples-chains-and-draws.html)
+
+---
+
+## Effective Sample Size (ESS)
+
+**What it is:** ESS estimates the number of independent samples from the posterior, accounting for autocorrelation in the Markov chain. It tells you how much "real" information you have.
+
+**Bulk vs Tail ESS:**
+- **Bulk ESS**: Effective sample size in the central region of the posterior (used for estimating means, medians)
+- **Tail ESS**: Effective sample size in the tails (used for estimating quantiles, credible intervals)
+
+**What to look for:**
+- ESS/N > 0.7 (70%) is good - highly efficient sampling
+- ESS/N > 0.5 (50%) is acceptable - reasonably efficient
+- ESS/N < 0.5 (50%) is concerning - inefficient sampling
+- Aim for at least ESS > 100 per parameter (preferably ESS > 400)
+
+**What it means:**
+- Low ESS means high autocorrelation in the chain - each sample is very similar to previous samples
+- You effectively have fewer independent samples than the raw number suggests
+- Estimates will be more uncertain, and Monte Carlo error will be higher
+
+**What to do:**
+- Run more iterations to increase the raw number of samples
+- Check for high correlation between parameters (use pairs plots)
+- Consider reparameterization to improve sampling efficiency
+- For hierarchical models, check if non-centered parameterization helps
+
+**Reference:** [Stan User's Guide: Effective Sample Size](https://mc-stan.org/docs/2_29/reference-manual/effective-sample-size.html)
+
+---
+
+## Monte Carlo Standard Error (MCSE)
+
+**What it is:** MCSE estimates the uncertainty in your posterior estimates due to using a finite number of MCMC samples. It quantifies how much your estimate might change if you ran the sampler again.
+
+**What to look for:**
+- MCSE/SD < 0.05 (5%) is excellent - estimates are stable
+- MCSE/SD < 0.1 (10%) is acceptable - reasonable precision
+- MCSE/SD > 0.1 (10%) is concerning - estimates are uncertain
+
+**What it means:**
+- High MCSE relative to posterior SD means your Monte Carlo estimates are imprecise
+- This happens when you have low effective sample size
+- Your posterior mean/median estimates could vary substantially across repeated runs
+
+**What to do:**
+- Increase effective sample size (run more iterations)
+- Focus on improving ESS - MCSE will improve as a consequence
+- For particularly high MCSE, consider if the parameter is well-identified
+
+**Reference:** [posterior R package documentation](https://mc-stan.org/posterior/reference/mcse.html)
+
+---
+
+## EBFMI (Energy Bayesian Fraction of Missing Information)
+
+**What it is:** EBFMI assesses how well the sampler explores the energy distribution. It detects problems with the posterior geometry that may not show up in other diagnostics.
+
+**What to look for:**
+- EBFMI > 0.3 is acceptable
+- EBFMI < 0.3 suggests problems
+- EBFMI < 0.2 indicates serious geometry issues
+
+**What it means:**
+- Low EBFMI often indicates a "funnel" geometry in the posterior
+- This commonly occurs in hierarchical models where group-level variance is estimated
+- The sampler struggles to efficiently explore both low and high variance regions
+
+**What to do:**
+- Use non-centered parameterization for hierarchical models
+- Check for funnels in pairs plots (parameters fanning out at extreme values)
+- Consider reparameterization to make posterior geometry more regular
+- Increase `adapt_delta` (though this treats symptoms, not causes)
+
+**Reference:** [Stan User's Guide: EBFMI](https://mc-stan.org/docs/2_29/reference-manual/effective-sample-size.html#bayesian-fraction-of-missing-information)
+
+---
+
+## Maximum Tree Depth
+
+**What it is:** In NUTS (No-U-Turn Sampler), the maximum tree depth limits how long the sampler can follow a trajectory before stopping. Hitting this limit suggests the sampler needs longer trajectories to explore the posterior.
+
+**What to look for:**
+- Rarely or never hitting max treedepth is good
+- Occasional hits (< 1%) are usually okay
+- Frequent hits (> 1%) suggest problems
+
+**What it means:**
+- Hitting max treedepth means the sampler couldn't find a natural stopping point
+- This often occurs in regions of high curvature or when step size is too small
+- It may indicate problematic posterior geometry
+
+**What to do:**
+- Increase `max_treedepth` (but this makes sampling slower)
+- Check for high curvature regions in the posterior
+- Consider reparameterization
+- Investigate parameter correlations
+
+**Reference:** [Stan User's Guide: Tree Depth](https://mc-stan.org/docs/2_29/reference-manual/hmc-algorithm-parameters.html)
+
+---
+
+## General Guidance
+
+**Priority of Issues:**
+1. **Divergences** - Address these first, as they can bias results
+2. **R-hat > 1.1** - Indicates non-convergence, results are unreliable
+3. **Low ESS** - Reduces precision of estimates
+4. **High MCSE** - Related to low ESS, reduces precision
+5. **Low EBFMI** - Suggests reparameterization would help
+6. **Max treedepth hits** - Usually less critical, but investigate if frequent
+
+**Common Solutions:**
+- **Increase sampling**: Run more iterations (addresses ESS, MCSE)
+- **Increase adapt_delta**: Makes sampler more careful (addresses divergences)
+- **Reparameterize**: Change how model is written (addresses divergences, EBFMI, geometry issues)
+- **Non-centered parameterization**: For hierarchical models (addresses EBFMI, divergences)
+- **Check identifiability**: Ensure model parameters are well-defined by the data
+
+**When to Stop:**
+- If diagnostics consistently fail after trying these solutions
+- The model may be misspecified or unidentifiable
+- Consider simplifying the model or collecting more data
+
+---
+
+For more detailed information, consult the [Stan User's Guide](https://mc-stan.org/docs/2_29/stan-users-guide/) and [MCMC Diagnostics documentation](https://mc-stan.org/misc/warnings.html).

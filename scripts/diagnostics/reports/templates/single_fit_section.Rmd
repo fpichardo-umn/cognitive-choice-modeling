@@ -1,0 +1,188 @@
+# Diagnostic Results: Single Subject Fit
+
+## Overall Status
+
+```{r echo=FALSE, results='asis'}
+cat(format_status_badge(diagnostic_results$overall_status))
+```
+
+---
+
+## Convergence Diagnostics
+
+### R-hat Analysis
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$convergence$rhat)) {
+  rhat_info <- diagnostic_results$convergence$rhat
+  cat(sprintf("- **Minimum**: %.4f\n", rhat_info$min))
+  cat(sprintf("- **Maximum**: %.4f\n", rhat_info$max))
+  cat(sprintf("- **Median**: %.4f\n", rhat_info$median))
+  cat(sprintf("- **Status**: %s\n\n", rhat_info$status))
+  
+  if (rhat_info$n_problematic > 0) {
+    cat(sprintf("**Warning**: %d parameters have R-hat > %.2f\n\n", 
+                rhat_info$n_problematic, thresholds$thresholds$rhat$problematic))
+  }
+}
+```
+
+```{r rhat-histogram, echo=FALSE, fig.width=8, fig.height=5}
+if (!is.null(diagnostic_results$convergence$rhat)) {
+  create_rhat_histogram(diagnostic_results$convergence$rhat$values, thresholds)
+}
+```
+
+### Effective Sample Size (ESS)
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$convergence$ess_bulk)) {
+  ess_info <- diagnostic_results$convergence$ess_bulk
+  cat(sprintf("- **Minimum ESS**: %d (%.1f%% of total samples)\n", 
+              ess_info$min, ess_info$min_ratio * 100))
+  cat(sprintf("- **Median ESS**: %d (%.1f%% of total samples)\n", 
+              ess_info$median, ess_info$median_ratio * 100))
+  cat(sprintf("- **Status**: %s\n\n", ess_info$status))
+  
+  if (ess_info$n_problematic > 0) {
+    cat(sprintf("**Warning**: %d parameters have ESS ratio < %.1f%%\n\n", 
+                ess_info$n_problematic, thresholds$thresholds$ess_ratio$problematic * 100))
+  }
+}
+```
+
+```{r ess-histogram, echo=FALSE, fig.width=8, fig.height=5}
+if (!is.null(diagnostic_results$convergence$ess_bulk)) {
+  create_ess_histogram(diagnostic_results$convergence$ess_bulk$ratios, thresholds)
+}
+```
+
+### Monte Carlo Standard Error (MCSE)
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$convergence$mcse)) {
+  mcse_info <- diagnostic_results$convergence$mcse
+  cat(sprintf("- **Minimum MCSE/SD ratio**: %.4f\n", mcse_info$min_ratio))
+  cat(sprintf("- **Maximum MCSE/SD ratio**: %.4f\n", mcse_info$max_ratio))
+  cat(sprintf("- **Median MCSE/SD ratio**: %.4f\n", mcse_info$median_ratio))
+  cat(sprintf("- **Status**: %s\n\n", mcse_info$status))
+  
+  if (mcse_info$n_problematic > 0) {
+    cat(sprintf("**Warning**: %d parameters have MCSE/SD > %.0f%%\n\n", 
+                mcse_info$n_problematic, thresholds$thresholds$mcse_ratio$problematic * 100))
+  }
+}
+```
+
+---
+
+## Sampling Diagnostics
+
+### Divergent Transitions
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$sampling$divergences)) {
+  div_info <- diagnostic_results$sampling$divergences
+  cat(sprintf("- **Count**: %d divergences\n", div_info$count))
+  cat(sprintf("- **Rate**: %.4f%% of transitions\n", div_info$rate * 100))
+  cat(sprintf("- **Status**: %s\n\n", div_info$status))
+  
+  if (div_info$status != "PASS") {
+    cat("**Action needed**: High divergence rate suggests sampling problems. See recommendations.\n\n")
+  }
+}
+```
+
+### Maximum Tree Depth
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$sampling$treedepth)) {
+  td_info <- diagnostic_results$sampling$treedepth
+  cat(sprintf("- **Maximum allowed**: %d\n", td_info$max_allowed))
+  cat(sprintf("- **Hits**: %d (%.2f%% of transitions)\n", td_info$hits, td_info$rate * 100))
+  cat(sprintf("- **Status**: %s\n\n", td_info$status))
+}
+```
+
+### Energy (EBFMI)
+
+```{r echo=FALSE}
+if (!is.null(diagnostic_results$sampling$ebfmi)) {
+  ebfmi_info <- diagnostic_results$sampling$ebfmi
+  cat(sprintf("- **Minimum EBFMI**: %.3f\n", ebfmi_info$min))
+  cat(sprintf("- **Median EBFMI**: %.3f\n", ebfmi_info$median))
+  cat(sprintf("- **Status**: %s\n\n", ebfmi_info$status))
+  
+  if (ebfmi_info$status != "PASS") {
+    cat("**Note**: Low EBFMI suggests funnel geometry. Consider non-centered parameterization.\n\n")
+  }
+}
+```
+
+```{r energy-plot, echo=FALSE, fig.width=8, fig.height=5}
+if (!is.null(fit) && !is.null(fit$sampler_diagnostics)) {
+  create_energy_plot(fit, n_bins = 30, show_normal = TRUE)
+}
+```
+
+---
+
+## Visual Diagnostics
+
+### Traceplots
+
+```{r traceplots, echo=FALSE, fig.width=10, fig.height=8}
+if (!is.null(fit)) {
+  create_traceplots(fit, n_params = 10)
+}
+```
+
+### Density Plots by Chain
+
+```{r density-by-chain, echo=FALSE, fig.width=10, fig.height=8, results='asis'}
+if (!is.null(fit)) {
+  density_plots <- create_density_by_chain_plots(fit, n_per_page = 6)
+  for (i in seq_along(density_plots)) {
+    print(density_plots[[i]])
+    if (i < length(density_plots)) cat("\n\n")
+  }
+}
+```
+
+### R-hat vs ESS Scatter
+
+```{r rhat-ess-scatter, echo=FALSE, fig.width=8, fig.height=6}
+if (!is.null(diagnostic_results$parameters)) {
+  create_rhat_ess_scatter(diagnostic_results$parameters, thresholds)
+}
+```
+
+---
+
+## Problematic Parameters
+
+```{r problematic-params, echo=FALSE, results='asis'}
+if (!is.null(diagnostic_results$parameters)) {
+  problematic <- get_problematic_parameters(diagnostic_results, thresholds)
+  
+  if (!is.null(problematic) && nrow(problematic) > 0) {
+    cat(sprintf("\n**%d parameters** have diagnostic issues:\n\n", nrow(problematic)))
+    
+    # Create display table
+    display_table <- problematic %>%
+      select(parameter, rhat, rhat_status, ess_bulk_ratio, ess_bulk_status, 
+             mcse_ratio, mcse_status) %>%
+      mutate(
+        rhat = round(rhat, 4),
+        ess_bulk_ratio = round(ess_bulk_ratio, 3),
+        mcse_ratio = round(mcse_ratio, 4)
+      )
+    
+    knitr::kable(head(display_table, 20), 
+                caption = "Top 20 Problematic Parameters",
+                col.names = c("Parameter", "R-hat", "Status", "ESS Ratio", "Status", "MCSE Ratio", "Status"))
+  } else {
+    cat("\n✓ **No problematic parameters detected.**\n\n")
+  }
+}
+```

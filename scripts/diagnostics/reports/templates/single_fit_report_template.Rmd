@@ -1,0 +1,606 @@
+---
+title: "MCMC Diagnostics Report"
+subtitle: "{{MODEL}} - {{TASK}} - Subject {{SUBJECT_ID}}"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(knitr)
+  library(bayesplot)
+  library(posterior)
+  library(here)
+})
+
+# Source helper functions
+source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_helpers.R"))
+source(file.path(here::here(), "scripts", "diagnostics", "visualization", "convergence_plots.R"))
+
+# Load diagnostic results
+diagnostic_results <- readRDS("{{DIAGNOSTIC_FILE}}")
+
+# Load fit object if available for plotting
+fit <- if (file.exists("{{FIT_FILE}}")) {
+  readRDS("{{FIT_FILE}}")
+} else {
+  NULL
+}
+
+# Load thresholds
+thresholds <- load_diagnostic_thresholds()
+```
+
+---
+
+# Executive Summary
+
+## Overall Status
+
+```{r overall-status, results='asis'}
+status <- diagnostic_results$overall_status
+cat(format_status_badge(status))
+```
+
+## Model Information
+
+```{r model-info}
+meta <- diagnostic_results$metadata
+
+info_df <- data.frame(
+  Item = c("Task", "Cohort", "Model", "Subject", "Chains", "Iterations", "Parameters"),
+  Value = c(
+    "{{TASK}}",
+    "{{COHORT}}",
+    "{{MODEL}}",
+    "{{SUBJECT_ID}}",
+    as.character(meta$n_chains),
+    sprintf("%d warmup + %d sampling", meta$n_warmup, 
+            (meta$n_iter - meta$n_warmup)),
+    as.character(meta$n_params)
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(info_df, col.names = NULL)
+```
+
+## Quick Summary
+
+```{r quick-summary}
+conv <- diagnostic_results$convergence
+samp <- diagnostic_results$sampling
+
+summary_df <- data.frame(
+  Metric = c("Worst R-hat", "Min ESS Ratio", "Divergences", "Overall"),
+  Value = c(
+    sprintf("%.4f", conv$rhat$max),
+    sprintf("%.3f", conv$ess_bulk$min_ratio),
+    sprintf("%d (%.2f%%)", samp$divergences$count, samp$divergences$rate * 100),
+    diagnostic_results$overall_status
+  ),
+  Status = c(
+    conv$rhat$status,
+    conv$ess_bulk$status,
+    samp$divergences$status,
+    diagnostic_results$overall_status
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(summary_df)
+```
+
+**Bottom Line:** `r if(diagnostic_results$overall_status == "PASS") "✓ All diagnostics look good. You can proceed with confidence." else if(diagnostic_results$overall_status == "WARN") "⚠ Some diagnostics show warnings. Review the details below before proceeding." else "✗ Critical issues detected. Do NOT use these results for inference."`
+
+---
+
+# R-hat: Convergence Assessment
+
+## What R-hat Measures
+
+R-hat (also called the Gelman-Rubin statistic) assesses whether multiple MCMC chains have converged to the same distribution. It compares the variance **within** each chain to the variance **between** chains.
+
+- If chains have converged, they should be exploring the same region of parameter space
+- R-hat ≈ 1.0 indicates chains agree
+- R-hat > 1.0 indicates chains are still exploring different regions
+
+## Interpretation Guide
+
+```{r rhat-interpretation}
+interp_df <- data.frame(
+  `R-hat Value` = c("≤ 1.01", "≤ 1.05", "> 1.1"),
+  Assessment = c("Excellent - chains fully converged", 
+                "Acceptable - likely converged",
+                "Problematic - chains NOT converged"),
+  `Action` = c("✓ Proceed", 
+              "⚠ Review carefully",
+              "✗ Run more iterations or check model"),
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+kable(interp_df)
+```
+
+**What causes high R-hat:**
+- Not enough iterations
+- Chains initialized too far apart
+- Multimodal posterior (multiple peaks)
+- Model identification issues
+
+## Your Results
+
+```{r rhat-summary}
+rhat_info <- diagnostic_results$convergence$rhat
+
+cat(sprintf("- **Minimum R-hat**: %.4f\n", rhat_info$min))
+cat(sprintf("- **Maximum R-hat**: %.4f\n", rhat_info$max))
+cat(sprintf("- **Median R-hat**: %.4f\n", rhat_info$median))
+cat(sprintf("- **Status**: %s\n\n", rhat_info$status))
+
+if (rhat_info$n_problematic > 0) {
+  cat(sprintf("⚠ **Warning**: %d parameters have R-hat > %.2f\n\n", 
+              rhat_info$n_problematic, thresholds$thresholds$rhat$problematic))
+}
+```
+
+### R-hat Distribution
+
+```{r rhat-histogram, fig.width=10, fig.height=5}
+create_rhat_histogram(rhat_info$values, thresholds)
+```
+
+### All Parameters
+
+```{r rhat-table}
+param_rhat <- data.frame(
+  Parameter = names(rhat_info$values),
+  `R-hat` = round(rhat_info$values, 4),
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+param_rhat <- param_rhat[order(param_rhat$`R-hat`, decreasing = TRUE), ]
+
+kable(param_rhat, row.names = FALSE)
+```
+
+```{r rhat-problematic}
+if (rhat_info$n_problematic > 0) {
+  cat("\n### Problematic Parameters (R-hat > ", thresholds$thresholds$rhat$problematic, ")\n\n", sep="")
+  
+  prob_params <- param_rhat[param_rhat$`R-hat` > thresholds$thresholds$rhat$problematic, ]
+  kable(prob_params, row.names = FALSE)
+  
+  cat("\n**Action needed:** These parameters have not converged. Consider:\n")
+  cat("- Running more iterations\n")
+  cat("- Checking model specification\n")
+  cat("- Reparameterizing the model\n")
+}
+```
+
+---
+
+# Effective Sample Size (ESS)
+
+## What ESS Measures
+
+Effective Sample Size (ESS) tells you how many **independent** samples you effectively have from the posterior, accounting for autocorrelation in the MCMC chain.
+
+- Raw samples are correlated (each draw depends on previous draws)
+- ESS adjusts for this correlation
+- Higher ESS = more information about the posterior
+
+**Two types:**
+- **Bulk ESS**: For estimating means and medians
+- **Tail ESS**: For estimating quantiles and credible intervals
+
+## Interpretation Guide
+
+```{r ess-interpretation}
+ess_interp <- data.frame(
+  `ESS/Total Samples` = c("> 70%", "> 50%", "< 30%"),
+  Assessment = c("Good - highly efficient sampling",
+                "Acceptable - reasonable efficiency", 
+                "Problematic - low efficiency"),
+  `Action` = c("✓ Sufficient samples",
+              "⚠ Consider more iterations",
+              "✗ Run more iterations"),
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+kable(ess_interp)
+```
+
+**Rule of thumb:** Aim for ESS > 400 for stable estimates.
+
+**What causes low ESS:**
+- High autocorrelation (slow mixing)
+- Strong parameter correlations
+- Difficult posterior geometry
+
+## Your Results
+
+```{r ess-summary}
+ess_info <- diagnostic_results$convergence$ess_bulk
+
+cat(sprintf("- **Minimum ESS**: %.0f (%.1f%% of %.0f total samples)\n", 
+            ess_info$min, ess_info$min_ratio * 100, diagnostic_results$metadata$total_samples))
+cat(sprintf("- **Median ESS**: %.0f (%.1f%%)\n", 
+            ess_info$median, ess_info$median_ratio * 100))
+cat(sprintf("- **Status**: %s\n\n", ess_info$status))
+
+if (any(ess_info$ratios > 1.0, na.rm = TRUE)) {
+  cat("ℹ️ **Note**: Some ESS values exceed 100%. This is valid and indicates negative autocorrelation (anticorrelation) in the chains, which actually improves efficiency beyond independent samples.\n\n")
+}
+
+if (ess_info$n_problematic > 0) {
+  cat(sprintf("⚠ **Warning**: %d parameters have ESS ratio < %.0f%%\n\n", 
+              ess_info$n_problematic, thresholds$thresholds$ess_ratio$problematic * 100))
+}
+```
+
+### ESS Distribution
+
+```{r ess-histogram, fig.width=10, fig.height=5}
+create_ess_histogram(ess_info$ratios, thresholds)
+```
+
+### All Parameters
+
+```{r ess-table}
+param_ess <- data.frame(
+  Parameter = names(ess_info$values),
+  `ESS Bulk` = round(ess_info$values, 0),
+  `ESS Ratio` = sprintf("%.1f%%", ess_info$ratios * 100),
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+param_ess <- param_ess[order(ess_info$values), ]
+
+kable(param_ess, row.names = FALSE)
+```
+
+```{r ess-problematic}
+if (ess_info$n_problematic > 0) {
+  cat("\n### Low ESS Parameters (< ", thresholds$thresholds$ess_ratio$problematic * 100, "%)\n\n", sep="")
+  
+  prob_idx <- which(ess_info$ratios < thresholds$thresholds$ess_ratio$problematic)
+  prob_ess <- param_ess[prob_idx, ]
+  kable(prob_ess, row.names = FALSE)
+  
+  cat("\n**Action needed:** Run more iterations to increase ESS.\n")
+}
+```
+
+---
+
+# Divergent Transitions
+
+## What Divergences Measure
+
+Divergent transitions occur when the Hamiltonian Monte Carlo (HMC) sampler encounters regions where the numerical integrator becomes unstable. This happens in areas of high curvature in the posterior.
+
+**Why they matter:** Divergences indicate the sampler is having trouble exploring the posterior accurately. Results may be **biased** in regions where divergences occur.
+
+## Interpretation Guide
+
+```{r div-interpretation}
+div_interp <- data.frame(
+  `Divergence Rate` = c("< 0.1%", "< 1%", "> 1%"),
+  Assessment = c("Good - no issues",
+                "Borderline - investigate", 
+                "Problematic - biased results likely"),
+  `Action` = c("✓ No action needed",
+              "⚠ Review, consider increasing adapt_delta",
+              "✗ Increase adapt_delta or reparameterize"),
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+kable(div_interp)
+```
+
+**Common causes:**
+- Funnel-shaped posteriors (hierarchical models)
+- Highly correlated parameters
+- Non-centered parameterization needed
+- Poorly scaled parameters
+
+## Your Results
+
+```{r div-summary}
+div_info <- diagnostic_results$sampling$divergences
+
+cat(sprintf("- **Divergence count**: %.0f\n", div_info$count))
+cat(sprintf("- **Total transitions**: %.0f\n", div_info$total_transitions))
+cat(sprintf("- **Divergence rate**: %.4f%% \n", div_info$rate * 100))
+cat(sprintf("- **Status**: %s\n\n", div_info$status))
+
+if (!is.null(div_info$by_chain)) {
+  cat("**By chain:**\n")
+  for (i in seq_along(div_info$by_chain)) {
+    cat(sprintf("  - Chain %d: %.0f divergences\n", i, div_info$by_chain[i]))
+  }
+  cat("\n")
+}
+```
+
+```{r div-action}
+if (div_info$status != "PASS") {
+  cat("### ⚠ Action Required\n\n")
+  cat("High divergence rate detected. Consider:\n\n")
+  cat("1. **Increase adapt_delta** to 0.99 or 0.995 (makes sampler more careful)\n")
+  cat("2. **Reparameterize model** (e.g., use non-centered parameterization for hierarchical models)\n")
+  cat("3. **Check for non-identifiability** in model parameters\n")
+  cat("4. **Inspect pairs plots** to see where divergences occur\n\n")
+}
+```
+
+---
+
+# Monte Carlo Standard Error (MCSE)
+
+## What MCSE Measures
+
+MCSE quantifies the uncertainty in your posterior estimates due to using a **finite** number of MCMC samples. It tells you how much your estimate might change if you ran the sampler again.
+
+- Related to ESS (lower ESS = higher MCSE)
+- MCSE/SD ratio shows Monte Carlo error relative to posterior uncertainty
+
+## Interpretation Guide
+
+```{r mcse-interpretation}
+mcse_interp <- data.frame(
+  `MCSE/SD Ratio` = c("< 5%", "< 10%", "> 10%"),
+  Assessment = c("Excellent - stable estimates",
+                "Acceptable - reasonable precision", 
+                "Problematic - unstable estimates"),
+  `Action` = c("✓ Sufficient precision",
+              "⚠ Consider more samples",
+              "✗ Need more iterations"),
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+kable(mcse_interp)
+```
+
+## Your Results
+
+```{r mcse-summary}
+mcse_info <- diagnostic_results$convergence$mcse
+
+cat(sprintf("- **Minimum MCSE/SD**: %.4f (%.2f%%)\n", 
+            mcse_info$min_ratio, mcse_info$min_ratio * 100))
+cat(sprintf("- **Maximum MCSE/SD**: %.4f (%.2f%%)\n", 
+            mcse_info$max_ratio, mcse_info$max_ratio * 100))
+cat(sprintf("- **Median MCSE/SD**: %.4f (%.2f%%)\n", 
+            mcse_info$median_ratio, mcse_info$median_ratio * 100))
+cat(sprintf("- **Status**: %s\n\n", mcse_info$status))
+
+if (mcse_info$n_problematic > 0) {
+  cat(sprintf("⚠ **Warning**: %d parameters have MCSE/SD > %.0f%%\n\n", 
+              mcse_info$n_problematic, thresholds$thresholds$mcse_ratio$problematic * 100))
+}
+```
+
+```{r mcse-problematic}
+if (mcse_info$n_problematic > 0) {
+  cat("### High MCSE Parameters\n\n")
+  
+  param_mcse <- data.frame(
+    Parameter = names(mcse_info$ratios),
+    `MCSE/SD` = sprintf("%.2f%%", mcse_info$ratios * 100),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  
+  param_mcse <- param_mcse[order(mcse_info$ratios, decreasing = TRUE), ]
+  prob_mcse <- param_mcse[mcse_info$ratios > thresholds$thresholds$mcse_ratio$problematic, ]
+  
+  kable(prob_mcse, row.names = FALSE)
+  
+  cat("\n**Action needed:** Increase ESS by running more iterations.\n")
+}
+```
+
+---
+
+# Additional Diagnostics
+
+## Tree Depth
+
+```{r treedepth}
+if (!is.null(diagnostic_results$sampling$treedepth)) {
+  td_info <- diagnostic_results$sampling$treedepth
+  
+  cat(sprintf("- **Maximum allowed**: %.0f\n", td_info$max_allowed))
+  cat(sprintf("- **Hits**: %.0f (%.2f%% of transitions)\n", td_info$hits, td_info$rate * 100))
+  cat(sprintf("- **Status**: %s\n\n", td_info$status))
+  
+  if (td_info$status != "PASS") {
+    cat("⚠ Sampler frequently hitting max tree depth. This may indicate:\n")
+    cat("- High curvature regions in posterior\n")
+    cat("- Consider increasing max_treedepth (but sampling will be slower)\n\n")
+  }
+} else {
+  cat("*Not available*\n\n")
+}
+```
+
+## EBFMI (Energy)
+
+```{r ebfmi}
+if (!is.null(diagnostic_results$sampling$ebfmi)) {
+  ebfmi_info <- diagnostic_results$sampling$ebfmi
+  
+  cat(sprintf("- **Minimum EBFMI**: %.3f\n", ebfmi_info$min))
+  cat(sprintf("- **Median EBFMI**: %.3f\n", ebfmi_info$median))
+  cat(sprintf("- **Status**: %s\n\n", ebfmi_info$status))
+  
+  cat("**Interpretation:**\n")
+  cat("- EBFMI > 0.3 is acceptable\n")
+  cat("- Low EBFMI suggests funnel geometry (common in hierarchical models)\n\n")
+  
+  if (ebfmi_info$status != "PASS") {
+    cat("⚠ Low EBFMI detected. Consider:\n")
+    cat("- Using non-centered parameterization\n")
+    cat("- Reparameterizing model to improve geometry\n\n")
+  }
+} else {
+  cat("*Not available*\n\n")
+}
+```
+
+---
+
+# Visual Diagnostics
+
+## Traceplots
+
+Traceplots should look like "white noise" - random fluctuations around a stable mean. Poor mixing shows trends, stuck chains, or periodic patterns.
+
+```{r traceplots, fig.width=12, fig.height=8}
+if (!is.null(fit)) {
+  create_traceplots(fit, n_params = 9)
+} else {
+  cat("*Fit object not available for plotting*\n")
+}
+```
+
+## Density by Chain
+
+Densities from different chains should overlap completely. Separation indicates non-convergence.
+
+```{r density-by-chain, fig.width=12, fig.height=8, results='asis'}
+if (!is.null(fit)) {
+  density_plots <- create_density_by_chain_plots(fit, n_per_page = 6)
+  for (i in seq_along(density_plots)) {
+    print(density_plots[[i]])
+    if (i < length(density_plots)) cat("\n\n")
+  }
+} else {
+  cat("*Fit object not available for plotting*\n")
+}
+```
+
+## R-hat vs ESS
+
+Parameters in the upper-left (low R-hat, high ESS) are ideal. Lower-right quadrant (high R-hat, low ESS) indicates problems.
+
+```{r rhat-ess-scatter, fig.width=8, fig.height=6}
+if (!is.null(diagnostic_results$parameters)) {
+  create_rhat_ess_scatter(diagnostic_results$parameters, thresholds)
+}
+```
+
+---
+
+# Recommendations
+
+```{r recommendations}
+if (!is.null(diagnostic_results$recommendations)) {
+  for (i in seq_along(diagnostic_results$recommendations)) {
+    cat(sprintf("%d. %s\n", i, diagnostic_results$recommendations[i]))
+  }
+} else {
+  cat("No specific recommendations.\n")
+}
+```
+
+---
+
+# Technical Details
+
+## Full Parameter Diagnostics
+
+```{r full-param-table}
+if (!is.null(diagnostic_results$parameters)) {
+  param_full <- diagnostic_results$parameters %>%
+    select(parameter, rhat, ess_bulk, ess_bulk_ratio, mcse_ratio) %>%
+    mutate(
+      rhat = round(rhat, 4),
+      ess_bulk = round(ess_bulk, 0),
+      ess_bulk_ratio = round(ess_bulk_ratio, 3),
+      mcse_ratio = round(mcse_ratio, 4)
+    )
+  
+  kable(param_full, row.names = FALSE,
+        col.names = c("Parameter", "R-hat", "ESS Bulk", "ESS Ratio", "MCSE/SD"))
+}
+```
+
+## Sampling Configuration
+
+```{r sampling-config}
+meta <- diagnostic_results$metadata
+
+config_df <- data.frame(
+  Parameter = c("Warmup Iterations", "Sampling Iterations", "Chains", 
+                "Adapt Delta", "Max Tree Depth", "Total Samples"),
+  Value = c(
+    as.character(meta$n_warmup),
+    as.character(meta$n_iter - meta$n_warmup),
+    as.character(meta$n_chains),
+    sprintf("%.3f", meta$adapt_delta),
+    as.character(meta$max_treedepth),
+    as.character(meta$total_samples)
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(config_df, col.names = NULL)
+```
+
+## Diagnostic Thresholds Used
+
+```{r thresholds-table}
+threshold_df <- data.frame(
+  Metric = c("R-hat (Excellent)", "R-hat (Acceptable)", "R-hat (Problematic)",
+             "ESS Ratio (Good)", "ESS Ratio (Acceptable)", "ESS Ratio (Problematic)",
+             "Divergence Rate (Acceptable)", "Divergence Rate (Problematic)",
+             "MCSE Ratio (Acceptable)", "MCSE Ratio (Problematic)"),
+  Threshold = c(
+    sprintf("≤ %.2f", thresholds$thresholds$rhat$excellent),
+    sprintf("≤ %.2f", thresholds$thresholds$rhat$acceptable),
+    sprintf("> %.2f", thresholds$thresholds$rhat$problematic),
+    sprintf("≥ %.2f", thresholds$thresholds$ess_ratio$good),
+    sprintf("≥ %.2f", thresholds$thresholds$ess_ratio$acceptable),
+    sprintf("< %.2f", thresholds$thresholds$ess_ratio$problematic),
+    sprintf("≤ %.3f%%", thresholds$thresholds$divergence_rate$acceptable * 100),
+    sprintf("> %.2f%%", thresholds$thresholds$divergence_rate$problematic * 100),
+    sprintf("≤ %.0f%%", thresholds$thresholds$mcse_ratio$acceptable * 100),
+    sprintf("> %.0f%%", thresholds$thresholds$mcse_ratio$problematic * 100)
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(threshold_df)
+```
+
+---
+
+**Report generated:** `r format(Sys.time(), "%Y-%m-%d %H:%M:%S")`

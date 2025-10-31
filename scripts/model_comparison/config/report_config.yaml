@@ -1,0 +1,232 @@
+# Report Configuration for Model Comparison
+# Controls report generation settings and appearance
+
+report_settings:
+  default_format: "html"
+  theme: "flatly"
+  toc: true
+  toc_float: true
+  toc_depth: 3
+  number_sections: true
+  code_folding: "hide"
+  fig_width: 10
+  fig_height: 6
+  fig_dpi: 300
+  df_print: "paged"
+
+# Section inclusion settings
+sections:
+  executive_summary:
+    include: true
+    show_key_findings: true
+    show_models_analyzed: true
+    show_summary_table: true
+    
+  information_criteria:
+    include: true
+    show_ranking_table: true
+    show_evidence_summary: true
+    show_plots: true
+    show_complexity_analysis: true
+    show_by_type_rankings: true
+    
+  parameter_recovery:
+    include: true
+    show_group_summary: true
+    show_model_summary: true
+    show_plots: true
+    show_best_worst: true
+    show_cross_type: true
+    show_insights: true
+    
+  ppc_analysis:
+    include: true
+    show_domain_summary: true
+    show_model_summary: true
+    show_plots: true
+    show_extreme_failures: true
+    show_behavioral_patterns: true
+    show_task_specific: true
+    show_insights: true
+    
+  model_type_comparison:
+    include: true
+    show_overview: true
+    show_ic_by_type: true
+    show_recovery_by_type: true
+    show_ppc_by_type: true
+    show_specialized_capabilities: true
+    show_cross_type_comparison: true
+    
+  task_specific:
+    include: true
+    show_task_overview: true
+    show_model_performance: true
+    show_learning_dynamics: true
+    show_rt_analysis: true
+    show_insights: true
+    show_visualization: true
+    
+  detailed_profiles:
+    include: true
+    max_models: 15  # Limit for readability
+    show_metadata: true
+    show_ic_performance: true
+    show_recovery_performance: true
+    show_ppc_performance: true
+    
+  conclusions:
+    include: true
+    show_overall_ranking: true
+    show_key_insights: true
+    show_recommendations: true
+    
+  technical_appendix:
+    include: true
+    show_analysis_config: true
+    show_data_sources: true
+    show_parameter_groups: true
+    show_analysis_methods: true
+    show_session_info: true
+
+# Plot settings
+plots:
+  save_individual: true
+  formats: ["png", "pdf"]
+  width: 10
+  height: 6
+  dpi: 300
+  
+  # Color schemes
+  colors:
+    model_types:
+      RL: "#440154"
+      SSM: "#31688e" 
+      hybrid: "#35b779"
+      
+    quality_levels:
+      excellent: "#2d5aa0"
+      good: "#5ab4ac"
+      acceptable: "#f6e8c3"
+      concerning: "#fdbf6f"
+      poor: "#d53e4f"
+      
+    recovery_quality:
+      excellent: "#2d5aa0"
+      good: "#5ab4ac"
+      acceptable: "#f6e8c3"
+      poor: "#d53e4f"
+      
+    ppc_quality:
+      excellent: "#2d5aa0"
+      good: "#5ab4ac"
+      acceptable: "#f6e8c3"
+      concerning: "#fdbf6f"
+      poor: "#d53e4f"
+
+# Table settings
+tables:
+  page_length: 15
+  scroll_x: true
+  round_digits: 3
+  show_filters: true
+  
+  # Column formatting
+  formatting:
+    correlations: 3
+    proportions: 3
+    ic_values: 1
+    p_values: 4
+
+# Text formatting
+text:
+  title_size: 16
+  subtitle_size: 14
+  heading_size: 12
+  body_size: 10
+  caption_size: 9
+  
+  # Thresholds for text descriptions
+  thresholds:
+    recovery:
+      excellent: 0.8
+      good: 0.6
+      acceptable: 0.4
+      
+    ppc:
+      excellent: 0.05
+      good: 0.1
+      concerning: 0.2
+      
+    ic:
+      top_tier: 2.0
+      competitive: 4.0
+      considerable: 7.0
+      strong: 10.0
+
+# Content customization
+content:
+  # Custom descriptions for parameter groups
+  parameter_group_descriptions:
+    learning: "Parameters controlling how models update beliefs based on experience"
+    motivational: "Parameters affecting reward/punishment sensitivity and valuation"
+    cognitive_control: "Parameters governing response consistency and decision control"
+    bias_perseveration: "Parameters capturing choice biases and perseveration tendencies"
+    exploration: "Parameters controlling exploration vs exploitation balance"
+    motor_perceptual: "Parameters for non-decision time and perceptual processes"
+    
+  # Model type descriptions
+  model_type_descriptions:
+    RL: "Reinforcement learning models focus on choice patterns and learning dynamics"
+    SSM: "Sequential sampling models specialize in response time distributions and decision dynamics"
+    hybrid: "Hybrid models combine RL and SSM components for comprehensive behavioral modeling"
+    
+  # Task-specific content
+  task_descriptions:
+    igt: "Iowa Gambling Task - Classic decision-making paradigm with four decks"
+    igt_mod: "Modified Iowa Gambling Task - Play/pass decisions on individual cards"
+
+# Analysis behavior
+analysis:
+  # Minimum requirements for inclusion
+  minimum_data:
+    recovery: true  # Require recovery data
+    ppc: true       # Require PPC data
+    ic: false       # IC data optional but recommended
+    
+  # Quality thresholds
+  quality_thresholds:
+    recovery_correlation: 0.3  # Minimum for "acceptable"
+    ppc_extreme_rate: 0.3      # Maximum for "acceptable"
+    
+  # Ranking behavior
+  ranking:
+    primary_criterion: "ic"  # Primary ranking criterion
+    fallback_criterion: "recovery"  # If IC not available
+    tie_breaker: "ppc"      # For ties
+    
+  # Filtering
+  filtering:
+    exclude_poor_recovery: false  # Whether to exclude models with poor recovery
+    exclude_poor_ppc: false       # Whether to exclude models with poor PPC
+    max_models_per_section: 20    # Limit for readability
+
+# Output settings
+output:
+  filename_pattern: "model_comparison_{task}_{cohort}_{timestamp}"
+  timestamp_format: "%Y%m%d_%H%M%S"
+  create_subdirs: true
+  
+  # File organization
+  subdirectories:
+    reports: "reports"
+    plots: "plots" 
+    data: "data"
+    logs: "logs"
+    
+# Debugging and development
+debug:
+  verbose_output: false
+  save_intermediate: false
+  include_debug_info: false
+  profile_performance: false

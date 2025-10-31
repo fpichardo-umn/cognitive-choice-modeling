@@ -1,0 +1,665 @@
+
+## SSM-Specific Analyses
+
+#### Response Time Distributions
+
+The plots below compare observed response time (RT) distributions (red) with model predictions (blue with 95% CI).
+
+```{r rt_distributions, echo=FALSE, fig.width=10, fig.height=6}
+# Extract RT quantile data
+rt_quantile_data <- subject_data %>%
+  filter(grepl("rt_.*_quantiles", statistic) | grepl("rt_.*_q", statistic))
+if(nrow(rt_quantile_data) > 0) {
+  # Properly extract quantile and rt_type from the statistic column 
+  # Fix the regex patterns - the double backslashes were causing issues
+  rt_quantile_data <- rt_quantile_data %>%
+    mutate(
+      quantile = as.numeric(sub(".*_quantiles_(\\\\d+).*", "\\\\1", statistic)),
+      rt_type = sub("rt_(.*)_quantiles.*", "\\\\1", statistic)
+    ) %>%
+    # Filter out rows where quantile extraction failed (would be NA)
+    filter(!is.na(quantile))
+  
+  # Aggregate across subjects
+  rt_quantile_agg <- rt_quantile_data %>%
+    group_by(quantile, rt_type) %>%
+    summarize(
+      predicted_mean = mean(predicted_mean, na.rm = TRUE),
+      predicted_q025 = mean(predicted_q025, na.rm = TRUE),
+      predicted_q975 = mean(predicted_q975, na.rm = TRUE),
+      observed = mean(observed, na.rm = TRUE),
+      .groups = 'drop'
+    )
+  
+  # Convert quantile to factor for proper ordering on x-axis
+  rt_quantile_agg$quantile <- factor(rt_quantile_agg$quantile, levels = sort(unique(rt_quantile_agg$quantile)))
+  
+  # Plot aggregated RT quantiles
+  ggplot(rt_quantile_agg, aes(x = quantile, group = rt_type, color = rt_type)) +
+    # Predicted lines and points
+    geom_line(aes(y = predicted_mean), size = 1) +
+    geom_point(aes(y = predicted_mean), size = 3) +
+    geom_errorbar(aes(ymin = predicted_q025, ymax = predicted_q975), width = 0.1, alpha = 0.7) +
+    # Observed lines and points
+    geom_line(aes(y = observed), linetype = "dashed", size = 1) +
+    geom_point(aes(y = observed), shape = 4, size = 3)  +
+    facet_wrap(~ rt_type, scales = "free_y") +
+    # Theme and labels
+    theme_minimal(base_size = 14) +
+    labs(title = "Aggregate RT Quantiles",
+         subtitle = "Solid = Predicted (with 95% CI), Dashed = Observed",
+         x = "Quantile", y = "Response Time (s)",
+         color = "RT Type") +
+    theme(
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(fill = NA, color = "gray80"),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+```
+
+```{r}
+# Extract RT mean and median data
+rt_mean_data <- subject_data %>%
+  filter(grepl("rt_.*_mean|rt_.*_median", statistic))
+
+if(nrow(rt_mean_data) > 0) {
+  # Aggregate across subjects
+  rt_mean_agg <- rt_mean_data %>%
+    group_by(statistic) %>%
+    summarize(
+      predicted_mean = mean(predicted_mean, na.rm = TRUE),
+      predicted_q025 = mean(predicted_q025, na.rm = TRUE),
+      predicted_q975 = mean(predicted_q975, na.rm = TRUE),
+      observed = mean(observed, na.rm = TRUE),
+      .groups = 'drop'
+    )
+  
+  # Create factor for ordering
+  rt_mean_agg$statistic <- factor(rt_mean_agg$statistic, 
+                                levels = sort(unique(rt_mean_agg$statistic)))
+  
+  # Plot aggregated RT means and medians
+  ggplot(rt_mean_agg, aes(x = statistic, y = predicted_mean)) +
+    geom_point(size = 3, color = "blue") +
+    geom_errorbar(aes(ymin = predicted_q025, ymax = predicted_q975), 
+                 width = 0.2, color = "blue", alpha = 0.7) +
+    geom_point(aes(y = observed), color = "red", size = 3, shape = 4) +
+    theme_minimal(base_size = 14) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(fill = NA, color = "gray80")
+    ) +
+    labs(title = "Aggregate RT Means and Medians", 
+         subtitle = "Red X = Observed, Blue points with error bars = Predicted (95% CI)",
+         x = "", y = "Response Time (s)")
+}
+```
+
+#### Choice Probabilities
+
+```{r choice_probs, echo=FALSE, fig.width=10, fig.height=6}
+# Extract choice probability data
+choice_prob_data <- subject_data %>%
+  filter(grepl("choice_prob", statistic) | grepl("selection_ratio", statistic))
+
+if(nrow(choice_prob_data) > 0) {
+  # Aggregate across subjects
+  choice_prob_agg <- choice_prob_data %>%
+    group_by(statistic) %>%
+    summarize(
+      predicted_mean = mean(predicted_mean, na.rm = TRUE),
+      predicted_q025 = mean(predicted_q025, na.rm = TRUE),
+      predicted_q975 = mean(predicted_q975, na.rm = TRUE),
+      observed = mean(observed, na.rm = TRUE),
+      .groups = 'drop'
+    )
+  
+  # Create factor for ordering
+  choice_prob_agg$statistic <- factor(choice_prob_agg$statistic, 
+                                     levels = sort(unique(choice_prob_agg$statistic)))
+  
+  # Plot aggregated choice probabilities
+  ggplot(choice_prob_agg, aes(x = statistic, y = predicted_mean)) +
+    geom_point(size = 3, color = "blue") +
+    geom_errorbar(aes(ymin = predicted_q025, ymax = predicted_q975), 
+                 width = 0.2, color = "blue", alpha = 0.7) +
+    geom_point(aes(y = observed), color = "red", size = 3, shape = 4) +
+    theme_minimal(base_size = 14) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(fill = NA, color = "gray80")
+    ) +
+    labs(title = "Aggregate Choice Probabilities", 
+         subtitle = "Red X = Observed, Blue points with error bars = Predicted (95% CI)",
+         x = "", y = "Probability")
+}
+```
+
+#### Quantile-Probability Plot
+
+This plot shows the relationship between response time quantiles and accuracy/choice probability, similar to Fig. 4 in Wagenmakers et al. (2008).
+
+```{r quantile_probability, echo=FALSE, fig.width=10, fig.height=8}
+# Extract necessary data
+rt_quantile_data <- subject_data %>%
+  filter(grepl("rt_.*_quantiles.*", statistic))
+
+choice_prob_data <- subject_data %>%
+  filter(grepl("choice_prob|accuracy", statistic))
+
+if(nrow(rt_quantile_data) > 0 && nrow(choice_prob_data) > 0) {
+  # Process RT quantile data
+  rt_quantile_data <- rt_quantile_data %>%
+    mutate(
+      quantile = as.numeric(sub(".*_quantiles_(\\\\d+).*", "\\\\1", statistic)) / 100,
+      rt_type = sub("rt_(.*)_quantiles_.*", "\\\\1", statistic)
+    )
+  
+  # Process choice probability data
+  choice_prob_data <- choice_prob_data %>%
+    mutate(
+      choice_type = sub("(.*)_prob", "\\1", statistic)
+    )
+  
+  # Try to link RT quantiles with corresponding choice probabilities
+  # This is an approximation and may need customization based on your data structure
+  combined_data <- rt_quantile_data %>%
+    left_join(
+      choice_prob_data,
+      by = c("subject_id", "rt_type" = "choice_type")
+    )
+  
+  # If join was successful, create the quantile-probability plot
+  if(!all(is.na(combined_data$observed.y))) {
+    ggplot(combined_data, aes(x = observed.y * 100, y = observed.x, group = quantile)) +
+      geom_line() +
+      geom_point(size = 2, color = "black", fill = "black") +
+      geom_line(aes(x = predicted_mean.y * 100, y = predicted_mean.x), linetype = "dashed") +
+      geom_point(aes(x = predicted_mean.y * 100, y = predicted_mean.x), 
+                shape = 21, size = 2, fill = "white") +
+      geom_errorbar(aes(ymin = predicted_q025.x, ymax = predicted_q975.x), width = 0, alpha = 0.3) +
+      facet_wrap(~rt_type) +
+      scale_y_continuous(name = "RT Quantiles", 
+                        breaks = function(x) pretty(x, n = 10)) +
+      scale_x_continuous(name = "Accuracy/Choice Probability (%)", 
+                        breaks = function(x) pretty(x, n = 10)) +
+      theme_minimal() +
+      labs(title = "Quantile-Probability Plot", 
+           subtitle = "Solid line/filled points = Observed, Dashed line/open points = Predicted")
+  } else {
+    # Alternative implementation if join fails
+    # Create separate panels for each quantile with accuracy on x-axis
+    
+    # First get aggregate quantiles across subjects
+    agg_quantiles <- rt_quantile_data %>%
+      group_by(rt_type, quantile) %>%
+      summarize(
+        obs_mean = mean(observed, na.rm = TRUE),
+        obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+        pred_mean = mean(predicted_mean, na.rm = TRUE),
+        pred_lower = mean(predicted_q025, na.rm = TRUE),
+        pred_upper = mean(predicted_q975, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    # Then get aggregate choice probs
+    agg_choice_probs <- choice_prob_data %>%
+      group_by(choice_type) %>%
+      summarize(
+        obs_prob = mean(observed, na.rm = TRUE),
+        pred_prob = mean(predicted_mean, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    # Create the plot with quantiles only
+    ggplot(agg_quantiles, aes(x = as.factor(quantile), y = obs_mean, group = 1)) +
+      geom_line() +
+      geom_point(size = 3) +
+      geom_errorbar(aes(ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), width = 0.1) +
+      geom_line(aes(y = pred_mean), linetype = "dashed") +
+      geom_point(aes(y = pred_mean), shape = 21, size = 3, fill = "white") +
+      geom_ribbon(aes(ymin = pred_lower, ymax = pred_upper), alpha = 0.2) +
+      facet_wrap(~rt_type) +
+      theme_minimal() +
+      labs(title = "RT Quantile Plot by Response Type", 
+           subtitle = "Solid line/filled points = Observed, Dashed line/open points = Predicted",
+           x = "Quantile", y = "Response Time (s)")
+  }
+}
+```
+
+#### Play vs. Pass RT Comparison
+
+```{r play_pass_rt, echo=FALSE, fig.width=10, fig.height=6}
+# Extract play vs skip RT data
+rt_play_skip <- subject_data %>%
+  filter(grepl("rt_play|rt_skip", statistic) & !grepl("hist|quantiles", statistic))
+
+if(nrow(rt_play_skip) > 0) {
+  # Clean up statistic names for better display
+  rt_play_skip <- rt_play_skip %>%
+    mutate(
+      rt_type = case_when(
+        grepl("play", statistic) ~ "Play",
+        grepl("skip", statistic) ~ "Skip/Pass",
+        TRUE ~ "Other"
+      ),
+      metric_type = case_when(
+        grepl("mean", statistic) ~ "Mean",
+        grepl("median", statistic) ~ "Median",
+        grepl("_q[0-9]", statistic) ~ sub(".*_q([0-9]+).*", "Q\\1", statistic),
+        TRUE ~ "Other"
+      )
+    )
+  
+  # Aggregate across subjects
+  rt_agg <- rt_play_skip %>%
+    group_by(rt_type, metric_type) %>%
+    summarize(
+      obs_mean = mean(observed, na.rm = TRUE),
+      obs_se = sd(observed, na.rm = TRUE)/sqrt(n()),
+      pred_mean = mean(predicted_mean, na.rm = TRUE),
+      pred_lower = mean(predicted_q025, na.rm = TRUE),
+      pred_upper = mean(predicted_q975, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Plot aggregated RT for play vs skip
+  p1 = ggplot(rt_agg, aes(x = metric_type, y = obs_mean, color = rt_type, group = rt_type)) +
+    geom_line() +
+    geom_point(size = 3, shape = 16) +
+    geom_errorbar(aes(ymin = obs_mean - obs_se, ymax = obs_mean + obs_se), width = 0.1) +
+    geom_line(aes(y = pred_mean), linetype = "dashed") +
+    geom_point(aes(y = pred_mean), shape = 1, size = 3) +
+    geom_ribbon(aes(ymin = pred_lower, ymax = pred_upper, fill = rt_type), 
+               alpha = 0.2, color = NA) +
+    theme_minimal() +
+    labs(title = "Play vs. Pass Response Times", 
+         subtitle = "Solid = Observed (with SE), Dashed = Predicted (with 95% CI)",
+         x = "RT Metric", y = "Response Time (s)",
+         color = "Response Type", fill = "Response Type")
+  
+  # Calculate play-pass RT difference
+  rt_diff <- rt_agg %>%
+    select(metric_type, rt_type, obs_mean, pred_mean) %>%
+    pivot_wider(
+      names_from = rt_type,
+      values_from = c(obs_mean, pred_mean)
+    ) %>%
+    mutate(
+      obs_diff = obs_mean_Play - `obs_mean_Skip/Pass`,
+      pred_diff = pred_mean_Play - `pred_mean_Skip/Pass`,
+      diff_error = obs_diff - pred_diff
+    )
+  
+  # Plot the play-pass RT difference
+  p2 = ggplot(rt_diff, aes(x = metric_type, y = obs_diff)) +
+    geom_bar(stat = "identity", fill = "darkred", alpha = 0.7) +
+    geom_point(aes(y = pred_diff), size = 3, color = "blue") +
+    geom_line(aes(y = pred_diff, group = 1), color = "blue") +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    theme_minimal() +
+    labs(title = "Play - Pass RT Difference", 
+         subtitle = "Red bars = Observed difference, Blue line/points = Predicted difference",
+         x = "RT Metric", y = "Difference (s)")
+  knitr::knit_print(p1)
+  knitr::knit_print(p2)
+}
+```
+
+## Parameter/Data Correlations
+```{r ssm_param_correlation_analysis, fig.width=10, fig.height=8, results='asis'}
+if (!is.null(recovery_data)) {
+  # Extract SSM parameters from recovery data
+  ssm_params <- recovery_data %>%
+    filter(parameter_type %in% c("individual", "group", "single")) %>%
+    # Filter to include only SSM-specific parameters
+    filter(grepl("ndt|boundary|threshold|drift|tau|beta", parameter, ignore.case = TRUE)) %>%
+    select(subject_id, parameter, true_value, recovered_value) %>%
+    # We'll use recovered values for correlations (since these are what the model "thinks" it has)
+    select(subject_id, parameter, recovered_value) %>%
+    pivot_wider(names_from = parameter, values_from = recovered_value)
+  
+  # Extract SSM metrics from PPC data
+  ssm_ppc_stats <- subject_data %>%
+    filter(component == "SSM" | grepl("rt|choice", statistic, ignore.case = TRUE)) %>%
+    select(subject_id, statistic, observed) %>%
+    pivot_wider(names_from = statistic, values_from = observed)
+  
+  # Only proceed if we have enough data
+  if (ncol(ssm_params) > 1 && ncol(ssm_ppc_stats) > 1) {
+    # Join datasets by subject_id
+    ssm_params$subject_id = ssm_ppc_stats$subject_id
+    ssm_combined <- inner_join(ssm_params, ssm_ppc_stats, by = "subject_id")
+    
+    # Select only numeric columns for correlation
+    ssm_numeric <- ssm_combined %>% select_if(is.numeric)
+    
+    # Separate parameters and statistics for clearer presentation
+    ssm_param_cols <- setdiff(names(ssm_params), "subject_id")
+    ssm_stat_cols <- setdiff(names(ssm_ppc_stats), "subject_id")
+    
+    # Group SSM stats into meaningful categories
+    general_metrics <- c("mean_rt", "median_rt", "min_rt", "max_rt", "choice_prob")
+    general_stats <- intersect(general_metrics, ssm_stat_cols)
+    
+    play_rt_stats <- grep("rt_play", ssm_stat_cols, value = TRUE)
+    skip_rt_stats <- grep("rt_skip", ssm_stat_cols, value = TRUE)
+    
+    # Initialize data frame for storing all correlations
+    all_ssm_cors <- data.frame()
+    
+    # 1. SSM parameters vs general metrics
+    if (length(general_stats) > 0) {
+      general_matrix <- cor(ssm_numeric[ssm_param_cols], ssm_numeric[general_stats], 
+                         use = "pairwise.complete.obs")
+      
+      success_general <- create_corr_plot(general_matrix, "SSM Parameters vs. General Metrics")
+      
+      if (success_general) {
+        general_cors <- get_top_correlations(general_matrix, n = 10) %>% 
+          mutate(Category = "General")
+        all_ssm_cors <- rbind(all_ssm_cors, general_cors)
+      }
+    }
+    
+    # 2. SSM parameters vs Play RT metrics
+    if (length(play_rt_stats) > 0) {
+      play_matrix <- cor(ssm_numeric[ssm_param_cols], ssm_numeric[play_rt_stats], 
+                       use = "pairwise.complete.obs")
+      
+      success_play <- create_corr_plot(play_matrix, "SSM Parameters vs. Play RT Metrics")
+      
+      if (success_play) {
+        play_cors <- get_top_correlations(play_matrix, n = 10) %>% 
+          mutate(Category = "Play RT")
+        all_ssm_cors <- rbind(all_ssm_cors, play_cors)
+      }
+    }
+    
+    # 3. SSM parameters vs Skip RT metrics
+    if (length(skip_rt_stats) > 0) {
+      skip_matrix <- cor(ssm_numeric[ssm_param_cols], ssm_numeric[skip_rt_stats], 
+                       use = "pairwise.complete.obs")
+      
+      success_skip <- create_corr_plot(skip_matrix, "SSM Parameters vs. Skip RT Metrics")
+      
+      if (success_skip) {
+        skip_cors <- get_top_correlations(skip_matrix, n = 10) %>% 
+          mutate(Category = "Skip RT")
+        all_ssm_cors <- rbind(all_ssm_cors, skip_cors)
+      }
+    }
+    
+    # If we have correlations, continue with analysis
+    if (nrow(all_ssm_cors) > 0) {
+      # Create a table of strongest correlations across all categories
+      all_ssm_cors %>%
+        mutate(
+          Parameter = format_names(Parameter),
+          Statistic = format_names(Statistic)
+        ) %>%
+        arrange(desc(Abs_Correlation)) %>%
+        head(15) %>%
+        kable(caption = "Top 15 Parameter-Behavior Correlations (All Categories)", digits = 3) %>%
+        kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                      full_width = FALSE) %>%
+        print()
+      
+      # Create category-specific correlation tables
+      for (category in unique(all_ssm_cors$Category)) {
+        all_ssm_cors %>%
+          filter(Category == category) %>%
+          mutate(
+            Parameter = format_names(Parameter),
+            Statistic = format_names(Statistic)
+          ) %>%
+          arrange(desc(Abs_Correlation)) %>%
+          head(8) %>%
+          select(-Category) %>%
+          kable(caption = paste0("Top Correlations - ", category, " Metrics"), digits = 3) %>%
+          kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                       full_width = FALSE) %>%
+          print()
+      }
+      
+      # Create parameter-parameter correlation matrix
+      param_cor <- cor(ssm_numeric[ssm_param_cols], use = "pairwise.complete.obs")
+      create_corr_plot(param_cor, "Parameter-Parameter Correlations")
+      
+      # Identify high-impact parameters
+      param_impact <- all_ssm_cors %>%
+        group_by(Parameter, Category) %>%
+        summarize(
+          Mean_Abs_Correlation = mean(Abs_Correlation, na.rm = TRUE),
+          Max_Correlation = max(Correlation, na.rm = TRUE),
+          Min_Correlation = min(Correlation, na.rm = TRUE),
+          Impact_Score = sum(Abs_Correlation, na.rm = TRUE),
+          Num_Strong_Correlations = sum(Abs_Correlation > 0.4, na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        arrange(desc(Impact_Score))
+      
+      # Calculate overall parameter impact
+      overall_impact <- param_impact %>%
+        group_by(Parameter) %>%
+        summarize(
+          Mean_Abs_Correlation = mean(Mean_Abs_Correlation, na.rm = TRUE),
+          Max_Correlation = max(Max_Correlation, na.rm = TRUE),
+          Min_Correlation = min(Min_Correlation, na.rm = TRUE),
+          Impact_Score = sum(Impact_Score, na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        arrange(desc(Impact_Score))
+      
+      # Show parameter impact table
+      overall_impact %>%
+        mutate(Parameter = format_names(Parameter)) %>%
+        head(10) %>%
+        kable(caption = "Parameter Impact Rankings", digits = 3) %>%
+        kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                      full_width = FALSE) %>%
+        print()
+      
+      # Create detailed impact breakdown by category
+      param_impact %>%
+        mutate(Parameter = format_names(Parameter)) %>%
+        pivot_wider(
+          id_cols = Parameter,
+          names_from = Category,
+          values_from = Impact_Score,
+          values_fill = 0
+        ) %>%
+        mutate(Total_Impact = rowSums(across(where(is.numeric)))) %>%
+        arrange(desc(Total_Impact)) %>%
+        head(10) %>%
+        kable(caption = "Parameter Impact by Category", digits = 3) %>%
+        kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                     full_width = FALSE) %>%
+        print()
+      
+      # Visualize top parameter impacts
+      if (nrow(overall_impact) >= 3) {
+        top_params <- head(overall_impact, 5)$Parameter
+        
+        # Extract correlations for top parameters
+        top_cors <- all_ssm_cors %>%
+          filter(Parameter %in% top_params) %>%
+          mutate(
+            Parameter = factor(Parameter, levels = rev(top_params)),
+            Statistic = gsub("_", " ", Statistic)
+          )
+        
+        # Create a horizontal bar plot
+        ggplot(top_cors, aes(x = reorder(Statistic, Abs_Correlation), 
+                              y = Correlation, fill = Parameter)) +
+          geom_col(position = "dodge") +
+          coord_flip() +
+          scale_fill_brewer(palette = "Set2") +
+          theme_minimal() +
+          labs(title = "Top Parameters' Influence on Response Metrics",
+               x = "",
+               y = "Correlation Strength") +
+          theme(legend.title = element_blank())
+        
+        # Create a heatmap visualization
+        if (length(top_params) >= 3 && nrow(top_cors) >= 10) {
+          # Only include metrics that have strong correlations with at least one parameter
+          top_metrics <- top_cors %>%
+            group_by(Statistic) %>%
+            summarize(max_abs_corr = max(abs(Correlation)), .groups = "drop") %>%
+            filter(max_abs_corr > 0.3) %>%
+            arrange(desc(max_abs_corr)) %>%
+            head(12) %>%
+            pull(Statistic)
+          
+          # Filter correlations to top parameters and top metrics
+          heatmap_data <- top_cors %>%
+            filter(Statistic %in% top_metrics)
+          
+          if (nrow(heatmap_data) > 0) {
+            ggplot(heatmap_data, aes(x = Parameter, y = Statistic, fill = Correlation)) +
+              geom_tile() +
+              scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                                  midpoint = 0, limit = c(-1,1)) +
+              theme_minimal() +
+              theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                    axis.text.y = element_text(size = 8)) +
+              labs(title = "Parameter-Metric Correlation Heatmap",
+                   subtitle = "Key parameters and their influence on behavioral metrics")
+          }
+        }
+        
+        # Create category-based impact visualization
+        impact_by_category <- param_impact %>%
+          filter(Parameter %in% top_params) %>%
+          mutate(Parameter = factor(Parameter, levels = top_params))
+        
+        ggplot(impact_by_category, aes(x = Parameter, y = Impact_Score, fill = Category)) +
+          geom_col() +
+          scale_fill_brewer(palette = "Set1") +
+          theme_minimal() +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+          labs(title = "Parameter Impact by Category",
+               x = "Parameter", 
+               y = "Impact Score",
+               fill = "Metric Category")
+      }
+    } else {
+      message("Insufficient correlation data for SSM analysis.")
+    }
+  } else {
+    message("Insufficient parameter or PPC data for correlation analysis.")
+  }
+} else {
+  message("Recovery data not available for correlation analysis.")
+}
+```
+
+### Network Plot
+```{r network_plot, fig.width=10, fig.height=8, results='asis'}
+# Define correlation threshold as a variable
+cor_threshold <- 0.1  # Minimum correlation magnitude to consider 
+
+# Get number of observations (subjects)
+n_subjects <- nrow(ssm_combined)
+
+# Calculate significance and filter
+significant_cors <- all_ssm_cors %>%
+  mutate(
+    # Calculate p-value using t-distribution
+    p_value = 2 * pt(abs(Correlation) * sqrt(n_subjects - 2) / sqrt(1 - Correlation^2), 
+                    df = n_subjects - 2, lower.tail = FALSE),
+    # Flag for significance
+    is_significant = p_value < 0.05
+  ) %>%
+  filter(is_significant & Abs_Correlation > cor_threshold) %>%
+  arrange(desc(Abs_Correlation)) %>%
+  head(30)  # Take top 30 by correlation magnitude AFTER filtering for significance
+
+if (nrow(significant_cors) > 5) {
+  # Create graph
+  g <- graph_from_data_frame(significant_cors[, c("Parameter", "Statistic", "Correlation")], directed = TRUE)
+  
+  # Add node attributes
+  V(g)$type <- ifelse(V(g)$name %in% significant_cors$Parameter, "Parameter", "Statistic")
+  V(g)$category <- "Unknown"
+  
+  # Assign categories to statistics
+  for (cat in unique(significant_cors$Category)) {
+    cat_stats <- significant_cors$Statistic[significant_cors$Category == cat]
+    V(g)$category[V(g)$type == "Statistic" & V(g)$name %in% cat_stats] <- cat
+  }
+  
+  # Set edge width based on correlation strength
+  E(g)$width <- 1 + 4 * abs(E(g)$Correlation)
+  
+  # Set edge color based on positive/negative correlation
+  E(g)$color <- ifelse(E(g)$Correlation > 0, "#4DAF4A", "#E41A1C")
+  
+  # Set node color based on type and category
+  V(g)$color <- ifelse(V(g)$type == "Parameter", "#377EB8", 
+                      ifelse(V(g)$category == "General", "#4DAF4A",
+                            ifelse(V(g)$category == "Play RT", "#FF7F00",
+                                  ifelse(V(g)$category == "Skip RT", "#984EA3", "#999999"))))
+  
+  # Set node shape based on type (parameters are circles, statistics are squares)
+  V(g)$shape <- ifelse(V(g)$type == "Parameter", "circle", "square")
+  
+  # Create layout
+  l <- layout_with_fr(g)
+  
+  # Plot the network
+  par(mar = c(0,0,2,0))
+  plot(g, layout = l,
+       vertex.size = 15,
+       vertex.label.cex = 0.7,
+       vertex.label.color = "black",
+       vertex.frame.color = NA,
+       edge.curved = 0.3,
+       main = paste0("Significant SSM Parameter-Behavior Correlations (p<.05, r>", cor_threshold, ")"))
+  
+  legend("bottomright", 
+         legend = c("Parameter (latent)", "General Metric (observed)", 
+                   "Play RT Metric (observed)", "Skip RT Metric (observed)", 
+                   "Positive Correlation", "Negative Correlation"),
+         pch = c(16, 15, 15, 15, NA, NA),
+         col = c("#377EB8", "#4DAF4A", "#FF7F00", "#984EA3", "#4DAF4A", "#E41A1C"),
+         lty = c(NA, NA, NA, NA, 1, 1),
+         pt.cex = 2,
+         cex = 0.7,
+         bty = "n")
+  
+  # Add a table with correlation values and CIs
+  significant_cors %>%
+    mutate(
+      # Calculate Fisher's z transformation for CI
+      z = 0.5 * log((1 + Correlation) / (1 - Correlation)),
+      se_z = 1 / sqrt(n_subjects - 3),
+      ci_lower_z = z - 1.96 * se_z,
+      ci_upper_z = z + 1.96 * se_z,
+      # Transform back to correlation scale
+      ci_lower = (exp(2 * ci_lower_z) - 1) / (exp(2 * ci_lower_z) + 1),
+      ci_upper = (exp(2 * ci_upper_z) - 1) / (exp(2 * ci_upper_z) + 1)
+    ) %>%
+    select(Category, Parameter, Statistic, Correlation, ci_lower, ci_upper, p_value) %>%
+    mutate(
+      Parameter = format_names(Parameter),
+      Statistic = format_names(Statistic),
+      CI = sprintf("[%.2f, %.2f]", ci_lower, ci_upper)
+    ) %>%
+    select(Category, Parameter, Statistic, Correlation, CI, p_value) %>%
+    arrange(Category, desc(abs(Correlation))) %>%
+    kable(caption = "Significant SSM Correlations with 95% CIs by Category", 
+          digits = c(NA, NA, NA, 2, NA, 3)) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE) %>%
+    knitr::knit_print()
+} else {
+  message("Insufficient significant correlations for network visualization.")
+}
+```

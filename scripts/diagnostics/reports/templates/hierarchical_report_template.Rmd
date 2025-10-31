@@ -1,0 +1,357 @@
+---
+title: "MCMC Diagnostics Report - Hierarchical Model"
+subtitle: "{{MODEL}} - {{TASK}} - {{COHORT}} ({{N_SUBJECTS}} subjects)"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(knitr)
+  library(here)
+})
+
+# Source helper functions
+source(file.path(here::here(), "scripts", "diagnostics", "helpers", "diagnostic_helpers.R"))
+
+# Load diagnostic results
+diagnostic_results <- readRDS("{{DIAGNOSTIC_FILE}}")
+
+# Load thresholds
+thresholds <- load_diagnostic_thresholds()
+```
+
+---
+
+# Executive Summary
+
+## Overall Status
+
+```{r overall-status, results='asis'}
+status <- diagnostic_results$overall_status
+cat(format_status_badge(status))
+```
+
+## Model Information
+
+```{r model-info}
+info_df <- data.frame(
+  Item = c("Task", "Cohort", "Model", "Fit Type", "Subjects"),
+  Value = c(
+    "{{TASK}}",
+    "{{COHORT}}",
+    "{{MODEL}}",
+    diagnostic_results$fit_type,
+    as.character(diagnostic_results$n_subjects)
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(info_df, col.names = NULL)
+```
+
+## Quick Summary
+
+```{r quick-summary}
+subj_agg <- diagnostic_results$subject_analysis$aggregate
+
+summary_df <- data.frame(
+  Metric = c("Subject Parameters", "Subjects PASS", "Subjects WARN", "Subjects FAIL", "Overall"),
+  Value = c(
+    sprintf("%.0f params/subject", subj_agg$n_params_per_subject),
+    sprintf("%d subjects", subj_agg$status$pass),
+    sprintf("%d subjects", subj_agg$status$warn),
+    sprintf("%d subjects", subj_agg$status$fail),
+    diagnostic_results$overall_status
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(summary_df, col.names = c("", ""))
+```
+
+**Bottom Line:** `r if(diagnostic_results$overall_status == "PASS") "✓ Hierarchical model diagnostics look good. Subject-level parameters have converged." else if(diagnostic_results$overall_status == "WARN") "⚠ Some subjects have diagnostic warnings. Review the details below." else "✗ Significant diagnostic issues. Address problems before proceeding."`
+
+---
+
+# Subject-Level Parameters
+
+## R-hat Distribution Across Subjects
+
+```{r subject-rhat}
+subj_agg <- diagnostic_results$subject_analysis$aggregate
+
+cat(sprintf("- **Minimum (best)**: %.4f\n", subj_agg$rhat$min))
+cat(sprintf("- **Maximum (worst)**: %.4f\n", subj_agg$rhat$max))
+cat(sprintf("- **Median**: %.4f\n", subj_agg$rhat$median))
+cat(sprintf("- **Subjects with R-hat > %.2f**: %d\n\n", 
+            thresholds$thresholds$rhat$problematic, subj_agg$rhat$n_problematic))
+```
+
+**Interpretation:** Each subject has their own set of parameters. This shows the worst R-hat value for each subject.
+
+## ESS Distribution Across Subjects
+
+```{r subject-ess}
+cat("### ESS Bulk (Center of Distribution)\n\n")
+cat(sprintf("- **Minimum (worst)**: %.0f\n", subj_agg$ess_bulk$min))
+cat(sprintf("- **Median**: %.0f\n", subj_agg$ess_bulk$median))
+cat(sprintf("- **Subjects with ESS_bulk < %d**: %d\n\n", 
+            thresholds$thresholds$ess_bulk$critical, subj_agg$ess_bulk$n_critical))
+
+cat("### ESS Tail (Quantiles/Extremes)\n\n")
+cat(sprintf("- **Minimum (worst)**: %.0f\n", subj_agg$ess_tail$min))
+cat(sprintf("- **Median**: %.0f\n", subj_agg$ess_tail$median))
+cat(sprintf("- **Subjects with ESS_tail < %d**: %d\n\n", 
+            thresholds$thresholds$ess_tail$critical, subj_agg$ess_tail$n_critical))
+
+cat("**Note:** ESS counts matter for validity (need >100 absolute). Low counts = unreliable estimates.\n")
+```
+
+## Status Distribution
+
+```{r status-dist}
+status_df <- data.frame(
+  Status = c("PASS", "WARN", "FAIL"),
+  Count = c(subj_agg$status$pass, subj_agg$status$warn, subj_agg$status$fail),
+  Percentage = sprintf("%.1f%%", 
+                      c(subj_agg$status$pass, subj_agg$status$warn, subj_agg$status$fail) / 
+                      diagnostic_results$n_subjects * 100),
+  stringsAsFactors = FALSE
+)
+
+kable(status_df)
+```
+
+---
+
+# Worst Subjects
+
+These subjects have the most diagnostic issues:
+
+```{r worst-subjects}
+if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
+  # Convert list to data frame
+  df <- diagnostic_results$subject_analysis$subject_summaries
+  df <- do.call(rbind, lapply(df, as.data.frame))
+  
+  # Filter to non-PASS subjects only
+  df_problems <- df %>%
+    filter(status != "PASS") %>%
+    arrange(desc(problem_score))
+  
+  if (nrow(df_problems) > 0) {
+    display_df <- df_problems %>%
+      select(subject_id, status, worst_rhat, min_ess_bulk, min_ess_tail, problem_score) %>%
+      mutate(
+        worst_rhat = sprintf("%.4f", worst_rhat),
+        min_ess_bulk = sprintf("%.0f", ifelse(is.na(min_ess_bulk), 0, min_ess_bulk)),
+        min_ess_tail = sprintf("%.0f", ifelse(is.na(min_ess_tail), 0, min_ess_tail)),
+        problem_score = sprintf("%.1f", problem_score)
+      )
+    
+    kable(display_df, row.names = FALSE,
+          col.names = c("Subject", "Status", "Worst R-hat", "Min ESS Bulk", "Min ESS Tail", "Problem Score"))
+  } else {
+    cat("✓ **All subjects passed diagnostics!**\n")
+  }
+} else {
+  cat("*Subject summaries not available*\n")
+}
+```
+
+---
+
+# Hyperparameters (Group-Level)
+
+```{r hyperparameters}
+if (!is.null(diagnostic_results$basic_checks$hyperparameters)) {
+  hyper <- diagnostic_results$basic_checks$hyperparameters
+  
+  cat(sprintf("- **Converged**: %s\n", ifelse(hyper$converged, "Yes", "No")))
+  cat(sprintf("- **Worst R-hat**: %.4f\n", hyper$worst_rhat))
+  cat(sprintf("- **Status**: %s\n\n", hyper$status))
+  
+  if (!hyper$converged) {
+    cat("⚠ **Warning**: Hyperparameters have not fully converged. This affects all subject-level estimates.\n\n")
+  }
+} else {
+  cat("*Hyperparameter diagnostics not available*\n\n")
+}
+```
+
+**What are hyperparameters?** In hierarchical models, hyperparameters control the distribution of subject-level parameters (e.g., group means and standard deviations). They must converge for valid population-level inference.
+
+---
+
+# Divergences
+
+```{r divergences}
+if (!is.null(diagnostic_results$basic_checks$divergences)) {
+  div <- diagnostic_results$basic_checks$divergences
+  
+  cat(sprintf("- **Count**: %.0f\n", div$count))
+  cat(sprintf("- **Rate**: %.4f%%\n", div$rate * 100))
+  cat(sprintf("- **Status**: %s\n\n", div$status))
+  
+  if (div$status != "PASS") {
+    cat("⚠ **Action needed**: High divergence rate in hierarchical model often indicates:\n")
+    cat("- Funnel geometry (common in hierarchical models)\n")
+    cat("- **Solution**: Use non-centered parameterization\n")
+    cat("- Increase adapt_delta to 0.99+\n\n")
+  }
+} else {
+  cat("*Divergence information not available*\n\n")
+}
+```
+
+---
+
+# Shrinkage Assessment
+
+```{r shrinkage}
+if (!is.null(diagnostic_results$shrinkage_check)) {
+  shrink <- diagnostic_results$shrinkage_check
+  
+  if (shrink$working) {
+    cat("✓ **Hierarchical shrinkage appears to be working.**\n\n")
+    cat("Parameter variation across subjects:\n\n")
+    
+    for (param_name in names(shrink$parameter_info)) {
+      param_info <- shrink$parameter_info[[param_name]]
+      cat(sprintf("- **%s**: Range = %.3f, CV = %.3f\n", 
+                  param_name, param_info$range, param_info$cv))
+    }
+    cat("\n")
+    
+    cat("**What this means:** Parameters vary across subjects (not all identical), indicating the hierarchical structure is functioning. Coefficient of variation (CV) shows relative variability.\n\n")
+  } else {
+    cat("⚠ **Unable to assess shrinkage** - check hierarchical structure.\n\n")
+  }
+} else {
+  cat("*Shrinkage assessment not available*\n\n")
+}
+```
+
+---
+
+```{r group-level, eval=!is.null(diagnostic_results$group_analysis), results='asis'}
+if (!is.null(diagnostic_results$group_analysis)) {
+  cat("# Group-Level Parameters (Full Hierarchical)\n\n")
+  cat("This analysis was run with `--real_hier` flag for complete group-level diagnostics.\n\n")
+  
+  group_info <- diagnostic_results$group_analysis
+  
+  cat("## Convergence\n\n")
+  cat(sprintf("- **Parameters**: %d group-level parameters\n", group_info$n_params))
+  cat(sprintf("- **All converged**: %s\n", ifelse(group_info$rhat$all_converged, "Yes", "No")))
+  cat(sprintf("- **Maximum R-hat**: %.4f\n", group_info$rhat$max))
+  cat(sprintf("- **Status**: %s\n\n", group_info$status))
+  
+  if (group_info$status != "PASS") {
+    cat("⚠ **Warning**: Group-level parameters have convergence issues. This affects population-level inference.\n\n")
+  }
+  
+  cat("## Group Parameters\n\n")
+  group_df <- data.frame(
+    Parameter = group_info$parameters,
+    `R-hat` = sprintf("%.4f", group_info$rhat$values),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  
+  if (!is.null(group_info$ess)) {
+    group_df$`ESS Ratio` <- sprintf("%.3f", group_info$ess$ratios)
+  }
+  
+  kable(group_df, row.names = FALSE)
+}
+```
+
+---
+
+# All Subjects Summary
+
+```{r all-subjects}
+if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
+  summaries <- diagnostic_results$subject_analysis$subject_summaries
+  
+  all_df <- data.frame(
+    Subject = sapply(summaries, function(x) x$subject_id),
+    Status = sapply(summaries, function(x) x$status),
+    `Worst R-hat` = sprintf("%.4f", sapply(summaries, function(x) x$worst_rhat)),
+    `Median R-hat` = sprintf("%.4f", sapply(summaries, function(x) x$median_rhat %||% NA)),
+    `Min ESS Bulk` = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_bulk %||% NA)),
+    `Min ESS Tail` = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_tail %||% NA)),
+    `Problem Score` = sprintf("%.1f", sapply(summaries, function(x) x$problem_score)),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  
+  # Sort by problem score
+  all_df <- all_df[order(as.numeric(all_df$`Problem Score`), decreasing = TRUE), ]
+  
+  if (nrow(all_df) <= 50) {
+    kable(all_df, row.names = FALSE)
+  } else {
+    cat(sprintf("\n**Table too large (%d subjects).** Showing top 50:\n\n", nrow(all_df)))
+    kable(head(all_df, 50), row.names = FALSE)
+    cat(sprintf("\n*Full table with all %d subjects available in CSV export.*\n", nrow(all_df)))
+  }
+}
+```
+
+---
+
+# Recommendations
+
+```{r recommendations}
+if (!is.null(diagnostic_results$recommendations)) {
+  for (i in seq_along(diagnostic_results$recommendations)) {
+    cat(sprintf("%d. %s\n", i, diagnostic_results$recommendations[i]))
+  }
+} else {
+  cat("No specific recommendations.\n")
+}
+```
+
+---
+
+# Technical Details
+
+## Hierarchical Structure
+
+```{r hier-structure}
+cat(sprintf("- **Fit type**: %s\n", diagnostic_results$fit_type))
+cat(sprintf("- **Number of subjects**: %d\n", diagnostic_results$n_subjects))
+cat(sprintf("- **Parameters per subject**: %d\n", 
+            diagnostic_results$subject_analysis$aggregate$n_params_per_subject))
+
+if (!is.null(diagnostic_results$group_analysis)) {
+  cat(sprintf("- **Group-level parameters**: %d\n", 
+              diagnostic_results$group_analysis$n_params))
+}
+```
+
+---
+
+**Report generated:** `r format(Sys.time(), "%Y-%m-%d %H:%M:%S")`

@@ -1,0 +1,1031 @@
+---
+title: "Enhanced Parameter Range Analysis with Behavioral Integration: {{TASK}} - {{MODEL}} - {{GROUP}}"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(here)
+library(patchwork) # For combining plots
+library(corrplot) # For correlation plots
+library(viridis) # For better color palettes
+library(reshape2) # For melting data frames
+library(RColorBrewer) # For color brewer palettes
+
+# File paths to recovery and PPC data
+recovery_file <- "{{RECOVERY_FILE}}"
+ppc_subject_file <- "{{PPC_SUBJECT_FILE}}"
+ppc_model_file <- "{{PPC_MODEL_FILE}}"
+ppc_block_file <- "{{PPC_BLOCK_FILE}}"
+
+# Load recovery data
+recovery_data <- read.csv(recovery_file)
+
+# Load PPC data if files exist
+has_ppc_data <- file.exists(ppc_subject_file) && file.exists(ppc_model_file)
+
+if (has_ppc_data) {
+  ppc_subject_data <- read.csv(ppc_subject_file)
+  ppc_model_data <- read.csv(ppc_model_file)
+  
+  # Load block data if available
+  has_block_data <- file.exists(ppc_block_file) && ppc_block_file != ""
+  if (has_block_data) {
+    ppc_block_data <- read.csv(ppc_block_file)
+  }
+}
+
+# Extract model type
+model_type <- "{{MODEL_TYPE}}"
+
+# Function to analyze recovery by parameter range
+analyze_recovery_by_range <- function(data, parameter_name, n_bins = 5) {
+  # Filter data for the specified parameter
+  param_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Create bins based on true parameter values
+  breaks <- seq(min(param_data$true_value, na.rm = TRUE),
+                max(param_data$true_value, na.rm = TRUE),
+                length.out = n_bins + 1)
+  
+  param_data$bin <- cut(param_data$true_value, breaks = breaks)
+  
+  # Calculate recovery metrics for each bin
+  bin_stats <- param_data %>%
+    group_by(bin) %>%
+    summarize(
+      bin_min = min(true_value, na.rm = TRUE),
+      bin_max = max(true_value, na.rm = TRUE),
+      bin_center = mean(true_value, na.rm = TRUE),
+      n = n(),
+      correlation = cor(true_value, recovered_value, use = "complete.obs"),
+      rmse = sqrt(mean((true_value - recovered_value)^2, na.rm = TRUE)),
+      bias = mean(recovered_value - true_value, na.rm = TRUE),
+      rel_bias = mean((recovered_value - true_value) / 
+                      pmax(0.001, abs(true_value)), na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  return(bin_stats)
+}
+
+# Function to analyze recovery with PPC metrics by parameter range
+analyze_recovery_with_ppc <- function(recovery_data, ppc_data, parameter_name, n_bins = 5) {
+  # Filter data for the specified parameter
+  param_data <- recovery_data[recovery_data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Create bins based on true parameter values
+  breaks <- seq(min(param_data$true_value, na.rm = TRUE),
+                max(param_data$true_value, na.rm = TRUE),
+                length.out = n_bins + 1)
+  
+  param_data$bin <- cut(param_data$true_value, breaks = breaks)
+  
+  # Calculate basic recovery metrics for each bin
+  bin_stats <- param_data %>%
+    group_by(bin) %>%
+    summarize(
+      bin_min = min(true_value, na.rm = TRUE),
+      bin_max = max(true_value, na.rm = TRUE),
+      bin_center = mean(true_value, na.rm = TRUE),
+      n = n(),
+      correlation = cor(true_value, recovered_value, use = "complete.obs"),
+      rmse = sqrt(mean((true_value - recovered_value)^2, na.rm = TRUE)),
+      bias = mean(recovered_value - true_value, na.rm = TRUE),
+      rel_bias = mean((recovered_value - true_value) / 
+                     pmax(0.001, abs(true_value)), na.rm = TRUE)
+    )
+  
+  # If PPC data is available, join with recovery data to get behavioral metrics by bin
+  if(!is.null(ppc_data) && nrow(ppc_data) > 0) {
+    # For each bin, calculate average behavioral metrics
+    bin_behavioral <- param_data %>%
+      # Join with PPC data by subject_id
+      inner_join(ppc_data, by = "subject_id") %>%
+      # Group by bin and statistic
+      group_by(bin, statistic) %>%
+      # Calculate average ppp values and observed metrics
+      summarize(
+        mean_ppp = mean(ppp_value, na.rm = TRUE),
+        extreme_ratio = mean(ppp_extreme, na.rm = TRUE),
+        mean_observed = mean(observed, na.rm = TRUE),
+        mean_predicted = mean(predicted_mean, na.rm = TRUE),
+        mean_misfit = mean(observed - predicted_mean, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    # Select key behavioral metrics
+    key_metrics <- c(
+      # RL metrics
+      "good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", "total_money", 
+      "avg_outcome", "skip_ratio", "new_good_deck_ratio", "new_bad_deck_ratio",
+      # SSM metrics
+      "rt_play_mean", "rt_skip_mean", "choice_prob"
+    )
+    
+    # Prepare data for selected key metrics
+    key_behavioral <- bin_behavioral %>%
+      filter(grepl(paste(key_metrics, collapse = "|"), statistic)) %>%
+      # Pivot to wide format for easier joining
+      pivot_wider(
+        id_cols = bin,
+        names_from = statistic,
+        values_from = c(mean_ppp, extreme_ratio, mean_observed, mean_predicted, mean_misfit)
+      )
+    
+    # Join recovery metrics with behavioral metrics
+    if(nrow(key_behavioral) > 0) {
+      bin_stats <- left_join(bin_stats, key_behavioral, by = "bin")
+    }
+  }
+  
+  return(bin_stats)
+}
+
+# Function to plot recovery without extreme values
+plot_filtered_recovery <- function(data, parameter_name, cutoff_percentile = 0.95) {
+  # Filter data for the specified parameter
+  param_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Calculate error
+  param_data$error <- abs(param_data$recovered_value - param_data$true_value)
+  
+  # Define cutoff
+  cutoff <- quantile(param_data$error, cutoff_percentile, na.rm = TRUE)
+  
+  # Filter out extreme cases
+  filtered_data <- param_data[param_data$error <= cutoff,]
+  
+  # Calculate recovery metrics for filtered data
+  filtered_cor <- cor(filtered_data$true_value, filtered_data$recovered_value, 
+                     use = "complete.obs")
+  filtered_rmse <- sqrt(mean((filtered_data$true_value - filtered_data$recovered_value)^2, 
+                           na.rm = TRUE))
+  
+  # Plot
+  p <- ggplot(filtered_data, aes(x = true_value, y = recovered_value)) +
+    geom_point(alpha = 0.7, color = "blue") +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE, color = "red") +
+    labs(title = paste0(parameter_name, " - Without Extreme Values (top ", 
+                      (1-cutoff_percentile)*100, "%)"),
+         subtitle = paste0("Correlation: ", round(filtered_cor, 3), 
+                         ", RMSE: ", round(filtered_rmse, 3)),
+         x = "True Value", y = "Recovered Value") +
+    theme_minimal()
+  
+  return(p)
+}
+
+# Function to identify optimal parameter ranges
+find_optimal_ranges <- function(data, min_correlation = 0.5, max_rmse_percentile = 0.25) {
+  # Initialize results data frame
+  param_ranges <- data.frame(
+    parameter = character(),
+    optimal_min = numeric(),
+    optimal_max = numeric(),
+    correlation = numeric(),
+    rmse = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Get unique parameters
+  parameters <- unique(data$parameter)
+  
+  for (param in parameters) {
+    # Get data for this parameter
+    param_data <- data[data$parameter == param,]
+    
+    if(nrow(param_data) < 10) {
+      warning(paste("Not enough data for parameter", param))
+      next
+    }
+    
+    # Analyze by range
+    range_stats <- analyze_recovery_by_range(data, param, n_bins = 5)
+    
+    if(is.null(range_stats) || nrow(range_stats) == 0) {
+      next
+    }
+    
+    # Find ranges with good correlation
+    good_ranges <- range_stats[range_stats$correlation >= min_correlation,]
+    
+    if (nrow(good_ranges) > 0) {
+      # Find range with lowest RMSE among good correlations
+      best_range <- good_ranges[which.min(good_ranges$rmse),]
+      
+      param_ranges <- rbind(param_ranges, data.frame(
+        parameter = param,
+        optimal_min = best_range$bin_min,
+        optimal_max = best_range$bin_max,
+        correlation = best_range$correlation,
+        rmse = best_range$rmse,
+        n_samples = best_range$n,
+        stringsAsFactors = FALSE
+      ))
+    } else {
+      # If no ranges meet the correlation threshold
+      param_ranges <- rbind(param_ranges, data.frame(
+        parameter = param,
+        optimal_min = NA,
+        optimal_max = NA,
+        correlation = NA,
+        rmse = NA,
+        n_samples = NA,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  
+  return(param_ranges)
+}
+
+# Function to test parameter range restriction effectiveness
+test_range_restriction <- function(data, parameter_name, optimal_min, optimal_max) {
+  # Original data for this parameter
+  orig_data <- data[data$parameter == parameter_name,]
+  
+  if(nrow(orig_data) < 10) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Calculate original metrics
+  orig_cor <- cor(orig_data$true_value, orig_data$recovered_value, 
+                 use = "complete.obs")
+  orig_rmse <- sqrt(mean((orig_data$true_value - orig_data$recovered_value)^2, 
+                        na.rm = TRUE))
+  
+  # Restricted data
+  restricted_data <- orig_data[orig_data$true_value >= optimal_min & 
+                             orig_data$true_value <= optimal_max,]
+  
+  if(nrow(restricted_data) < 5) {
+    warning(paste("Not enough data in restricted range for", parameter_name))
+    return(NULL)
+  }
+  
+  # Calculate restricted metrics
+  restr_cor <- cor(restricted_data$true_value, restricted_data$recovered_value, 
+                  use = "complete.obs")
+  restr_rmse <- sqrt(mean((restricted_data$true_value - restricted_data$recovered_value)^2, 
+                         na.rm = TRUE))
+  
+  # Create comparison data frame
+  results <- data.frame(
+    metric = c("Correlation", "RMSE"),
+    original = c(orig_cor, orig_rmse),
+    restricted = c(restr_cor, restr_rmse),
+    improvement = c(restr_cor - orig_cor, orig_rmse - restr_rmse),
+    percent_change = c((restr_cor - orig_cor) / abs(orig_cor) * 100,
+                      (orig_rmse - restr_rmse) / orig_rmse * 100)
+  )
+  
+  return(results)
+}
+
+# Function to analyze behavioral metrics by parameter value
+analyze_behavior_by_parameter <- function(recovery_data, ppc_data, parameter_name, 
+                                          n_bins = 5, key_metrics = NULL) {
+  # Filter recovery data for the specified parameter
+  param_data <- recovery_data[recovery_data$parameter == parameter_name,]
+  
+  if(nrow(param_data) < 10 || is.null(ppc_data) || nrow(ppc_data) == 0) {
+    warning(paste("Not enough data for parameter", parameter_name))
+    return(NULL)
+  }
+  
+  # Create bins based on true parameter values
+  breaks <- seq(min(param_data$true_value, na.rm = TRUE),
+                max(param_data$true_value, na.rm = TRUE),
+                length.out = n_bins + 1)
+  
+  param_data$bin <- cut(param_data$true_value, breaks = breaks)
+  
+  # Join with PPC data
+  behavioral_data <- param_data %>%
+    select(subject_id, true_value, bin) %>%
+    inner_join(ppc_data, by = "subject_id")
+  
+  # If key metrics specified, filter for those
+  if(!is.null(key_metrics) && length(key_metrics) > 0) {
+    behavioral_data <- behavioral_data %>%
+      filter(statistic %in% key_metrics | 
+             grepl(paste(key_metrics, collapse = "|"), statistic))
+  }
+  
+  # Calculate average metrics by bin
+  bin_metrics <- behavioral_data %>%
+    group_by(bin, statistic) %>%
+    summarize(
+      bin_min = min(true_value, na.rm = TRUE),
+      bin_max = max(true_value, na.rm = TRUE),
+      bin_center = mean(true_value, na.rm = TRUE),
+      n_subjects = n_distinct(subject_id),
+      mean_observed = mean(observed, na.rm = TRUE),
+      mean_predicted = mean(predicted_mean, na.rm = TRUE),
+      mean_misfit = mean(observed - predicted_mean, na.rm = TRUE),
+      mean_ppp = mean(ppp_value, na.rm = TRUE),
+      extreme_ratio = mean(ppp_extreme, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  return(bin_metrics)
+}
+
+# Function to create correlation matrix between parameters and behavioral metrics
+create_parameter_behavior_correlation <- function(recovery_data, ppc_data) {
+  if(is.null(recovery_data) || is.null(ppc_data) || 
+     nrow(recovery_data) == 0 || nrow(ppc_data) == 0) {
+    return(NULL)
+  }
+  
+  # Extract parameter values
+  param_values <- recovery_data %>%
+    select(subject_id, parameter, true_value) %>%
+    # Convert to wide format
+    pivot_wider(
+      id_cols = subject_id,
+      names_from = parameter,
+      values_from = true_value
+    )
+  
+  # Extract behavioral metrics
+  behavioral_metrics <- ppc_data %>%
+    select(subject_id, statistic, observed) %>%
+    # Convert to wide format
+    pivot_wider(
+      id_cols = subject_id,
+      names_from = statistic,
+      values_from = observed
+    )
+  
+  # Join data
+  combined_data <- inner_join(param_values, behavioral_metrics, by = "subject_id")
+  
+  # Remove subject_id column for correlation
+  combined_data$subject_id <- NULL
+  
+  # Get parameter and metric columns
+  param_cols <- colnames(param_values)[-1]  # Remove subject_id
+  metric_cols <- colnames(behavioral_metrics)[-1]  # Remove subject_id
+  
+  # Calculate correlation matrix
+  correlation_matrix <- cor(combined_data[param_cols], combined_data[metric_cols], 
+                           use = "pairwise.complete.obs")
+  
+  return(correlation_matrix)
+}
+
+# Function to create a nice correlation plot
+plot_correlation_matrix <- function(correlation_matrix, title = "Parameter-Behavior Correlations") {
+  # Check if matrix is not empty
+  if(is.null(correlation_matrix) || nrow(correlation_matrix) == 0 || ncol(correlation_matrix) == 0) {
+    return(NULL)
+  }
+  
+  # Create plot
+  corrplot(correlation_matrix, method = "circle", type = "full", 
+          tl.col = "black", tl.srt = 45, 
+          col = colorRampPalette(c("#4575B4", "white", "#D73027"))(200),
+          title = title,
+          mar = c(0, 0, 2, 0))
+  
+  return(TRUE)
+}
+
+# Function to create interactive behavior-parameter heatmap
+create_behavior_parameter_heatmap <- function(recovery_data, ppc_data, top_n = 10) {
+  # Create correlation matrix
+  corr_matrix <- create_parameter_behavior_correlation(recovery_data, ppc_data)
+  
+  if(is.null(corr_matrix) || nrow(corr_matrix) == 0 || ncol(corr_matrix) == 0) {
+    return(NULL)
+  }
+  
+  # Convert matrix to long format for plotting
+  corr_long <- reshape2::melt(corr_matrix) %>%
+    rename(parameter = Var1, behavior = Var2, correlation = value) %>%
+    # Sort by absolute correlation
+    mutate(abs_corr = abs(correlation)) %>%
+    arrange(desc(abs_corr))
+  
+  # Select top N correlations
+  top_corrs <- head(corr_long, top_n)
+  
+  # Create heatmap
+  ggplot(top_corrs, aes(x = parameter, y = behavior, fill = correlation)) +
+    geom_tile() +
+    scale_fill_gradient2(low = "#4575B4", high = "#D73027", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), name = "Correlation") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title = element_blank()) +
+    labs(title = paste("Top", top_n, "Parameter-Behavior Correlations"))
+}
+
+# Function to identify parameters with behavioral significance
+identify_behaviorally_significant_parameters <- function(recovery_data, ppc_data, 
+                                                        correlation_threshold = 0.3,
+                                                        n_metrics_threshold = 2) {
+  # Create correlation matrix
+  corr_matrix <- create_parameter_behavior_correlation(recovery_data, ppc_data)
+  
+  if(is.null(corr_matrix) || nrow(corr_matrix) == 0 || ncol(corr_matrix) == 0) {
+    return(NULL)
+  }
+  
+  # Convert matrix to long format
+  corr_long <- reshape2::melt(corr_matrix) %>%
+    rename(parameter = Var1, behavior = Var2, correlation = value)
+  
+  # Count significant correlations per parameter
+  param_significance <- corr_long %>%
+    group_by(parameter) %>%
+    summarize(
+      n_significant = sum(abs(correlation) >= correlation_threshold, na.rm = TRUE),
+      max_correlation = max(abs(correlation), na.rm = TRUE),
+      mean_correlation = mean(abs(correlation), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    # Flag behaviorally significant parameters
+    mutate(
+      is_significant = n_significant >= n_metrics_threshold & max_correlation >= correlation_threshold
+    ) %>%
+    arrange(desc(n_significant), desc(max_correlation))
+  
+  return(param_significance)
+}
+
+# Get list of parameters to analyze
+parameters <- unique(recovery_data$parameter)
+```
+
+## Overview
+
+This document analyzes how parameter recovery quality varies across different parameter ranges for the **{{MODEL}}** model ({{MODEL_TYPE}} type) applied to the **{{TASK}}** task using the group type **{{GROUP}}**.
+
+This enhanced analysis integrates both parameter recovery metrics and behavioral performance to identify optimal parameter ranges with:
+
+1. Good parameter recovery (high correlation, low RMSE between true and recovered values)
+2. Realistic behavior (simulated behavior matches observed behavior)
+
+## Parameter Range Analysis
+
+```{r param_range_analysis, results='asis'}
+for (param in parameters) {
+  # Analyze recovery by range
+  range_stats <- analyze_recovery_by_range(recovery_data, param)
+  
+  if(is.null(range_stats) || nrow(range_stats) == 0) {
+    next
+  }
+  
+  # Display table
+  kable(range_stats, caption = paste("Range-specific recovery metrics for", param),
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")) %>%
+    print()
+  
+  # Create recovery metric plots
+  p1 <- ggplot(range_stats, aes(x = bin_center, y = correlation)) +
+    geom_point(size = 3) +
+    geom_line() +
+    labs(title = "Correlation by Parameter Range",
+         x = "Parameter Value", y = "Correlation") +
+    theme_minimal() +
+    ylim(min(c(0, min(range_stats$correlation, na.rm = TRUE))), 1)
+  
+  p2 <- ggplot(range_stats, aes(x = bin_center, y = rmse)) +
+    geom_point(size = 3) +
+    geom_line() +
+    labs(title = "RMSE by Parameter Range",
+         x = "Parameter Value", y = "RMSE") +
+    theme_minimal()
+  
+  p3 <- ggplot(range_stats, aes(x = bin_center, y = bias)) +
+    geom_point(size = 3) +
+    geom_line() +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+    labs(title = "Bias by Parameter Range",
+         x = "Parameter Value", y = "Bias") +
+    theme_minimal()
+  
+  # Combine plots 
+  print(p1 / p2 / p3)
+  
+  # Plot recovery excluding extreme values
+  p4 <- plot_filtered_recovery(recovery_data, param)
+  if(!is.null(p4)) {
+    print(p4)
+  }
+}
+```
+
+## Behavioral Analysis by Parameter Value
+
+This section analyzes how behavioral metrics vary with different parameter values. It helps identify parameter ranges that produce realistic behavior.
+
+```{r behavior_by_param, results='asis', fig.width=10, fig.height=8}
+# Only run if PPC data is available
+if(has_ppc_data) {
+  # Define key behavioral metrics based on model type
+  if(model_type == "RL") {
+    key_metrics <- c("good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", 
+                    "total_money", "skip_ratio")
+  } else if(model_type == "SSM") {
+    key_metrics <- c("rt_play_mean", "rt_skip_mean", "choice_prob")
+  } else if(model_type == "RL_SSM") {
+    key_metrics <- c("good_deck_ratio", "win_stay_ratio", "lose_shift_ratio", 
+                    "total_money", "rt_play_mean", "rt_skip_mean", "choice_prob")
+  } else {
+    key_metrics <- NULL
+  }
+  
+  # Process each parameter
+  for(param in parameters) {
+    # Analyze behavioral metrics by parameter range
+    behavior_by_param <- analyze_behavior_by_parameter(
+      recovery_data, 
+      ppc_subject_data, 
+      param,
+      key_metrics = key_metrics
+    )
+    
+    if(is.null(behavior_by_param) || nrow(behavior_by_param) == 0) {
+      next
+    }
+    
+    # Plot behavioral metrics across parameter ranges
+    for(stat in unique(behavior_by_param$statistic)) {
+      # Extract data for this statistic
+      stat_data <- behavior_by_param %>% filter(statistic == stat)
+      
+      # Only create plot if we have enough data points
+      if(nrow(stat_data) >= 3) {
+        p <- ggplot(stat_data, aes(x = bin_center)) +
+          # Observed values
+          geom_point(aes(y = mean_observed), color = "blue", size = 3) +
+          geom_line(aes(y = mean_observed), color = "blue") +
+          # Predicted values
+          geom_point(aes(y = mean_predicted), color = "red", size = 3) +
+          geom_line(aes(y = mean_predicted), color = "red") +
+          # PPP values on secondary axis
+          geom_line(aes(y = mean_ppp * max(mean_observed, na.rm = TRUE)), 
+                  linetype = "dashed", color = "purple") +
+          geom_point(aes(y = mean_ppp * max(mean_observed, na.rm = TRUE)), 
+                   color = "purple", size = 2) +
+          # Styling
+          labs(title = paste("Effect of", param, "on", stat),
+               subtitle = "Blue = Observed, Red = Predicted, Purple (dashed) = PPP Value",
+               x = param, y = stat) +
+          scale_y_continuous(
+            name = stat,
+            sec.axis = sec_axis(~ . / max(stat_data$mean_observed, na.rm = TRUE), 
+                              name = "PPP Value",
+                              breaks = seq(0, 1, 0.2))
+          ) +
+          theme_minimal()
+        
+        print(p)
+        
+        # Add table with correlation between parameter and observed behavior
+        if(nrow(stat_data) >= 3) {
+          # Calculate correlation
+          cor_val <- cor(stat_data$bin_center, stat_data$mean_observed, 
+                        use = "pairwise.complete.obs")
+          
+          # Create a small data frame for the correlation
+          cor_df <- data.frame(
+            Parameter = param,
+            Metric = stat,
+            Correlation = cor_val
+          )
+          
+          # Display as table
+          kable(cor_df, caption = paste("Correlation between parameter and metric"),
+                digits = 3) %>% 
+            kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                         full_width = FALSE) %>%
+            print()
+        }
+      }
+    }
+  }
+}
+```
+
+## Parameter-Behavior Correlation Analysis
+
+This section analyzes correlations between model parameters and behavioral metrics to identify which parameters are most important for realistic behavior.
+
+```{r param_behavior_cor, fig.width=10, fig.height=8}
+# Only run if PPC data is available
+if(has_ppc_data) {
+  # Create correlation matrix
+  corr_matrix <- create_parameter_behavior_correlation(recovery_data, ppc_subject_data)
+  
+  if(!is.null(corr_matrix) && nrow(corr_matrix) > 0 && ncol(corr_matrix) > 0) {
+    # Plot correlation matrix
+    par(mar = c(10, 10, 2, 1))
+    plot_correlation_matrix(corr_matrix)
+    
+    # Create heatmap of top correlations
+    p <- create_behavior_parameter_heatmap(recovery_data, ppc_subject_data, top_n = 15)
+    if(!is.null(p)) {
+      print(p)
+    }
+    
+    # Identify behaviorally significant parameters
+    sig_params <- identify_behaviorally_significant_parameters(
+      recovery_data, 
+      ppc_subject_data,
+      correlation_threshold = 0.3,
+      n_metrics_threshold = 2
+    )
+    
+    if(!is.null(sig_params) && nrow(sig_params) > 0) {
+      # Display table
+      kable(sig_params, caption = "Parameters Ranked by Behavioral Significance",
+            digits = 3) %>% 
+        kable_styling(bootstrap_options = c("striped", "hover")) %>%
+        print()
+    }
+  } else {
+    print("Insufficient data for correlation analysis.")
+  }
+}
+```
+
+## Integrated Parameter Range Optimization
+
+This section combines parameter recovery metrics with behavioral performance to identify optimal parameter ranges that balance:
+1. Good parameter recovery (identifiability)
+2. Realistic behavioral predictions (validity)
+
+```{r integrated_optimization, results='asis', fig.width=10, fig.height=8}
+# Only run if PPC data is available
+if(has_ppc_data) {
+  # Get behavioral significance of parameters
+  behavior_sig <- identify_behaviorally_significant_parameters(
+    recovery_data, 
+    ppc_subject_data,
+    correlation_threshold = 0.3,
+    n_metrics_threshold = 2
+  )
+  
+  # Get recovery quality by range
+  optimal_ranges <- find_optimal_ranges(recovery_data)
+  
+  # Combine both measures
+  if(!is.null(behavior_sig) && !is.null(optimal_ranges) && 
+     nrow(behavior_sig) > 0 && nrow(optimal_ranges) > 0) {
+    
+    integrated_results <- inner_join(
+      optimal_ranges,
+      behavior_sig,
+      by = c("parameter" = "parameter")
+    ) %>%
+    mutate(
+      # Create integrated score combining recovery and behavioral significance
+      integrated_score = (correlation * 0.5) + (n_significant/10 * 0.3) + (max_correlation * 0.2),
+      # Flag parameters that are both recoverable and behaviorally significant
+      is_optimal = !is.na(correlation) & correlation >= 0.5 & is_significant
+    ) %>%
+    arrange(desc(integrated_score))
+    
+    # Display integrated results
+    kable(integrated_results, caption = "Integrated Parameter Optimization Results",
+          digits = 3) %>% 
+      kable_styling(bootstrap_options = c("striped", "hover")) %>%
+      row_spec(which(integrated_results$is_optimal), background = "#e6ffe6") %>%
+      print()
+    
+    # Create visualization
+    if(nrow(integrated_results) > 0) {
+      # Plot parameters by recovery quality and behavioral significance
+      p <- ggplot(integrated_results, 
+                 aes(x = correlation, y = max_correlation, size = n_significant, 
+                     color = is_optimal, label = parameter)) +
+        geom_point(alpha = 0.7) +
+        geom_text(vjust = -1, hjust = 0.5, size = 3, check_overlap = TRUE) +
+        scale_color_manual(values = c("FALSE" = "gray", "TRUE" = "green4")) +
+        scale_size_continuous(range = c(3, 10)) +
+        geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
+        geom_hline(yintercept = 0.3, linetype = "dashed", color = "gray") +
+        coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+        theme_minimal() +
+        labs(title = "Parameter Optimization Map",
+             subtitle = "Size = Number of Significant Behavioral Correlations\nGreen = Optimal Parameters (Good Recovery + Behavioral Significance)",
+             x = "Recovery Quality (Correlation)",
+             y = "Behavioral Significance (Max Correlation)")
+      
+      print(p)
+    }
+    
+    # For optimal parameters, analyze behavior by range
+    optimal_params <- integrated_results %>% 
+      filter(is_optimal) %>% 
+      pull(parameter)
+    
+    if(length(optimal_params) > 0) {
+      for(param in optimal_params) {
+        # Extract optimal range
+        opt_range <- integrated_results %>% 
+          filter(parameter == param) %>% 
+          select(optimal_min, optimal_max)
+        
+        # Display optimal range
+        opt_range_df <- data.frame(
+          Parameter = param,
+          Min_Value = opt_range$optimal_min,
+          Max_Value = opt_range$optimal_max
+        )
+        
+        kable(opt_range_df, caption = paste("Optimal Range for", param),
+              digits = 3) %>% 
+          kable_styling(bootstrap_options = c("striped", "hover")) %>%
+          print()
+        
+        # Analyze recovery metrics by range
+        range_stats <- analyze_recovery_by_range(recovery_data, param)
+        
+        if(!is.null(range_stats) && nrow(range_stats) > 0) {
+          # Display table
+          kable(range_stats, caption = paste("Recovery metrics for", param),
+                digits = 3) %>% 
+            kable_styling(bootstrap_options = c("striped", "hover")) %>%
+            print()
+          
+          # Create plot of recovery metrics by range
+          p1 <- ggplot(range_stats, aes(x = bin_center, y = correlation)) +
+            geom_point(size = 3) +
+            geom_line() +
+            # Add optimal range shading
+            geom_rect(aes(xmin = opt_range$optimal_min, xmax = opt_range$optimal_max,
+                        ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "green") +
+            labs(title = "Correlation by Parameter Range",
+                 subtitle = "Green area = Recommended optimal range",
+                 x = "Parameter Value", y = "Correlation") +
+            theme_minimal() +
+            ylim(0, 1)
+          
+          print(p1)
+          
+          # Get behavioral data by range
+          behavior_by_range <- analyze_behavior_by_parameter(
+            recovery_data, 
+            ppc_subject_data, 
+            param
+          )
+          
+          if(!is.null(behavior_by_range) && nrow(behavior_by_range) > 0) {
+            # Select top behavioral metrics for this parameter
+            param_cor <- corr_matrix[param, , drop = FALSE]
+            top_metrics <- names(sort(abs(param_cor), decreasing = TRUE)[1:min(5, ncol(param_cor))])
+            
+            # Plot behavioral metrics across parameter range
+            for(metric in top_metrics) {
+              metric_data <- behavior_by_range %>% filter(statistic == metric)
+              
+              if(nrow(metric_data) >= 3) {
+                p2 <- ggplot(metric_data, aes(x = bin_center)) +
+                  # Add optimal range shading
+                  geom_rect(aes(xmin = opt_range$optimal_min, xmax = opt_range$optimal_max,
+                              ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "green") +
+                  # Observed values
+                  geom_point(aes(y = mean_observed), color = "blue", size = 3) +
+                  geom_line(aes(y = mean_observed), color = "blue") +
+                  # Predicted values
+                  geom_point(aes(y = mean_predicted), color = "red", size = 3) +
+                  geom_line(aes(y = mean_predicted), color = "red") +
+                  # PPP values and misfit
+                  geom_line(aes(y = mean_misfit * 10), linetype = "dashed", 
+                          color = "purple") +
+                  # Styling
+                  labs(title = paste("Effect of", param, "on", metric),
+                       subtitle = "Blue = Observed, Red = Predicted, Purple = Misfit × 10\nGreen area = Recommended optimal range",
+                       x = param, y = metric) +
+                  theme_minimal()
+                
+                print(p2)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Recommended Parameter Ranges
+
+Based on the above analysis, here are the parameter ranges with optimal recovery (defined as correlation ≥ 0.5 and lowest RMSE within that subset):
+
+```{r optimal_ranges}
+# Get optimal ranges
+optimal_ranges <- find_optimal_ranges(recovery_data)
+
+# Display
+kable(optimal_ranges, caption = "Recommended Parameter Ranges with Good Recovery",
+      digits = 3) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Effectiveness of Range Restrictions
+
+This section tests how much recovery metrics would improve if parameters were restricted to their optimal ranges:
+
+```{r test_restrictions, results='asis'}
+for (i in 1:nrow(optimal_ranges)) {
+  param <- optimal_ranges$parameter[i]
+  min_val <- optimal_ranges$optimal_min[i]
+  max_val <- optimal_ranges$optimal_max[i]
+  
+  if(is.na(min_val) || is.na(max_val)) {
+    next
+  }
+  
+  # Display optimal range
+  opt_range_df <- data.frame(
+    Parameter = param,
+    Min_Value = min_val,
+    Max_Value = max_val
+  )
+  
+  kable(opt_range_df, caption = paste("Optimal range for", param),
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                 full_width = FALSE) %>%
+    print()
+  
+  # Test effectiveness of restriction
+  restriction_results <- test_range_restriction(recovery_data, param, min_val, max_val)
+  
+  if(is.null(restriction_results)) {
+    next
+  }
+  
+  # Display results
+  kable(restriction_results, caption = paste("Impact of Range Restriction for", param),
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")) %>%
+    print()
+  
+  # Create visual comparison
+  # Original vs restricted scatter plots
+  orig_data <- recovery_data[recovery_data$parameter == param,]
+  restricted_data <- orig_data[orig_data$true_value >= min_val & 
+                             orig_data$true_value <= max_val,]
+  
+  p1 <- ggplot(orig_data, aes(x = true_value, y = recovered_value)) +
+    geom_point(alpha = 0.7) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE, color = "red") +
+    labs(title = "Original Parameter Range",
+         x = "True Value", y = "Recovered Value") +
+    theme_minimal()
+  
+  p2 <- ggplot(restricted_data, aes(x = true_value, y = recovered_value)) +
+    geom_point(alpha = 0.7) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+    geom_smooth(method = "loess", se = TRUE, color = "red") +
+    labs(title = "Restricted Parameter Range",
+         x = "True Value", y = "Recovered Value") +
+    theme_minimal()
+  
+  print(p1 + p2)
+}
+```
+
+## Conclusion: Optimizing Model Parameters
+
+Based on our comprehensive analysis integrating parameter recovery metrics and behavioral performance, we recommend the following:
+
+```{r conclusion}
+# Summarize improvement potential
+improvement_summary <- data.frame(
+  parameter = character(),
+  original_correlation = numeric(),
+  potential_correlation = numeric(),
+  improvement = numeric(),
+  behavioral_significance = character(),
+  stringsAsFactors = FALSE
+)
+
+for (i in 1:nrow(optimal_ranges)) {
+  param <- optimal_ranges$parameter[i]
+  min_val <- optimal_ranges$optimal_min[i]
+  max_val <- optimal_ranges$optimal_max[i]
+  
+  if(is.na(min_val) || is.na(max_val)) {
+    next
+  }
+  
+  # Test effectiveness of restriction
+  restriction_results <- test_range_restriction(recovery_data, param, min_val, max_val)
+  
+  if(is.null(restriction_results)) {
+    next
+  }
+  
+  # Extract correlation improvements
+  cor_row <- restriction_results[restriction_results$metric == "Correlation",]
+  
+  # Check behavioral significance
+  behavioral_sig <- "Unknown"
+  if(has_ppc_data) {
+    # Get parameter behavioral significance
+    sig_params <- identify_behaviorally_significant_parameters(
+      recovery_data, 
+      ppc_subject_data
+    )
+    
+    if(!is.null(sig_params) && param %in% sig_params$parameter) {
+      param_sig <- sig_params[sig_params$parameter == param,]
+      
+      if(param_sig$is_significant) {
+        behavioral_sig <- paste0("High (", param_sig$n_significant, " metrics)")
+      } else if(param_sig$max_correlation >= 0.3) {
+        behavioral_sig <- paste0("Medium (", param_sig$n_significant, " metrics)")
+      } else {
+        behavioral_sig <- "Low"
+      }
+    }
+  }
+  
+  improvement_summary <- rbind(improvement_summary, data.frame(
+    parameter = param,
+    original_correlation = cor_row$original,
+    potential_correlation = cor_row$restricted,
+    improvement = cor_row$improvement,
+    behavioral_significance = behavioral_sig,
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Add priority column
+if(nrow(improvement_summary) > 0) {
+  improvement_summary <- improvement_summary %>%
+    mutate(
+      priority = case_when(
+        behavioral_significance == "Low" & improvement < 0.1 ~ "Low",
+        behavioral_significance == "Low" & improvement >= 0.1 ~ "Medium",
+        behavioral_significance == "Medium" & improvement < 0.1 ~ "Medium",
+        behavioral_significance == "Medium" & improvement >= 0.1 ~ "High",
+        grepl("High", behavioral_significance) & improvement < 0.1 ~ "High",
+        grepl("High", behavioral_significance) & improvement >= 0.1 ~ "Very High",
+        TRUE ~ "Medium"
+      )
+    ) %>%
+    arrange(desc(priority), desc(improvement))
+  
+  # Display
+  kable(improvement_summary, caption = "Parameter Range Restriction Recommendations",
+        digits = 3) %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")) %>%
+    row_spec(which(improvement_summary$priority == "Very High"), background = "#e6ffe6") %>%
+    row_spec(which(improvement_summary$priority == "High"), background = "#e6ffff") %>%
+    print()
+}
+```
+
+### Recommendations
+
+Based on this analysis, we recommend the following:
+
+1. **High Priority Parameters**: Focus on restricting ranges for parameters with both high behavioral significance and substantial recovery improvement potential.
+
+2. **Parameter Range Updates**: For the highest priority parameters, update your model configuration YAML files with the recommended ranges.
+
+3. **Model Reparameterization**: For parameters with consistently poor recovery across all ranges (especially those with high behavioral significance), consider model reparameterization or alternative model structures.
+
+4. **Validation**: After implementing these recommendations, run validation tests to ensure the restricted ranges don't negatively impact overall model fit or behavioral predictions.
+
+By implementing these changes, we expect both parameter recovery quality and behavioral realism to improve, leading to more reliable and interpretable model results.

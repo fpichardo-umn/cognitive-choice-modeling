@@ -1,0 +1,73 @@
+# Diagnostic Thresholds Configuration
+# Defines thresholds for classifying diagnostic metrics
+
+thresholds:
+  rhat:
+    excellent: 1.01      # Values <= this are excellent (PASS)
+    acceptable: 1.05     # Values <= this are acceptable (WARN)
+    warning: 1.05        # Values > this trigger warnings
+    problematic: 1.1     # Values > this are problematic (FAIL)
+  
+  # ESS Bulk: Effective sample size for bulk (center) of distribution
+  # These are ABSOLUTE counts - the actual validity thresholds
+  ess_bulk:
+    critical: 100        # ESS_bulk < 100 = FAIL (unreliable estimates)
+    acceptable: 400      # ESS_bulk >= 400 = WARN (marginal)
+    good: 1000           # ESS_bulk >= 1000 = PASS (good)
+  
+  # ESS Tail: Effective sample size for tails (quantiles) of distribution
+  ess_tail:
+    critical: 100        # ESS_tail < 100 = FAIL (unreliable quantiles)
+    acceptable: 400      # ESS_tail >= 400 = WARN (marginal)
+    good: 1000           # ESS_tail >= 1000 = PASS (good)
+  
+  # ESS Ratio: ESS/Total_Samples - EFFICIENCY metric, not validity
+  # Low ratio = inefficient sampling (wasted compute), NOT invalid results
+  ess_ratio:
+    note: "Ratio measures sampling EFFICIENCY, not result VALIDITY"
+    very_inefficient: 0.1   # <10% efficiency = very wasteful but NOT invalid
+    inefficient: 0.3        # <30% efficiency = somewhat wasteful
+    efficient: 0.5          # >=50% efficiency = reasonable
+  
+  divergence_rate:
+    acceptable: 0.001    # Rate <= this is acceptable (0.1%)
+    borderline: 0.01     # Rate <= this is borderline (1%)
+    problematic: 0.05    # Rate > this is problematic (5%)
+  
+  mcse_ratio:
+    acceptable: 0.05     # MCSE/SD <= this is acceptable (5%)
+    borderline: 0.1      # MCSE/SD <= this is borderline (10%)
+    problematic: 0.15    # MCSE/SD > this is problematic (15%)
+  
+  ebfmi:
+    acceptable: 0.3      # EBFMI >= this is acceptable
+    problematic: 0.2     # EBFMI < this is problematic
+
+# Weights for calculating problem scores
+# Higher weights = more important for overall assessment
+problem_weights:
+  high_rhat: 5         # Non-convergence is critical
+  divergences: 3       # Divergences indicate sampling problems
+  low_ess: 2           # Low ESS means inefficient sampling
+  high_mcse: 1         # High MCSE means uncertain estimates
+  low_ebfmi: 2         # Low EBFMI suggests geometry problems
+
+# CSV export settings
+csv_export:
+  subject_threshold: 100   # Export to CSV if N subjects > this
+  include_columns:
+    - subject_id
+    - problem_score
+    - status
+    - worst_rhat
+    - median_rhat
+    - divergence_rate
+    - divergence_count
+    - min_ess_bulk
+    - min_ess_tail
+    - min_ess_bulk_ratio
+    - min_ess_tail_ratio
+    - worst_mcse_ratio
+    - median_mcse_ratio
+    - ebfmi
+    - problematic_params
