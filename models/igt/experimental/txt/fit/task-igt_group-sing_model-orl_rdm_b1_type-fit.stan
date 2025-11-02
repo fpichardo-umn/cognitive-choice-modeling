@@ -59,8 +59,7 @@ functions {
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
       vector ev_init, vector ef_init, int T,
       real Arew, real Apun, real K, real betaF, real betaP,
-      vector boundaries, real tau,
-      real urgency) {
+      vector boundaries, real tau) {
 
     vector[4] local_ev = ev_init;
     vector[4] local_ef = ef_init;
@@ -85,7 +84,7 @@ functions {
       util = local_ev + local_ef * betaF + pers * betaP;
       
       // Transform utility to positive drift rates using softplus
-      drift_rates = urgency + log1p_exp(util);
+      drift_rates = log1p_exp(util);
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
@@ -146,7 +145,6 @@ parameters {
   real boundary1_pr;
   real boundary_pr;
   real tau_pr;
-  real urgency_pr;
   
   // ORL RL parameters
   real Arew_pr;    // Reward learning rate
@@ -161,7 +159,6 @@ transformed parameters {
   real<lower=0.001, upper=5> boundary1;
   real<lower=0.001, upper=5> boundary;
   real<lower=0> tau;
-  real<lower=0.1, upper=20> urgency;
   
   // ORL
   real<lower=0, upper=1> Arew;
@@ -172,7 +169,6 @@ transformed parameters {
   boundary1 = inv_logit(boundary1_pr) * 4.99 + 0.001;
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
-  urgency   = inv_logit(urgency_pr) * 19.9 + 0.1;
   
   Arew = inv_logit(Arew_pr);
   Apun = inv_logit(Apun_pr);
@@ -184,7 +180,6 @@ model {
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
-  urgency_pr ~ normal(0, 1);
   
   Arew_pr ~ normal(0, 1);
   Apun_pr ~ normal(0, 1);
@@ -192,7 +187,7 @@ model {
   betaF ~ normal(0, 1);
   betaP ~ normal(0, 1);
 
-  // Build boundary/tau vectors for trials (vectorized)
+  // Build boundary vectors for trials (vectorized)
   vector[T] boundary_vec;
   
   // First block
@@ -212,7 +207,6 @@ model {
       choice, wins, losses, RT,
       ev_init, ef_init, T,
       Arew, Apun, K, betaF, betaP,
-      boundary_vec, tau,
-      urgency
+      boundary_vec, tau
   );
 }

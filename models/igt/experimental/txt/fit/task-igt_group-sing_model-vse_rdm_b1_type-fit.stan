@@ -60,7 +60,7 @@ functions {
       vector ev_exploit_init, vector ev_explore_init, int T,
       real gain, real loss, real decay,
       vector boundaries, real tau,
-      real urgency, real explore_alpha, real explore_bonus) {
+      real explore_alpha, real explore_bonus) {
 
     vector[4] local_ev_exploit = ev_exploit_init;
     vector[4] local_ev_explore = ev_explore_init;
@@ -74,7 +74,7 @@ functions {
       combined_ev = local_ev_exploit + local_ev_explore;
       
       // Transform combined EV to positive drift rates using softplus
-      drift_rates = urgency + log1p_exp(combined_ev);
+      drift_rates = log1p_exp(combined_ev);
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
@@ -124,7 +124,6 @@ parameters {
   real boundary1_pr;
   real boundary_pr;
   real tau_pr;
-  real urgency_pr;
   
   // VSE RL parameters
   real gain_pr;          // Value sensitivity
@@ -139,7 +138,6 @@ transformed parameters {
   real<lower=0.001, upper=5> boundary1;
   real<lower=0.001, upper=5> boundary;
   real<lower=0> tau;
-  real<lower=0.1, upper=20> urgency;
   
   // VSE
   real<lower=0, upper=1> gain;
@@ -152,7 +150,6 @@ transformed parameters {
   boundary1 = inv_logit(boundary1_pr) * 4.99 + 0.001;
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
-  urgency   = inv_logit(urgency_pr) * 19.9 + 0.1;
   
   gain = inv_logit(gain_pr);
   loss = inv_logit(loss_pr) * 10;
@@ -166,7 +163,6 @@ model {
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
-  urgency_pr ~ normal(0, 1);
   
   gain_pr ~ normal(0, 1);
   loss_pr ~ normal(0, 1);
@@ -195,6 +191,6 @@ model {
       ev_exploit_init, ev_explore_init, T,
       gain, loss, decay,
       boundary_vec, tau,
-      urgency, explore_alpha, explore_bonus
+      explore_alpha, explore_bonus
   );
 }

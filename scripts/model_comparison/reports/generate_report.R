@@ -18,6 +18,7 @@ source(file.path(here::here(), "scripts", "model_comparison", "helpers", "model_
 #' @param comparison_data Original comparison data
 #' @param models_by_type Models organized by type
 #' @param output_dir Directory for report output
+#' @param results_file Path to saved results RDS file
 #' @param task Task name
 #' @param cohort Cohort name
 #' @param session Session name (optional)
@@ -25,7 +26,7 @@ source(file.path(here::here(), "scripts", "model_comparison", "helpers", "model_
 #' @param render_html Whether to render HTML
 #' @return List with report file paths
 generate_model_comparison_report <- function(analysis_results, comparison_data, models_by_type, 
-                                           output_dir, task, cohort, session = NULL, 
+                                           output_dir, results_file, task, cohort, session = NULL, 
                                            comparison_name, render_html = TRUE) {
   message("Generating model comparison report...")
   
@@ -47,7 +48,7 @@ generate_model_comparison_report <- function(analysis_results, comparison_data, 
   # Generate RMD content
   rmd_content <- create_report_rmd_content(
     analysis_results, comparison_data, models_by_type,
-    task, cohort, session, comparison_name
+    task, cohort, session, comparison_name, results_file
   )
   
   # Write RMD file
@@ -85,9 +86,10 @@ generate_model_comparison_report <- function(analysis_results, comparison_data, 
 #' @param cohort Cohort name
 #' @param session Session name
 #' @param comparison_name Comparison name
+#' @param results_file Path to saved results RDS file
 #' @return Character vector with RMD content
 create_report_rmd_content <- function(analysis_results, comparison_data, models_by_type,
-                                    task, cohort, session, comparison_name) {
+                                    task, cohort, session, comparison_name, results_file) {
   
   # Load template components
   template_dir <- file.path(here::here(), "scripts", "model_comparison", "reports", "templates")
@@ -100,8 +102,8 @@ create_report_rmd_content <- function(analysis_results, comparison_data, models_
   model_type_section <- read_template_section(template_dir, "model_type_section_template.Rmd")
   task_specific_section <- read_template_section(template_dir, "task_specific_section_template.Rmd")
   
-  # Create results file path (relative to output directory)
-  results_file_path <- "../data/model_comparison_results.rds"
+  # Use the absolute path to results file (passed as parameter)
+  results_file_path <- results_file
   
   # Replace placeholders in templates
   placeholders <- list(
@@ -722,16 +724,20 @@ get_default_technical_appendix_template <- function() {
     "```{r data-sources}",
     "# Information about data sources",
     "cat('### Parameter Recovery Data\\n')",
-    "cat('- Source: Data/{{TASK}}/sim/recovery/\\n')",
+    "cat('- Source: Outputs/{{TASK}}/validation/parameter_recovery/analysis/\\n')",
     "cat('- Format: CSV files with true vs recovered parameter values\\n\\n')",
     "",
     "cat('### PPC Data\\n')",
-    "cat('- Source: Data/{{TASK}}/ppc/cohort-{{COHORT}}/stats/\\n')",
+    "cat('- Source: Outputs/{{TASK}}/validation/ppc/cohort-{{COHORT}}/ses-{{SESSION}}/stats/\\n')",
     "cat('- Format: CSV files with PPP statistics\\n\\n')",
     "",
     "cat('### Information Criteria Data\\n')",
-    "cat('- Source: Data/{{TASK}}/ppc/cohort-{{COHORT}}/loglik/\\n')",
+    "cat('- Source: Outputs/{{TASK}}/validation/ppc/cohort-{{COHORT}}/ses-{{SESSION}}/loglik/\\n')",
     "cat('- Format: RDS files with LOOIC/WAIC estimates\\n\\n')",
+    "",
+    "cat('### Model Comparison Results\\n')",
+    "cat('- Source: Outputs/{{TASK}}/model_comparison/cohort-{{COHORT}}/ses-{{SESSION}}/{{COMPARISON_NAME}}/data/\\n')",
+    "cat('- Format: RDS file with consolidated analysis results\\n\\n')",
     "```",
     "",
     "## Parameter Group Definitions",

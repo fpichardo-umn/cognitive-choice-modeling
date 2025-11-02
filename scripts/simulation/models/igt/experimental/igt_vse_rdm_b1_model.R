@@ -33,7 +33,6 @@ igtVSERDMB1Model <- R6::R6Class("igtVSERDMB1Model",
                                         boundary1 = list(range = c(0.001, 5)),
                                         boundary = list(range = c(0.001, 5)),
                                         tau = list(range = c(0, Inf)),
-                                        urgency = list(range = c(0.001, 20)),
                                         gain = list(range = c(0, 1)),
                                         loss = list(range = c(0, 10)),
                                         decay = list(range = c(0, 1)),
@@ -68,7 +67,7 @@ igtVSERDMB1Model <- R6::R6Class("igtVSERDMB1Model",
                                         combined_ev <- ev_exploit + ev_explore
                                         
                                         # Transform combined EV to positive drift rates using softplus
-                                        drift_rates <- parameters$urgency + log1p(exp(combined_ev))
+                                        drift_rates <- log1p(exp(combined_ev))
                                         
                                         # Ensure all drift rates are positive
                                         drift_rates <- pmax(drift_rates, 0.001)
@@ -156,7 +155,7 @@ igtVSERDMB1Model <- R6::R6Class("igtVSERDMB1Model",
                                             combined_ev <- ev_exploit + ev_explore
                                             
                                             # Transform combined EV to positive drift rates using softplus
-                                            drift_rates <- parameters$urgency + log1p(exp(combined_ev))
+                                            drift_rates <- log1p(exp(combined_ev))
                                             
                                             # Ensure all drift rates are positive
                                             drift_rates <- pmax(drift_rates, 0.001)

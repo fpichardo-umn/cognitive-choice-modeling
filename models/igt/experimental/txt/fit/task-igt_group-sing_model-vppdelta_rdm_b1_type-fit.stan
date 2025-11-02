@@ -1,4 +1,4 @@
-// Individual ORL-RDM Model for the Iowa Gambling Task
+// Individual VPPdelta-RDM Model for the Iowa Gambling Task
 functions {
   // Log PDF for Racing Diffusion (numerically stable)
   real race_log_pdf(real t, real boundary, real drift) {
@@ -54,72 +54,51 @@ functions {
     return log_pdf_winner + log_survival_prod;
   }
   
-  // ORL-RDM trial-level function with learning
-  real igt_orl_rdm_model(
+  // VPPdelta-RDM trial-level function with learning
+  real igt_vppdelta_rdm_model(
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
-      vector ev_init, vector ef_init, int T,
-      real Arew, real Apun, real K, real betaF, real betaP,
-      vector boundaries, vector taus) {
+      vector ev_init, vector pers_init, int T,
+      real gain, real loss, real update,
+      real epP, real epN, real K, real w,
+      vector boundaries, real tau) {
 
     vector[4] local_ev = ev_init;
-    vector[4] local_ef = ef_init;
-    vector[4] pers = rep_vector(0.0, 4);
-    vector[4] util;
+    vector[4] local_pers = pers_init;
+    vector[4] combined_values;
     vector[4] drift_rates;
     real log_lik = 0.0;
-    real PEval;
-    real PEfreq;
-    real efChosen;
-    vector[4] PEfreq_fic;
-    array[T] real sign_outcome;
-    real K_tr = pow(3, K) - 1;
-    
-    // Calculate sign for each trial
-    for (t in 1:T) {
-      sign_outcome[t] = wins[t] >= losses[t] ? 1.0 : -1.0;
-    }
+    real curUtil;
 
     for (t in 1:T) {
-      // Calculate utility for decision
-      util = local_ev + local_ef * betaF + pers * betaP;
+      // Combine EV and perseverance using weight w
+      combined_values = w * local_ev + (1 - w) * local_pers;
       
-      // Transform utility to positive drift rates using softplus
-      drift_rates = log1p_exp(util);
+      // Transform combined values to positive drift rates using softplus
+      drift_rates = log1p_exp(combined_values);
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
-        log_lik += rdm_trial(RT[t], choice[t], taus[t], 
+        log_lik += rdm_trial(RT[t], choice[t], tau, 
                                 boundaries[t], drift_rates);
       }
+
+      // 1. Decay perseverance for all decks
+      local_pers = local_pers * K;
       
-      // Prediction errors for value and frequency
-      PEval = wins[t] - losses[t] - local_ev[choice[t]];
-      PEfreq = sign_outcome[t] - local_ef[choice[t]];
-      efChosen = local_ef[choice[t]];
+      // 2. Calculate utility using prospect valuation
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+      real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+      curUtil = win_component - loss * loss_component;
       
-      // Calculate fictive prediction errors for non-chosen decks
-      for (d in 1:4) {
-        PEfreq_fic[d] = -sign_outcome[t]/3.0 - local_ef[d];
-      }
-      
-      // Update EV and EF based on valence
+      // 3. Update perseverance based on outcome sign
       if (wins[t] >= losses[t]) {
-        // Update ef for all decks with fictive outcomes
-        local_ef += Apun * PEfreq_fic;
-        // Update chosen deck
-        local_ef[choice[t]] = efChosen + Arew * PEfreq;
-        local_ev[choice[t]] = local_ev[choice[t]] + Arew * PEval;
+        local_pers[choice[t]] += epP;
       } else {
-        // Update ef for all decks with fictive outcomes
-        local_ef += Arew * PEfreq_fic;
-        // Update chosen deck
-        local_ef[choice[t]] = efChosen + Apun * PEfreq;
-        local_ev[choice[t]] = local_ev[choice[t]] + Apun * PEval;
+        local_pers[choice[t]] += epN;
       }
       
-      // Perseverance updating
-      pers[choice[t]] = 1;  // set chosen deck perseverance
-      pers = pers / (1 + K_tr);  // decay perseverance
+      // 4. Update expected value using delta rule
+      local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
     }
     
     return log_lik;
@@ -133,7 +112,7 @@ data {
   array[T] int<lower=1, upper=4> choice;   // Choices
   array[T] real RT;                         // Response times
   array[T] real wins;                       // Win amounts
-  array[T] real losses;                     // Loss amounts
+  array[T] real losses;                     // Loss amounts (positive values)
 }
 
 transformed data {
@@ -144,76 +123,82 @@ parameters {
   // RDM parameters
   real boundary1_pr;
   real boundary_pr;
-  real tau1_pr;
   real tau_pr;
   
-  // ORL RL parameters
-  real Arew_pr;    // Reward learning rate
-  real Apun_pr;    // Punishment learning rate
-  real K_pr;       // Decay rate for perseverance
-  real betaF;      // Weight for frequency (EF)
-  real betaP;      // Weight for perseverance
+  // VPP-Delta RL parameters
+  real update_pr;  // EV learning rate (delta rule)
+  real gain_pr;    // Value sensitivity
+  real loss_pr;    // Loss aversion
+  real epP_pr;     // Perseverance increment for positive outcomes
+  real epN_pr;     // Perseverance increment for negative outcomes
+  real K_pr;       // Perseverance decay rate
+  real w_pr;       // Weight for EV vs perseverance
 }
 
 transformed parameters {
   // RDM
   real<lower=0.001, upper=5> boundary1;
   real<lower=0.001, upper=5> boundary;
-  real<lower=0> tau1;
   real<lower=0> tau;
   
-  // ORL
-  real<lower=0, upper=1> Arew;
-  real<lower=0, upper=1> Apun;
-  real<lower=0, upper=5> K;
+  // VPP-Delta
+  real<lower=0, upper=1> update;
+  real<lower=0, upper=1> gain;
+  real<lower=0, upper=10> loss;
+  real epP;
+  real epN;
+  real<lower=0, upper=1> K;
+  real<lower=0, upper=1> w;
 
   // Transform parameters
   boundary1 = inv_logit(boundary1_pr) * 4.99 + 0.001;
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
-  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   
-  Arew = inv_logit(Arew_pr);
-  Apun = inv_logit(Apun_pr);
-  K = inv_logit(K_pr) * 5;
+  update = inv_logit(update_pr);
+  gain = inv_logit(gain_pr);
+  loss = inv_logit(loss_pr) * 10;
+  epP = epP_pr;
+  epN = epN_pr;
+  K = inv_logit(K_pr);
+  w = inv_logit(w_pr);
 }
 
 model {
   // Priors
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   
-  Arew_pr ~ normal(0, 1);
-  Apun_pr ~ normal(0, 1);
+  update_pr ~ normal(0, 1);
+  gain_pr ~ normal(0, 1);
+  loss_pr ~ normal(0, 1);
+  epP_pr ~ normal(0, 1);
+  epN_pr ~ normal(0, 1);
   K_pr ~ normal(0, 1);
-  betaF ~ normal(0, 1);
-  betaP ~ normal(0, 1);
+  w_pr ~ normal(0, 1);
 
-  // Build boundary/tau vectors for trials (vectorized)
+  // Build boundary vectors for trials (vectorized)
   vector[T] boundary_vec;
-  vector[T] tau_vec;
   
   // First block
   boundary_vec[1:block] = rep_vector(boundary1, block);
-  tau_vec[1:block]      = rep_vector(tau1, block);
   
   // Remaining trials
   if (T > block) {
     int rest_len = T - block;
     boundary_vec[(block+1):T] = rep_vector(boundary, rest_len);
-    tau_vec[(block+1):T]      = rep_vector(tau, rest_len);
   }
   
-  // Likelihood with ORL learning
+  // Likelihood with VPP-Delta learning
   vector[4] ev_init = rep_vector(0.0, 4);
-  vector[4] ef_init = rep_vector(0.0, 4);
+  vector[4] pers_init = rep_vector(0.0, 4);
   
-  target += igt_orl_rdm_model(
+  target += igt_vppdelta_rdm_model(
       choice, wins, losses, RT,
-      ev_init, ef_init, T,
-      Arew, Apun, K, betaF, betaP,
-      boundary_vec, tau_vec
+      ev_init, pers_init, T,
+      gain, loss, update,
+      epP, epN, K, w,
+      boundary_vec, tau
   );
 }

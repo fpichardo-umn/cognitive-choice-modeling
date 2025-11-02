@@ -256,26 +256,8 @@ tryCatch({
     analysis_results$integrated_ranking <- integrated_ranking
   }
   
-  # Step 6: Generate report
-  if ("report" %in% analysis_types) {
-    message("Step 6: Generating comprehensive report...")
-    source(file.path(here::here(), "scripts", "model_comparison", "reports", "generate_report.R"))
-    
-    report_result <- generate_model_comparison_report(
-      analysis_results = analysis_results,
-      comparison_data = comparison_data,
-      models_by_type = models_by_type,
-      output_dir = output_dirs$reports,
-      task = opt$task,
-      cohort = opt$cohort,
-      session = opt$session,
-      comparison_name = comparison_name,
-      render_html = opt$render_html
-    )
-  }
-  
-  # Save consolidated results
-  message("Saving consolidated results...")
+  # Save consolidated results BEFORE generating report (report needs this file)
+  message("Step 5b: Saving consolidated results...")
   results_file <- file.path(output_dirs$data, "model_comparison_results.rds")
   saveRDS(list(
     comparison_data = comparison_data,
@@ -292,6 +274,26 @@ tryCatch({
       timestamp = Sys.time()
     )
   ), results_file)
+  message("Results file saved: ", results_file)
+  
+  # Step 6: Generate report (now that results file exists)
+  if ("report" %in% analysis_types) {
+    message("Step 6: Generating comprehensive report...")
+    source(file.path(here::here(), "scripts", "model_comparison", "reports", "generate_report.R"))
+    
+    report_result <- generate_model_comparison_report(
+      analysis_results = analysis_results,
+      comparison_data = comparison_data,
+      models_by_type = models_by_type,
+      output_dir = output_dirs$reports,
+      results_file = results_file,  # Pass the results file path
+      task = opt$task,
+      cohort = opt$cohort,
+      session = opt$session,
+      comparison_name = comparison_name,
+      render_html = opt$render_html
+    )
+  }
   
   # Completion
   end_time <- Sys.time()

@@ -116,7 +116,7 @@ igtLAGVSEModel <- R6::R6Class("igtLAGVSEModel",
                                # Initialize variables
                                ev_exploit <- rep(0, 4)
                                choice_lag <- rep(0, 4)
-                               trial_loglik <- 0
+                               trial_loglik <- numeric(nrow(data))
                                
                                # For each trial
                                for (t in 1:nrow(data)) {

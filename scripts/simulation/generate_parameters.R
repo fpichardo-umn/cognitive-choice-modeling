@@ -22,7 +22,7 @@ option_list = list(
   make_option(c("--session"), type="character", default=NULL,
               help="Session identifier [default: %default]"),
   make_option(c("-n", "--n_subjects"), type="integer", default=100),
-  make_option(c("-d", "--method"), type="character", default="wpSPSepse"),
+  make_option(c("-d", "--method"), type="character", default="ibSPSepse"),
   make_option(c("-o", "--output_dir"), type="character", default=NULL, help="./Data/sim/params/"),
   make_option(c("-f", "--fit_file"), type="character", default=NULL, 
               help="Path to fit data (required for EPSE methods)"),
@@ -74,7 +74,7 @@ if (grepl("batch", opt$group)){
 model_obj <- initialize_model(model_name, task, task_obj, dirs$SIM_DIR, group_type)
 
 # Handle model fit loading for empirical-based methods
-if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE")) {
+if (opt$method %in% c("mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE", "ibSPSepse")) {
   if (is.null(opt$fit_file)) {
     # Try to construct default path using BIDS-inspired filename
     fit_file <- file.path(dirs$DATA_DIR, "fits", "fit", opt$cohort, paste0("ses-", opt$session), 

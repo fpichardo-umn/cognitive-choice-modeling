@@ -60,7 +60,7 @@ functions {
       vector ev_init, vector pers_init, int T,
       real gain, real loss, real decay,
       real epP, real epN, real K, real w,
-      vector boundaries, vector taus) {
+      vector boundaries, real tau) {
 
     vector[4] local_ev = ev_init;
     vector[4] local_pers = pers_init;
@@ -78,7 +78,7 @@ functions {
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
-        log_lik += rdm_trial(RT[t], choice[t], taus[t], 
+        log_lik += rdm_trial(RT[t], choice[t], tau, 
                                 boundaries[t], drift_rates);
       }
 
@@ -125,7 +125,6 @@ parameters {
   // RDM parameters
   real boundary1_pr;
   real boundary_pr;
-  real tau1_pr;
   real tau_pr;
   
   // VPP-Decay RL parameters
@@ -142,7 +141,6 @@ transformed parameters {
   // RDM
   real<lower=0.001, upper=5> boundary1;
   real<lower=0.001, upper=5> boundary;
-  real<lower=0> tau1;
   real<lower=0> tau;
   
   // VPP-Decay
@@ -157,7 +155,6 @@ transformed parameters {
   // Transform parameters
   boundary1 = inv_logit(boundary1_pr) * 4.99 + 0.001;
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
-  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   
   decay = inv_logit(decay_pr);
@@ -173,7 +170,6 @@ model {
   // Priors
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   
   decay_pr ~ normal(0, 1);
@@ -184,19 +180,16 @@ model {
   K_pr ~ normal(0, 1);
   w_pr ~ normal(0, 1);
 
-  // Build boundary/tau vectors for trials (vectorized)
+  // Build boundary vectors for trials (vectorized)
   vector[T] boundary_vec;
-  vector[T] tau_vec;
   
   // First block
   boundary_vec[1:block] = rep_vector(boundary1, block);
-  tau_vec[1:block]      = rep_vector(tau1, block);
   
   // Remaining trials
   if (T > block) {
     int rest_len = T - block;
     boundary_vec[(block+1):T] = rep_vector(boundary, rest_len);
-    tau_vec[(block+1):T]      = rep_vector(tau, rest_len);
   }
   
   // Likelihood with VPP-Decay learning
@@ -208,6 +201,6 @@ model {
       ev_init, pers_init, T,
       gain, loss, decay,
       epP, epN, K, w,
-      boundary_vec, tau_vec
+      boundary_vec, tau
   );
 }

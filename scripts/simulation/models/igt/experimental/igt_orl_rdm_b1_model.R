@@ -32,7 +32,6 @@ igtORLRDMB1Model <- R6::R6Class("igtORLRDMB1Model",
                                         boundary1 = list(range = c(0.001, 5)),
                                         boundary = list(range = c(0.001, 5)),
                                         tau = list(range = c(0, Inf)),
-                                        urgency = list(range = c(0.001, 20)),
                                         Arew = list(range = c(0, 1)),
                                         Apun = list(range = c(0, 1)),
                                         K = list(range = c(0, 5)),
@@ -70,7 +69,7 @@ igtORLRDMB1Model <- R6::R6Class("igtORLRDMB1Model",
                                         util <- ev + ef * parameters$betaF + pers * parameters$betaP
                                         
                                         # Transform utility to positive drift rates using softplus
-                                        drift_rates <- parameters$urgency + log1p(exp(util))
+                                        drift_rates <- log1p(exp(util))
                                         
                                         # Ensure all drift rates are positive
                                         drift_rates <- pmax(drift_rates, 0.001)
@@ -164,7 +163,7 @@ igtORLRDMB1Model <- R6::R6Class("igtORLRDMB1Model",
                                             util <- ev + ef * parameters$betaF + pers * parameters$betaP
                                             
                                             # Transform utility to positive drift rates using softplus
-                                            drift_rates <- parameters$urgency + log1p(exp(util))
+                                            drift_rates <- log1p(exp(util))
                                             
                                             # Ensure all drift rates are positive
                                             drift_rates <- pmax(drift_rates, 0.001)

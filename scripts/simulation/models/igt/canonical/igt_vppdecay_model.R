@@ -130,7 +130,7 @@ igtVPPDECAYModel <- R6::R6Class("igtVPPDECAYModel",
       # Initialize variables
       ev <- rep(0, 4)
       pers <- rep(0, 4)
-      trial_loglik <- 0
+      trial_loglik <- numeric(nrow(data))
       
       # For each trial
       for (t in 1:nrow(data)) {

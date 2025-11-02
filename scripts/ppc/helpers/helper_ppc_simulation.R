@@ -14,6 +14,47 @@ suppressPackageStartupMessages({
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
 source(file.path(here::here(), "scripts", "simulation", "helper_functions_sim.R"))
 
+#' Validate and resolve number of samples to use
+#' @param n_available Number of available posterior draws
+#' @param n_requested Number requested (NULL/"all" = use all, integer = specific)
+#' @param min_required Minimum samples required (default 1000)
+#' @param purpose Description of what the samples are for (for error messages)
+#' @return Validated number of samples to use
+validate_n_samples <- function(n_available, n_requested = 2000, 
+                              min_required = 1000, 
+                              purpose = "analysis") {
+  
+  # Check if we have enough samples at all
+  if (n_available < min_required) {
+    stop("Insufficient posterior samples for ", purpose, 
+         ": need >= ", min_required, ", have ", n_available)
+  }
+  
+  # Handle "use all" request
+  if (is.null(n_requested) || 
+      (is.character(n_requested) && tolower(n_requested) == "all")) {
+    message("Using ALL ", n_available, " posterior draws for ", purpose)
+    return(n_available)
+  }
+  
+  # Validate requested amount
+  n_requested <- as.integer(n_requested)
+  
+  if (n_requested < min_required) {
+    stop("Requested n_samples = ", n_requested, 
+         " is below minimum of ", min_required)
+  }
+  
+  if (n_requested > n_available) {
+    message("Requested ", n_requested, " samples but only ", n_available, 
+            " available. Using all available.")
+    return(n_available)
+  }
+  
+  message("Using ", n_requested, " of ", n_available, " posterior draws for ", purpose)
+  return(n_requested)
+}
+
 #' Sample from posterior distribution with density awareness
 #' @param posterior_draws Data frame of posterior draws
 #' @param n_samples Number of samples to draw
@@ -108,17 +149,21 @@ sample_posterior <- function(posterior_draws, n_samples, params,
 #' @param fit_file Path to fitted model .rds file 
 #' @param model_key Model key string
 #' @param model_params Vector of parameter names to extract
-#' @param n_samples Number of posterior samples to extract
+#' @param n_samples Number of posterior samples to extract (NULL/"all" = use all, default = 2000)
 #' @param exclude_subjects List of subject IDs to exclude
-#' @param sampling_method Method for sampling: "random", "width", or "weighted"
+#' @param sampling_method Method for sampling: "random" (default), "width", or "weighted"
 #' @param width_control Width of the posterior to sample from (0-1)
+#' @param min_required Minimum required samples (default 1000)
 #' @return List of parameter samples by subject ID
-extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_samples = 100, 
+extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_samples = 2000, 
                                     exclude_subjects = NULL,
-                                    sampling_method = c("random", "width", "weighted"),
-                                    width_control = 0.95) {
-  # Process sampling method argument
-  sampling_method <- match.arg(sampling_method)
+                                    sampling_method = "random",
+                                    width_control = 0.95,
+                                    min_required = 1000) {
+  # Validate sampling method
+  if (!sampling_method %in% c("random", "width", "weighted")) {
+    stop("sampling_method must be 'random', 'width', or 'weighted'")
+  }
   
   # Load fitted model file
   fits <- readRDS(fit_file)
@@ -205,10 +250,18 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
           temp_df$lp__ <- posterior_draws$lp__
         }
         
+        # Validate and resolve n_samples
+        n_samples_to_use <- validate_n_samples(
+          n_available = nrow(temp_df),
+          n_requested = n_samples,
+          min_required = min_required,
+          purpose = paste0("posterior sampling for subject ", true_sub_id)
+        )
+        
         # Use the new sampling function
         sample_indices <- sample_posterior(
           temp_df, 
-          n_samples, 
+          n_samples_to_use, 
           model_params, 
           method = sampling_method, 
           width_control = width_control
@@ -242,10 +295,18 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
       # Convert draws to data frame
       posterior_draws <- as_draws_df(sub_fit$draws)
       
+      # Validate and resolve n_samples
+      n_samples_to_use <- validate_n_samples(
+        n_available = nrow(posterior_draws),
+        n_requested = n_samples,
+        min_required = min_required,
+        purpose = paste0("posterior sampling for subject ", true_sub_id)
+      )
+      
       # Use the new sampling function
       sample_indices <- sample_posterior(
         posterior_draws, 
-        n_samples, 
+        n_samples_to_use, 
         model_params, 
         method = sampling_method, 
         width_control = width_control

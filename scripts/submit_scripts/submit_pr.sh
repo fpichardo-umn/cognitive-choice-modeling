@@ -30,7 +30,7 @@ print_usage() {
   echo "  -F    Fit config name (default: default)"
   echo "  -I    Sim fit config name for recovery (default: sim)"
   echo "  -D    Data config name (default: default)"
-  echo "  -M    Parameter generation method (default: wpSPSepse)"
+  echo "  -M    Parameter generation method (default: ibSPSepse)"
   echo "  -f    Subject file in Data/raw/{source}/ses-{ses}/ (default: subject_ids_all.txt)"
   echo "  -N    Number of subjects for PR (default: 200)"
   echo "  -T    Number of trials for PR (default: 100)"
@@ -38,7 +38,7 @@ print_usage() {
   echo "Defaults:"
   echo "  - Group type: hier, Session: 00, Components: all"
   echo "  - Subjects: 200, Trials: 100"
-  echo "  - Fit config: default, Data config: default, Method: wpSPSepse"
+  echo "  - Fit config: default, Data config: default, Method: ibSPSepse"
   echo "  - 96 hour time limit, 64GB memory"
   echo ""
   exit 1
@@ -56,7 +56,7 @@ NO_INDIV=true
 FIT_CONFIG="default"
 SIM_CONFIG="sim"
 DATA_CONFIG="default"
-METHOD="wpSPSepse"
+METHOD="ibSPSepse"
 SUBS_FILE="subject_ids_all.txt"
 
 # --- Parse Command Line Arguments ---

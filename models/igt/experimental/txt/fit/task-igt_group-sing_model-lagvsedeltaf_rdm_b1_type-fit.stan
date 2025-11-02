@@ -1,4 +1,4 @@
-// Individual LagVSEDelta-RDM Model for the Iowa Gambling Task
+// Individual Hybrid Frequency-RDM Model (WITHOUT URGENCY)
 functions {
   // Log PDF for Racing Diffusion (numerically stable)
   real race_log_pdf(real t, real boundary, real drift) {
@@ -54,46 +54,66 @@ functions {
     return log_pdf_winner + log_survival_prod;
   }
   
-  // LagVSEDelta-RDM trial-level function with learning
-  real igt_lagvsedelta_rdm_model(
+  // Hybrid Frequency-RDM trial-level function with learning
+  real igt_hybrid_rdm_model(
       array[] int choice, array[] real wins, array[] real losses, array[] real RT,
-      vector ev_exploit_init, vector choice_lag_init, int T,
-      real gain, real loss, real update, real phi,
-      vector boundaries, vector taus,
-      real urgency) {
+      vector ev_exploit_init, vector ef_init, vector choice_lag_init, int T,
+      real gain, real loss, real update, real betaF, real phi,
+      vector boundaries, real tau) {
 
     vector[4] local_ev_exploit = ev_exploit_init;
+    vector[4] local_ef = ef_init;
     vector[4] local_choice_lag = choice_lag_init;
     vector[4] combined_values;
     vector[4] drift_rates;
     real log_lik = 0.0;
     real curUtil;
+    real sign_outcome;
+    real PEfreq;
+    real efChosen;
+    vector[4] PEfreq_fic;
 
     for (t in 1:T) {
       // Increment lag for all decks
       local_choice_lag += 1;
       
-      // Combine exploitation and exploration values
-      combined_values = local_ev_exploit + phi * local_choice_lag;
+      // Combine value, frequency, and lag for decision
+      combined_values = local_ev_exploit + betaF * local_ef + phi * local_choice_lag;
       
-      // Transform combined values to positive drift rates using softplus
-      drift_rates = urgency + log1p_exp(combined_values);
+      // Transform combined values to positive drift rates using softplus (no urgency offset)
+      drift_rates = log1p_exp(combined_values);
       
       // Skip trials marked as missing
       if (RT[t] != 999) {
-        log_lik += rdm_trial(RT[t], choice[t], taus[t], 
+        log_lik += rdm_trial(RT[t], choice[t], tau, 
                                 boundaries[t], drift_rates);
       }
 
-      // Calculate utility using prospect valuation
-      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
-      real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+      // Calculate subjective utility (for value learning)
+      real win_component = (wins[t] == 0) ? 0.0 : pow(wins[t], gain);
+      real loss_component = (losses[t] == 0) ? 0.0 : pow(losses[t], gain);
       curUtil = win_component - loss * loss_component;
       
-      // Exploitation: Update chosen deck with utility + delta rule
-      local_ev_exploit[choice[t]] += curUtil + update * (curUtil - local_ev_exploit[choice[t]]);
+      // Calculate objective outcome sign (for frequency learning)
+      sign_outcome = wins[t] >= losses[t] ? 1.0 : -1.0;
       
-      // Exploration: Reset lag for chosen deck
+      // Frequency prediction errors based on objective outcomes
+      PEfreq = sign_outcome - local_ef[choice[t]];
+      efChosen = local_ef[choice[t]];
+      
+      // Fictive prediction errors for non-chosen decks
+      for (d in 1:4) {
+        PEfreq_fic[d] = -sign_outcome/3.0 - local_ef[d];
+      }
+      
+      // Update frequency for all decks (fictive learning)
+      local_ef += update * PEfreq_fic;
+      local_ef[choice[t]] = efChosen + update * PEfreq;
+      
+      // Update value for chosen deck only
+      local_ev_exploit[choice[t]] += update * (curUtil - local_ev_exploit[choice[t]]);
+      
+      // Reset lag for chosen deck
       local_choice_lag[choice[t]] = 0;
     }
     
@@ -102,13 +122,13 @@ functions {
 }
 
 data {
-  int<lower=1> T;                           // Total number of trials
-  real<lower=0> minRT;                      // Minimum RT for this subject
-  real<lower=0> RTbound;                    // RT bound
-  array[T] int<lower=1, upper=4> choice;   // Choices
-  array[T] real RT;                         // Response times
-  array[T] real wins;                       // Win amounts
-  array[T] real losses;                     // Loss amounts (positive values)
+  int<lower=1> T;
+  real<lower=0> minRT;
+  real<lower=0> RTbound;
+  array[T] int<lower=1, upper=4> choice;
+  array[T] real RT;
+  array[T] real wins;
+  array[T] real losses;
 }
 
 transformed data {
@@ -119,41 +139,38 @@ parameters {
   // RDM parameters
   real boundary1_pr;
   real boundary_pr;
-  real tau1_pr;
   real tau_pr;
-  real urgency_pr;
   
-  // LagVSE-Delta RL parameters
-  real gain_pr;    // Value sensitivity
-  real loss_pr;    // Loss aversion
-  real update_pr;  // Delta learning rate
-  real phi_pr;     // Choice lag weight
+  // Hybrid RL parameters
+  real gain_pr;
+  real loss_pr;
+  real update_pr;
+  real betaF_pr;
+  real phi_pr;
 }
 
 transformed parameters {
   // RDM
   real<lower=0.001, upper=5> boundary1;
   real<lower=0.001, upper=5> boundary;
-  real<lower=0> tau1;
   real<lower=0> tau;
-  real<lower=0.1, upper=20> urgency;
   
-  // LagVSE-Delta
+  // Hybrid model
   real<lower=0, upper=1> gain;
   real<lower=0, upper=10> loss;
   real<lower=0, upper=1> update;
+  real betaF;
   real<lower=-10, upper=10> phi;
 
   // Transform parameters
   boundary1 = inv_logit(boundary1_pr) * 4.99 + 0.001;
   boundary  = inv_logit(boundary_pr) * 4.99 + 0.001;
-  tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 0.02) * 0.95 + RTbound;
-  urgency   = inv_logit(urgency_pr) * 19.9 + 0.1;
   
   gain = inv_logit(gain_pr);
   loss = inv_logit(loss_pr) * 10;
   update = inv_logit(update_pr);
+  betaF = betaF_pr;
   phi = -10 + inv_logit(phi_pr) * 20;
 }
 
@@ -161,39 +178,35 @@ model {
   // Priors
   boundary1_pr ~ normal(0, 1);
   boundary_pr ~ normal(0, 1);
-  tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
-  urgency_pr ~ normal(0, 1);
   
   gain_pr ~ normal(0, 1);
   loss_pr ~ normal(0, 1);
   update_pr ~ normal(0, 1);
+  betaF_pr ~ normal(0, 1);
   phi_pr ~ normal(0, 1);
 
-  // Build boundary/tau vectors for trials (vectorized)
+  // Build boundary vectors for trials (vectorized)
   vector[T] boundary_vec;
-  vector[T] tau_vec;
   
   // First block
   boundary_vec[1:block] = rep_vector(boundary1, block);
-  tau_vec[1:block]      = rep_vector(tau1, block);
   
   // Remaining trials
   if (T > block) {
     int rest_len = T - block;
     boundary_vec[(block+1):T] = rep_vector(boundary, rest_len);
-    tau_vec[(block+1):T]      = rep_vector(tau, rest_len);
   }
   
-  // Likelihood with LagVSE-Delta learning
+  // Likelihood with hybrid learning
   vector[4] ev_exploit_init = rep_vector(0.0, 4);
+  vector[4] ef_init = rep_vector(0.0, 4);
   vector[4] choice_lag_init = rep_vector(0.0, 4);
   
-  target += igt_lagvsedelta_rdm_model(
+  target += igt_hybrid_rdm_model(
       choice, wins, losses, RT,
-      ev_exploit_init, choice_lag_init, T,
-      gain, loss, update, phi,
-      boundary_vec, tau_vec,
-      urgency
+      ev_exploit_init, ef_init, choice_lag_init, T,
+      gain, loss, update, betaF, phi,
+      boundary_vec, tau
   );
 }

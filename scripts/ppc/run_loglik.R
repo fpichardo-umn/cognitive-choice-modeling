@@ -18,10 +18,8 @@ option_list = list(
   make_option(c("-c", "--cohort"), type="character", help="Cohort identifier"),
   make_option(c("-g", "--group"), type="character", default="batch_001", help="Group identifier for file naming"),
   make_option(c("--ses"), type="character", default="00", help="Session identifier"),
-  make_option(c("-s", "--sim_file"), type="character", default=NULL, 
-              help="Path to simulation file (optional - if not provided, loads data directly)"),
   make_option(c("-f", "--fit_file"), type="character", default=NULL,
-              help="Path to fit file (optional - required if sim_file not provided)"),
+              help="Path to fit file (required for LOOIC calculation)"),
   make_option(c("-e", "--exclude_file"), type="character", default=NULL, 
               help="File with subject IDs to exclude"),
   make_option(c("-o", "--output_dir"), type="character", default=NULL, 
@@ -34,21 +32,39 @@ option_list = list(
               help="RT lower bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
               help="RT upper bound in milliseconds"),
-  make_option(c("--n_samples"), type="integer", default=100,
-              help="Number of posterior samples to use for loglik calculation")
+  make_option(c("--n_samples"), type="character", default="2000",
+              help="Number of posterior samples for LOOIC (integer or 'all') [default: %default]")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
-# Set default for n_samples if NULL (optparse sometimes doesn't apply defaults)
-if (is.null(opt$n_samples)) {
-  opt$n_samples <- 100
+# Parse n_samples
+if (tolower(opt$n_samples) == "all") {
+  opt$n_samples <- NULL  # NULL = use all
+} else {
+  opt$n_samples <- as.integer(opt$n_samples)
 }
 
 # Check required arguments
 if (is.null(opt$model) || is.null(opt$task) || is.null(opt$cohort)) {
   stop("Model name, task name, and cohort are all required.")
+}
+
+# Try to find fit file if not provided
+if (is.null(opt$fit_file)) {
+  fit_dir <- get_fits_output_dir(opt$task, "fit", opt$cohort, opt$ses)
+  group_identifier <- if(opt$group == "hier") "hier" else opt$group
+  opt$fit_file <- file.path(fit_dir, 
+                           generate_bids_filename(NULL, opt$task, group_identifier, opt$model,
+                                                 ext = "rds", cohort = opt$cohort, ses = opt$ses,
+                                                 additional_tags = list("type" = "fit", "desc" = "output")))
+  
+  if (!file.exists(opt$fit_file)) {
+    stop("Fit file not found: ", opt$fit_file, ". Use --fit_file to specify path.")
+  }
+  
+  message("Auto-detected fit file: ", opt$fit_file)
 }
 
 # Import helper modules - use unified helper entry point
@@ -63,39 +79,12 @@ directory_info <- ensure_ppc_dirs(opt$task, opt$cohort, opt$ses)
 # Set output directory
 output_dir <- if(!is.null(opt$output_dir)) opt$output_dir else get_ppc_loglik_dir(opt$task, opt$cohort, opt$ses)
 
-# Determine data loading mode
-use_simulation_file <- !is.null(opt$sim_file)
-use_direct_load <- !is.null(opt$fit_file)
-
-if (!use_simulation_file && !use_direct_load) {
-  # Try to find simulation file with standard path
-  sim_file <- get_ppc_sim_file_path(opt$task, opt$model, opt$group, opt$cohort, opt$ses)
-  if (file.exists(sim_file)) {
-    message("Found simulation file, using that: ", sim_file)
-    use_simulation_file <- TRUE
-    opt$sim_file <- sim_file
-  } else {
-    # Try to find fit file with standard path
-    fit_dir <- get_fits_output_dir(opt$task, "fit", opt$cohort, opt$ses)
-    group_identifier <- if(opt$group == "hier") "hier" else opt$group
-    fit_file <- file.path(fit_dir, 
-                         generate_bids_filename(NULL, opt$task, group_identifier, opt$model,
-                                               ext = "rds", cohort = opt$cohort, ses = opt$ses,
-                                               additional_tags = list("type" = "fit", "desc" = "output")))
-    if (file.exists(fit_file)) {
-      message("Found fit file, using direct data loading: ", fit_file)
-      use_direct_load <- TRUE
-      opt$fit_file <- fit_file
-    } else {
-      stop("Neither simulation file nor fit file provided or found. Specify --sim_file or --fit_file")
-    }
-  }
+# Verify fit file exists
+if (!file.exists(opt$fit_file)) {
+  stop("Fit file not found: ", opt$fit_file)
 }
 
-if (use_simulation_file && use_direct_load) {
-  message("Both simulation file and fit file provided. Using simulation file.")
-  use_direct_load <- FALSE
-}
+message("Using fit file: ", opt$fit_file)
 
 # Load exclude list if provided
 exclude_subjects <- NULL
@@ -104,98 +93,63 @@ if (!is.null(opt$exclude_file) && file.exists(opt$exclude_file)) {
   message(paste("Excluding", length(exclude_subjects), "subjects"))
 }
 
-# Extract observed data and parameter sets
-observed_data_list <- list()
-parameter_sets_by_subject <- list()
+# Load observed data
+message("Loading observed data...")
+all_data <- load_data(opt$task, opt$cohort, opt$ses)
 
-if (use_simulation_file) {
-  # MODE A: Load from simulation file (existing behavior)
-  message("Loading observed data and parameters from simulation file...")
-  simulation_data <- load_rds_safe(opt$sim_file, "PPC simulation data")
-  if (is.null(simulation_data)) {
-    stop("Failed to load simulation data from: ", opt$sim_file)
-  }
+# Load fitted models
+message("Loading fitted models from: ", opt$fit_file)
+fits <- load_rds_safe(opt$fit_file, "fitted models")
+if (is.null(fits)) {
+  stop("Failed to load fitted models from: ", opt$fit_file)
+}
+
+# Get model info
+task_config <- get_task_config(opt$task)
+group_type <- if(opt$group == "hier") "hier" else "sing"
+full_model_name <- paste(opt$task, group_type, opt$model, sep="_")
+model_defaults <- get_model_defaults(opt$task)
+model_params <- model_defaults[[full_model_name]]$params
+
+# Extract posterior draws with validation and sampling
+message("Extracting posterior draws for LOOIC calculation...")
+parameter_sets_by_subject <- extract_posterior_draws(
+  task = opt$task,
+  fit_file = opt$fit_file,
+  model_key = full_model_name,
+  model_params = model_params,
+  n_samples = opt$n_samples,  # NULL = all, integer = specific amount
+  exclude_subjects = exclude_subjects,
+  sampling_method = "random",  # Default to random for LOOIC
+  width_control = 0.95,
+  min_required = 1000
+)
+
+# Extract observed data for each subject
+names(parameter_sets_by_subject) = fits$subject_list
+subject_ids <- names(parameter_sets_by_subject)
+message("Extracting observed data for ", length(subject_ids), " subjects...")
+
+observed_data_list <- list()
+for (subject_id in subject_ids) {
+  subject_data <- all_data[all_data$subjID == subject_id, ]
   
-  for (subject_id in names(simulation_data)) {
-    if (is.null(exclude_subjects) || !subject_id %in% exclude_subjects) {
-      subject_sim <- simulation_data[[subject_id]]
-      
-      # Get observed data
-      observed_data_list[[subject_id]] <- subject_sim$observed_data
-      
-      # Extract parameter sets from simulations
-      param_sets <- list()
-      n_param_sets <- min(opt$n_samples, length(subject_sim$simulations))
-      
-      for (i in 1:n_param_sets) {
-        param_sets[[i]] <- subject_sim$simulations[[i]]$parameters
-      }
-      
-      # Convert to data frame
-      param_df <- do.call(rbind, lapply(param_sets, as.data.frame))
-      parameter_sets_by_subject[[subject_id]] <- param_df
-    }
-  }
-  
-} else if (use_direct_load) {
-  # MODE B: Load observed data and extract parameters from fitted models (new behavior)
-  message("Loading observed data directly and extracting parameters from fitted models...")
-  
-  # Load observed data
-  message("Loading observed data...")
-  all_data <- load_data(opt$task, opt$cohort, opt$ses)
-  
-  # Load fitted models
-  message("Loading fitted models from: ", opt$fit_file)
-  fits <- load_rds_safe(opt$fit_file, "fitted models")
-  if (is.null(fits)) {
-    stop("Failed to load fitted models from: ", opt$fit_file)
-  }
-  
-  # Get model info
-  task_config <- get_task_config(opt$task)
-  group_type <- if(opt$group == "hier") "hier" else "sing"
-  full_model_name <- paste(opt$task, group_type, opt$model, sep="_")
-  model_defaults <- get_model_defaults(opt$task)
-  model_params <- model_defaults[[full_model_name]]$params
-  
-  # Extract parameter sets from posterior
-  message("Extracting posterior parameter samples...")
-  parameter_sets_by_subject <- extract_posterior_draws(
-    fit_file = opt$fit_file,
-    model_key = full_model_name,
-    model_params = model_params,
-    n_samples = opt$n_samples,
-    exclude_subjects = exclude_subjects,
-    sampling_method = "weighted",  # For loglik, random sampling is fine
-    width_control = 0.95
-  )
-  
-  # Extract observed data for each subject
-  names(parameter_sets_by_subject) = fits$subject_list
-  subject_ids <- names(parameter_sets_by_subject)
-  message("Extracting observed data for ", length(subject_ids), " subjects...")
-  
-  for (subject_id in subject_ids) {
-    subject_data <- all_data[all_data$subjID == subject_id, ]
-    
-    # Convert to list format expected by loglik functions
-    if (opt$task == "igt_mod") {
-      observed_data_list[[subject_id]] <- list(
-        choice = subject_data$choice,
-        shown = subject_data$deck,
-        deck = subject_data$deck,
-        outcome = subject_data$outcome,
-        RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
-      )
-    } else if (opt$task == "igt") {
-      observed_data_list[[subject_id]] <- list(
-        choice = subject_data$choice,
-        wins = subject_data$wins,
-        losses = subject_data$losses,
-        RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
-      )
-    }
+  # Convert to list format expected by loglik functions
+  if (opt$task == "igt_mod") {
+    observed_data_list[[subject_id]] <- list(
+      choice = subject_data$choice,
+      shown = subject_data$deck,
+      deck = subject_data$deck,
+      outcome = subject_data$outcome,
+      RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
+    )
+  } else if (opt$task == "igt") {
+    observed_data_list[[subject_id]] <- list(
+      choice = subject_data$choice,
+      wins = subject_data$wins,
+      losses = subject_data$losses,
+      RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
+    )
   }
 }
 

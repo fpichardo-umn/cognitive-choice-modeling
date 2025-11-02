@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
 # 4 accumulators (1 per deck) - first to finish wins
 # Drift rates derived from weighted combination of expected values and perseverance
 
-igtVPPDELTA2RDMB1P2Model <- R6::R6Class("igtVPPDELTA2RDMB1P2Model",
+igtVPPDELTARDMB1P2Model <- R6::R6Class("igtVPPDELTARDMB1P2Model",
                                        inherit = ModelBase,
                                        
                                        public = list(
@@ -32,7 +32,6 @@ igtVPPDELTA2RDMB1P2Model <- R6::R6Class("igtVPPDELTA2RDMB1P2Model",
                                            return(list(
                                              boundary1 = list(range = c(0.001, 5)),
                                              boundary = list(range = c(0.001, 5)),
-                                             tau1 = list(range = c(0, Inf)),
                                              tau = list(range = c(0, Inf)),
                                              update = list(range = c(0, 1)),
                                              gain = list(range = c(0, 1)),
@@ -60,7 +59,7 @@ igtVPPDELTA2RDMB1P2Model <- R6::R6Class("igtVPPDELTA2RDMB1P2Model",
                                              # Determine block-specific parameters
                                              if (t <= block_cutoff) {
                                                current_boundary <- parameters$boundary1
-                                               current_tau <- parameters$tau1
+                                               current_tau <- parameters$tau
                                              } else {
                                                current_boundary <- parameters$boundary
                                                current_tau <- parameters$tau
@@ -143,7 +142,7 @@ igtVPPDELTA2RDMB1P2Model <- R6::R6Class("igtVPPDELTA2RDMB1P2Model",
                                              # Determine block-specific parameters
                                              if (t <= block_cutoff) {
                                                current_boundary <- parameters$boundary1
-                                               current_tau <- parameters$tau1
+                                               current_tau <- parameters$tau
                                              } else {
                                                current_boundary <- parameters$boundary
                                                current_tau <- parameters$tau

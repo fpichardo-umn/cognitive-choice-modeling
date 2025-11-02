@@ -5,62 +5,6 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-#' Parameter Handler Class
-#' Handles parameter transformations and validations
-ParameterHandler <- R6Class("ParameterHandler",
-                            public = list(
-                              transform_parameter = function(value, transform = NULL) {
-                                if (is.null(transform)) return(value)
-                                
-                                switch(transform,
-                                       "logit" = {
-                                         # Logit transformation
-                                         log(value / (1 - value))
-                                       },
-                                       "log" = {
-                                         # Log transformation
-                                         log(value)
-                                       },
-                                       "exp" = {
-                                         # Exponential transformation
-                                         exp(value)
-                                       },
-                                       "identity" = {
-                                         # Identity transformation (no change)
-                                         value
-                                       },
-                                       # Default case - return untransformed value
-                                       value
-                                )
-                              },
-                              
-                              inverse_transform = function(value, transform = NULL) {
-                                if (is.null(transform)) return(value)
-                                
-                                switch(transform,
-                                       "logit" = {
-                                         # Inverse logit transformation
-                                         1 / (1 + exp(-value))
-                                       },
-                                       "log" = {
-                                         # Inverse log transformation
-                                         exp(value)
-                                       },
-                                       "exp" = {
-                                         # Inverse exponential transformation
-                                         log(value)
-                                       },
-                                       "identity" = {
-                                         # Identity transformation (no change)
-                                         value
-                                       },
-                                       # Default case - return untransformed value
-                                       value
-                                )
-                              }
-                            )
-)
-
 #' Helper function to auto-generate categories from parameter range
 #' Divides range into three equal parts: low, medium, high
 #' @param range Vector of [min, max]
@@ -104,20 +48,7 @@ ParameterGenerator <- R6Class("ParameterGenerator",
 FPSEGenerator <- R6Class("FPSEGenerator",
                          inherit = ParameterGenerator,
                          public = list(
-                           initialize = function(model) {
-                             # Get parameter info from model
-                             param_info <- model$get_parameter_info()
-                             
-                             # Convert to config format expected by existing code
-                             self$config <- list(parameters = list())
-                             
-                             for (param_name in names(param_info)) {
-                               self$config$parameters[[param_name]] <- list(
-                                 range = param_info[[param_name]]$range,
-                                 categories = auto_generate_categories(param_info[[param_name]]$range)
-                               )
-                             }
-                           },
+                           # No initialize needed; inherits from ParameterGenerator
                            
                            stratified_sampling = function(n_subjects) {
                              params <- self$config$parameters
@@ -152,20 +83,6 @@ FPSEGenerator <- R6Class("FPSEGenerator",
                          )
 )
 
-compute_medians <- function(vector_list) {
-  # Check if vector_list is already a matrix-like object
-  if (is.matrix(vector_list) || is.data.frame(vector_list)) {
-    # If it's a matrix or data frame, apply median directly
-    return(apply(vector_list, 2, function(x) median(x)))
-  } else if (is.vector(vector_list)) {
-    # If it's a flat vector, reshape it into a matrix (assuming 2 columns)
-    # Adjust ncol based on your actual number of variables (2 here is just an example)
-    vector_matrix <- matrix(vector_list, ncol = 2)
-    return(apply(vector_matrix, 2, function(x) median(x)))
-  } else {
-    stop("Unsupported structure of vector_list")
-  }
-}
 
 #' EPSE Implementation
 EPSEGenerator <- R6Class("EPSEGenerator",
@@ -177,7 +94,17 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                if (is.null(subject_index)) {
                                  stop("Subject index required for batch group fits")
                                }
-                               param_draws <- model_fit[[subject_index]]$draws
+                               # Check if subject_index is valid
+                               if (!as.character(subject_index) %in% names(model_fit)) {
+                                 stop(sprintf("Subject index '%s' not found in batch model fit.", subject_index))
+                               }
+                               param_draws <- model_fit[[as.character(subject_index)]]$draws
+                               
+                               # Check if param_name is in the draws
+                               if (!param_name %in% dimnames(param_draws)[[3]]) {
+                                 stop(sprintf("Parameter '%s' not found for subject '%s'.", param_name, subject_index))
+                               }
+                               
                                # Get the parameter samples
                                samples <- as.vector(param_draws[,, param_name])
                                return(samples)
@@ -190,6 +117,11 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                  filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
                                  filtered_params = filtered_params[grepl(paste0("\\[", subject_index,"\\]"), filtered_params)]
                                  filtered_params = filtered_params[grepl(paste0("^", param_name, "\\["), filtered_params)]
+                                 
+                                 if (length(filtered_params) == 0) {
+                                   stop(sprintf("Parameter '%s' for subject index '%s' not found.", param_name, subject_index))
+                                 }
+                                 
                                  samples <- model_fit$draws[,, filtered_params]
                                  
                                  return(apply(samples, 3, function(x) as.vector(x)))
@@ -203,41 +135,20 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                              # Sample subjects
                              if ("subjects" %in% names(model_fit)){
                                available_subjects <- model_fit$subjects
-                               
-                               selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
-                               
-                               result <- data.table(idx = selected_subjects)
-                               
-                               for (param_name in names(params)) {
-                                 values <- sapply(selected_subjects, function(subject) {
-                                   samples <- self$extract_posterior(model_fit, param_name, subject)
-                                   median(samples)
-                                 })
-                                 result[[param_name]] <- values
-                               }
                              } else {
-                               # 1. Exclude "mu" , model_fit$all_params "sigma"
-                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__|_subj", model_fit$all_params)]
-                               filtered_params = filtered_params[grepl("\\[", filtered_params)]
-                               
-                               # 2. Extract numbers from within square brackets
-                               matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
-                               
-                               max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
-                               
-                               available_subjects = seq(max_value)
-                               
-                               selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
-                               
-                               result <- data.table(idx = selected_subjects)
-                               
-                               for (param_name in names(params)) {
-                                 values <- sapply(selected_subjects, function(subject) {
-                                   samples <- self$extract_posterior(model_fit, param_name, subject)
-                                   median(samples)
-                                 })
-                                 result[[param_name]] <- values
-                               }
+                               available_subjects <- private$get_available_subjects(model_fit)
+                             }
+                             
+                             # Median-based SPS samples *without* replacement
+                             selected_subjects <- sample(available_subjects, n_subjects, replace = FALSE)
+                             result <- data.table(idx = selected_subjects)
+                             
+                             for (param_name in names(params)) {
+                               values <- sapply(selected_subjects, function(subject) {
+                                 samples <- self$extract_posterior(model_fit, param_name, subject)
+                                 median(samples)
+                               })
+                               result[[param_name]] <- values
                              }
                              
                              return(result)
@@ -248,33 +159,107 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                              
                              if ("subjects" %in% names(model_fit)){
                                available_subjects <- model_fit$subjects
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
+                               
+                               # Use unique row index to fix sampling bug
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
+                               
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 for (param_name in names(params)) {
+                                   samples <- self$extract_posterior(model_fit, param_name, subject)
+                                   value <- sample(samples, 1)
+                                   result[idx == i, (param_name) := value]
+                                 }
+                               }
+                               result[, original_subject := NULL]
+                               
                              } else {
-                               # 1. Exclude "mu" , model_fit$all_params "sigma"
-                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__", model_fit$all_params)]
-                               filtered_params = filtered_params[grepl("\\[", filtered_params)]
+                               available_subjects <- private$get_available_subjects(model_fit)
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
                                
-                               # 2. Extract numbers from within square brackets
-                               matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
+                               # Use unique row index to fix sampling bug
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
                                
-                               max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
-                               
-                               available_subjects = seq(max_value)
-                             }
-                             
-                             selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
-                             
-                             result <- data.table(idx = selected_subjects)
-                             
-                             for (param_name in names(params)) {
-                               values <- sapply(selected_subjects, function(subject) {
-                                 samples <- self$extract_posterior(model_fit, param_name, subject)
-                                 sample(samples, 1)
-                               })
-                               result[[param_name]] <- values
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 for (param_name in names(params)) {
+                                   samples <- self$extract_posterior(model_fit, param_name, subject)
+                                   value <- sample(samples, 1)
+                                   result[idx == i, (param_name) := value]
+                                 }
+                               }
+                               result[, original_subject := NULL]
                              }
                              
                              return(result)
                            },
+                           
+                           #' Iteration-Based Sampling - samples one random posterior iteration (tuple)
+                           #' This preserves parameter covariance from the posterior.
+                           iteration_based_sps = function(model_fit, n_subjects) {
+                             params <- self$config$parameters
+                             
+                             if ("subjects" %in% names(model_fit)) {
+                               # Batch group handling
+                               available_subjects <- model_fit$subjects
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
+                               
+                               # Use unique row index
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
+                               
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 subject_fit <- model_fit[[as.character(subject)]]
+                                 posterior_draws <- subject_fit$draws
+                                 n_draws <- dim(posterior_draws)[1]
+                                 
+                                 # Sample one random iteration
+                                 selected_iter <- sample(1:n_draws, 1)
+                                 
+                                 # Extract all parameters from that iteration
+                                 for (param_name in names(params)) {
+                                   if (param_name %in% dimnames(posterior_draws)[[3]]) {
+                                     samples <- as.vector(posterior_draws[,, param_name])
+                                     result[idx == i, (param_name) := samples[selected_iter]]
+                                   } else {
+                                     warning(paste("Parameter", param_name, "not found for subject", subject))
+                                   }
+                                 }
+                               }
+                               result[, original_subject := NULL]
+                               
+                             } else {
+                               # Non-batch handling
+                               available_subjects <- private$get_available_subjects(model_fit)
+                               selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
+                               
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
+                               n_draws <- dim(model_fit$draws)[1]
+                               
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 
+                                 # Sample one random iteration
+                                 selected_iter <- sample(1:n_draws, 1)
+                                 
+                                 # Extract parameters for this subject at this iteration
+                                 for (param_name in names(params)) {
+                                   filtered_param <- model_fit$all_params[grepl(paste0("^", param_name, "\\[", subject, "\\]"), model_fit$all_params)]
+                                   if (length(filtered_param) == 0) {
+                                     warning(paste("Parameter", param_name, "with subject index", subject, "not found."))
+                                     next
+                                   }
+                                   samples <- as.vector(model_fit$draws[,, filtered_param])
+                                   result[idx == i, (param_name) := samples[selected_iter]]
+                                 }
+                               }
+                               result[, original_subject := NULL]
+                             }
+                             
+                             return(result)
+                           },
+                           
                            #' Weighted Posterior Sampling - samples based on posterior density
                            weighted_posterior_sps = function(model_fit, n_subjects) {
                              params <- self$config$parameters
@@ -284,11 +269,14 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                available_subjects <- model_fit$subjects
                                selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
                                
-                               result <- data.table(idx = selected_subjects)
+                               # Use unique row index to fix sampling bug
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
                                
-                               for (subject in selected_subjects) {
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 
                                  # Get posterior draws for this subject
-                                 subject_fit <- model_fit[[subject]]
+                                 subject_fit <- model_fit[[as.character(subject)]]
                                  posterior_draws <- subject_fit$draws
                                  
                                  # Check if log posterior density is available
@@ -311,21 +299,18 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                  # Extract all parameters from that iteration
                                  for (param_name in names(params)) {
                                    samples <- as.vector(posterior_draws[,, param_name])
-                                   result[idx == subject, (param_name) := samples[selected_iter]]
+                                   result[idx == i, (param_name) := samples[selected_iter]]
                                  }
                                }
+                               result[, original_subject := NULL]
                                
                              } else {
                                # Non-batch handling
-                               filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__|_subj", model_fit$all_params)]
-                               filtered_params <- filtered_params[grepl("\\[", filtered_params)]
-                               
-                               matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
-                               max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
-                               available_subjects <- seq(max_value)
-                               
+                               available_subjects <- private$get_available_subjects(model_fit)
                                selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
-                               result <- data.table(idx = selected_subjects)
+                               
+                               # Use unique row index to fix sampling bug
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
                                
                                # Check if lp__ is available
                                if ("lp__" %in% model_fit$all_params) {
@@ -338,7 +323,9 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                  weights <- NULL
                                }
                                
-                               for (subject in selected_subjects) {
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 
                                  # Sample one iteration (weighted if possible)
                                  if (!is.null(weights)) {
                                    selected_iter <- sample(1:length(log_density), size = 1, prob = weights)
@@ -350,13 +337,11 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                  for (param_name in names(params)) {
                                    filtered_param <- model_fit$all_params[grepl(paste0("^", param_name, "\\[", subject, "\\]"), model_fit$all_params)]
                                    samples <- as.vector(model_fit$draws[,, filtered_param])
-                                   result[idx == subject, (param_name) := samples[selected_iter]]
+                                   result[idx == i, (param_name) := samples[selected_iter]]
                                  }
                                }
+                               result[, original_subject := NULL]
                              }
-                             
-                             # Reset idx
-                             result$idx = seq(length(result$idx))
                              
                              return(result)
                            },
@@ -369,9 +354,12 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                available_subjects <- model_fit$subjects
                                selected_subjects <- sample(available_subjects, n_subjects, replace = TRUE)
                                
-                               result <- data.table(idx = selected_subjects)
+                               # Use unique row index to fix sampling bug
+                               result <- data.table(idx = 1:n_subjects, original_subject = selected_subjects)
                                
-                               for (subject in selected_subjects) {
+                               for (i in 1:n_subjects) {
+                                 subject <- result$original_subject[i]
+                                 
                                  # For THIS subject, find high-prob iterations
                                  subject_params <- list()
                                  for (param_name in names(params)) {
@@ -390,7 +378,9 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                  
                                  good_iterations <- which(high_prob)
                                  if (length(good_iterations) == 0) {
-                                   stop(sprintf("No high-probability iterations found for subject %s", subject))
+                                   # Fallback: use median iteration if no "good" ones found
+                                   warning(sprintf("No high-probability iterations found for subject %s. Using random iteration.", subject))
+                                   good_iterations <- 1:n_iterations
                                  }
                                  
                                  # Sample one good iteration
@@ -398,14 +388,20 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                                  
                                  # Extract all parameters from that iteration
                                  for (param_name in names(params)) {
-                                   result[idx == subject, (param_name) := subject_params[[param_name]][selected_iter]]
+                                   result[idx == i, (param_name) := subject_params[[param_name]][selected_iter]]
                                  }
                                }
+                               result[, original_subject := NULL]
                                
                              } else {
-                               # Non-batch handling (your original code works here)
+                               # Non-batch handling (samples iterations, not subjects, so no bug)
                                iterations <- self$find_high_prob_iterations(model_fit, names(params), min_percentile)
-                               selected_iterations <- sample(iterations, n_subjects, replace = FALSE)
+                               if(length(iterations) < n_subjects) {
+                                 warning("Fewer high-prob iterations than n_subjects. Sampling with replacement.")
+                                 selected_iterations <- sample(iterations, n_subjects, replace = TRUE)
+                               } else {
+                                 selected_iterations <- sample(iterations, n_subjects, replace = FALSE)
+                               }
                                
                                result <- data.table(idx = selected_iterations)
                                
@@ -462,6 +458,27 @@ EPSEGenerator <- R6Class("EPSEGenerator",
                              
                              return(which(high_prob))
                            }
+                         ),
+                         
+                         private = list(
+                           # Helper to get subject list from non-batch fits
+                           get_available_subjects = function(model_fit) {
+                             filtered_params <- model_fit$all_params[!grepl("mu|sigma|pr|lp__|_subj", model_fit$all_params)]
+                             filtered_params <- filtered_params[grepl("\\[", filtered_params)]
+                             
+                             if (length(filtered_params) == 0) {
+                               stop("Could not find any subject-level parameters (e.g., 'param[1]') in model_fit$all_params.")
+                             }
+                             
+                             matches <- unlist(regmatches(filtered_params, gregexpr("\\[([0-9]+)\\]", filtered_params)))
+                             
+                             if (length(matches) == 0) {
+                               stop("Found subject-level parameters, but could not parse indices (e.g., '[1]').")
+                             }
+                             
+                             max_value <- max(as.integer(unlist(regmatches(matches, gregexpr("[0-9]+", matches)))))
+                             return(seq(max_value))
+                           }
                          )
 )
 
@@ -473,13 +490,15 @@ EPSEGenerator <- R6Class("EPSEGenerator",
 #' @return Data table of generated parameters
 generate_parameters <- function(
     model,
-    method = c("ssFPSE", "mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE"),
+    method = c("ssFPSE", "mbSPSepse", "sbSPSepse", "ibSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE"),
     model_fit = NULL,
     n_subjects = 100
 ) {
   
+  method <- match.arg(method)
+  
   # Check if method requires model_fit
-  epse_methods <- c("mbSPSepse", "sbSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE")
+  epse_methods <- c("mbSPSepse", "sbSPSepse", "ibSPSepse", "tSPSepse", "wpSPSepse", "hpsEPSE")
   if (method %in% epse_methods && is.null(model_fit)) {
     stop(sprintf("Method %s requires model_fit object", method))
   }
@@ -493,6 +512,7 @@ generate_parameters <- function(
     params <- switch(method,
                      "mbSPSepse" = generator$median_based_sps(model_fit, n_subjects),
                      "sbSPSepse" = generator$simulation_based_sps(model_fit, n_subjects),
+                     "ibSPSepse" = generator$iteration_based_sps(model_fit, n_subjects),
                      "tSPSepse" = generator$tuple_based_sps(model_fit, n_subjects),
                      "wpSPSepse" = generator$weighted_posterior_sps(model_fit, n_subjects),
                      "hpsEPSE" = generator$hierarchical_posterior_sim(model_fit, n_subjects)

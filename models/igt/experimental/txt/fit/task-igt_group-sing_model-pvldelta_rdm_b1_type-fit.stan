@@ -151,7 +151,7 @@ model {
   loss_pr ~ normal(0, 1);
   update_pr ~ normal(0, 1);
 
-  // Build boundary/tau vectors for trials (vectorized)
+  // Build boundary vectors for trials (vectorized)
   vector[T] boundary_vec;
   
   // First block

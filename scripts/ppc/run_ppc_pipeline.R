@@ -154,48 +154,33 @@ if (!is.null(opt$exclude_file)) {
   run_stats_args <- paste0(run_stats_args, " --exclude_file \"", opt$exclude_file, "\"")
 }
 
-# Build loglik args - use sim_file if it exists, otherwise use fit_file
-if (file.exists(sim_file)) {
-  run_loglik_args <- paste0(
-    " --model ", opt$model,
-    " --task ", opt$task,
-    " --cohort ", opt$cohort,
-    " --group ", group_for_output_files,
-    " --sim_file \"", sim_file, "\"",
-    " --ic_method ", opt$ic_method,
-    " --rt_method ", opt$rt_method,
-    " --RTbound_min_ms ", opt$RTbound_min_ms,
-    " --RTbound_max_ms ", opt$RTbound_max_ms
-  )
-  message("Log-likelihood will use simulation file (if running)")
+# Build loglik args - ALWAYS use fit_file (LOOIC should use all posterior draws)
+# Determine fit file path
+if (!is.null(opt$fit_file)) {
+  fit_file_to_use <- opt$fit_file
 } else {
-  # Use fit_file for direct data loading
-  if (!is.null(opt$fit_file)) {
-    fit_file_to_use <- opt$fit_file
-  } else {
-    # Construct fit file path
-    fit_dir <- get_fits_output_dir(opt$task, "fit", opt$cohort, opt$ses)
-    group_identifier <- if(opt$group == "hier") "hier" else opt$group_name
-    fit_file_to_use <- file.path(fit_dir, 
-                                 generate_bids_filename(NULL, opt$task, group_identifier, opt$model,
-                                                       ext = "rds", cohort = opt$cohort, ses = opt$ses,
-                                                       additional_tags = list("type" = "fit", "desc" = "output")))
-  }
-  
-  run_loglik_args <- paste0(
-    " --model ", opt$model,
-    " --task ", opt$task,
-    " --cohort ", opt$cohort,
-    " --group ", group_for_output_files,
-    " --fit_file \"", fit_file_to_use, "\"",
-    " --ic_method ", opt$ic_method,
-    " --rt_method ", opt$rt_method,
-    " --RTbound_min_ms ", opt$RTbound_min_ms,
-    " --RTbound_max_ms ", opt$RTbound_max_ms,
-    " --n_samples ", opt$n_sims
-  )
-  message("Log-likelihood will use fit file directly (no simulation needed)")
+  # Construct fit file path
+  fit_dir <- get_fits_output_dir(opt$task, "fit", opt$cohort, opt$ses)
+  group_identifier <- if(opt$group == "hier") "hier" else opt$group_name
+  fit_file_to_use <- file.path(fit_dir, 
+                               generate_bids_filename(NULL, opt$task, group_identifier, opt$model,
+                                                     ext = "rds", cohort = opt$cohort, ses = opt$ses,
+                                                     additional_tags = list("type" = "fit", "desc" = "output")))
 }
+
+# LOOIC args - NO n_samples parameter (always uses all posterior draws)
+run_loglik_args <- paste0(
+  " --model ", opt$model,
+  " --task ", opt$task,
+  " --cohort ", opt$cohort,
+  " --group ", group_for_output_files,
+  " --fit_file \"", fit_file_to_use, "\"",
+  " --ic_method ", opt$ic_method,
+  " --rt_method ", opt$rt_method,
+  " --RTbound_min_ms ", opt$RTbound_min_ms,
+  " --RTbound_max_ms ", opt$RTbound_max_ms
+)
+message("Log-likelihood will use ALL posterior draws from fit file")
 
 # Add exclude_file to loglik args if provided
 if (!is.null(opt$exclude_file)) {

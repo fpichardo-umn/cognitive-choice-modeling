@@ -4,13 +4,13 @@ suppressPackageStartupMessages({
   library(statmod)
 })
 
-# Individual PVLdecay-RDM Model for the Iowa Gambling Task
-# Racing Diffusion Model with PVL-Decay learning (Prospect Theory with Decay)
+# Individual VPPdecay-RDM Model for the Iowa Gambling Task
+# Racing Diffusion Model with VPP-Decay learning
+# Value-Perseverance-Prospect model with decay-rule learning
 # 4 accumulators (1 per deck) - first to finish wins
-# Drift rates derived from learned expected values with prospect theory utility
-# Learning uses decay rule instead of delta rule
+# Drift rates derived from weighted combination of expected values and perseverance
 
-igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
+igtVPPDECAYRDMB1P2Model <- R6::R6Class("igtVPPDECAYRDMB1P2Model",
                                        inherit = ModelBase,
                                        
                                        public = list(
@@ -32,12 +32,14 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                            return(list(
                                              boundary1 = list(range = c(0.001, 5)),
                                              boundary = list(range = c(0.001, 5)),
-                                             tau1 = list(range = c(0, Inf)),
                                              tau = list(range = c(0, Inf)),
-                                             urgency = list(range = c(0.001, 20)),
-                                             gain = list(range = c(0, 2)),
+                                             decay = list(range = c(0, 1)),
+                                             gain = list(range = c(0, 1)),
                                              loss = list(range = c(0, 10)),
-                                             decay = list(range = c(0, 1))
+                                             epP = list(range = c(-5, 5)),
+                                             epN = list(range = c(-5, 5)),
+                                             K = list(range = c(0, 1)),
+                                             w = list(range = c(0, 1))
                                            ))
                                          },
                                          
@@ -48,22 +50,26 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                            wins <- numeric(n_trials)
                                            losses <- numeric(n_trials)
                                            
-                                           # Initialize Expected Values (EV) for the four decks
-                                           ev <- c(0, 0, 0, 0)
+                                           # Initialize VPP components
+                                           ev <- c(0, 0, 0, 0)    # Expected values
+                                           pers <- c(0, 0, 0, 0)  # Perseverance values
                                            block_cutoff <- 20
                                            
                                            for (t in 1:n_trials) {
                                              # Determine block-specific parameters
                                              if (t <= block_cutoff) {
                                                current_boundary <- parameters$boundary1
-                                               current_tau <- parameters$tau1
+                                               current_tau <- parameters$tau
                                              } else {
                                                current_boundary <- parameters$boundary
                                                current_tau <- parameters$tau
                                              }
                                              
-                                             # Transform EV to positive drift rates using softplus
-                                             drift_rates <- parameters$urgency + log1p(exp(ev))
+                                             # Combine EV and perseverance using weight w
+                                             combined_values <- parameters$w * ev + (1 - parameters$w) * pers
+                                             
+                                             # Transform combined values to positive drift rates using softplus
+                                             drift_rates <- log1p(exp(combined_values))
                                              
                                              # Ensure all drift rates are positive
                                              drift_rates <- pmax(drift_rates, 0.001)
@@ -88,13 +94,25 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                              wins[t] <- current_win
                                              losses[t] <- current_loss
                                              
-                                             # Compute utility using prospect theory
-                                             win_component <- if (current_win == 0) 0 else exp(parameters$gain * log(current_win))
-                                             loss_component <- if (current_loss == 0) 0 else exp(parameters$gain * log(current_loss))
-                                             utility <- win_component - parameters$loss * loss_component
+                                             # Update VPP components
+                                             # 1. Decay perseverance for all decks
+                                             pers <- pers * parameters$K
                                              
-                                             # PVLdecay update: first decay all EVs, then add utility to chosen deck
+                                             # 2. Calculate utility using prospect valuation
+                                             win_comp <- ifelse(current_win > 0, exp(parameters$gain * log(current_win)), 0)
+                                             loss_comp <- ifelse(current_loss > 0, exp(parameters$gain * log(current_loss)), 0)
+                                             utility <- win_comp - parameters$loss * loss_comp
+                                             
+                                             # 3. Update perseverance based on outcome sign
+                                             if (current_win >= current_loss) {
+                                               pers[winning_choice] <- pers[winning_choice] + parameters$epP
+                                             } else {
+                                               pers[winning_choice] <- pers[winning_choice] + parameters$epN
+                                             }
+                                             
+                                             # 4. Decay expected values for all decks
                                              ev <- ev * (1 - parameters$decay)
+                                             # 5. Add utility to chosen deck
                                              ev[winning_choice] <- ev[winning_choice] + utility
                                            }
                                            
@@ -114,8 +132,9 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                            RTbound_max <- task_params$RTbound_max
                                            block_cutoff <- 20
                                            
-                                           # Initialize Expected Values
+                                           # Initialize VPP components
                                            ev <- c(0, 0, 0, 0)
+                                           pers <- c(0, 0, 0, 0)
                                            
                                            for (t in 1:n_trials) {
                                              choice <- choices[t]
@@ -124,7 +143,7 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                              # Determine block-specific parameters
                                              if (t <= block_cutoff) {
                                                current_boundary <- parameters$boundary1
-                                               current_tau <- parameters$tau1
+                                               current_tau <- parameters$tau
                                              } else {
                                                current_boundary <- parameters$boundary
                                                current_tau <- parameters$tau
@@ -136,8 +155,11 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                                  trial_loglik[t] <- -Inf
                                                } else {
                                                  
-                                                 # Transform EV to positive drift rates using softplus
-                                                 drift_rates <- parameters$urgency + log1p(exp(ev))
+                                                 # Combine EV and perseverance using weight w
+                                                 combined_values <- parameters$w * ev + (1 - parameters$w) * pers
+                                                 
+                                                 # Transform combined values to positive drift rates using softplus
+                                                 drift_rates <- log1p(exp(combined_values))
                                                  
                                                  # Ensure all drift rates are positive
                                                  drift_rates <- pmax(drift_rates, 0.001)
@@ -167,17 +189,28 @@ igtPVLDECAYRDMB1P2Model <- R6::R6Class("igtPVLDECAYRDMB1P2Model",
                                                trial_loglik[t] <- 0  # Ignore trials outside RT bounds or missing
                                              }
                                              
-                                             # Update EV for the chosen deck for the next trial
+                                             # Update VPP components for the next trial
                                              current_win <- wins[t]
                                              current_loss <- abs(losses[t])
                                              
-                                             # Compute utility using prospect theory
-                                             win_component <- if (current_win == 0) 0 else exp(parameters$gain * log(current_win))
-                                             loss_component <- if (current_loss == 0) 0 else exp(parameters$gain * log(current_loss))
-                                             utility <- win_component - parameters$loss * loss_component
+                                             # 1. Decay perseverance for all decks
+                                             pers <- pers * parameters$K
                                              
-                                             # PVLdecay update: first decay all EVs, then add utility to chosen deck
+                                             # 2. Calculate utility using prospect valuation
+                                             win_comp <- ifelse(current_win > 0, exp(parameters$gain * log(current_win)), 0)
+                                             loss_comp <- ifelse(current_loss > 0, exp(parameters$gain * log(current_loss)), 0)
+                                             utility <- win_comp - parameters$loss * loss_comp
+                                             
+                                             # 3. Update perseverance based on outcome sign
+                                             if (current_win >= current_loss) {
+                                               pers[choice] <- pers[choice] + parameters$epP
+                                             } else {
+                                               pers[choice] <- pers[choice] + parameters$epN
+                                             }
+                                             
+                                             # 4. Decay expected values for all decks
                                              ev <- ev * (1 - parameters$decay)
+                                             # 5. Add utility to chosen deck
                                              ev[choice] <- ev[choice] + utility
                                            }
                                            
