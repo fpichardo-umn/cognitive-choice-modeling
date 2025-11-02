@@ -12,7 +12,7 @@ ensure_ppc_dirs <- function(task, cohort, session = NULL, status = "working") {
   base_ppc_dir <- get_validation_output_dir(task, "ppc")
   
   # Cohort directory
-  cohort_dir <- file.path(base_ppc_dir, paste0("cohort-", cohort))
+  cohort_dir <- file.path(base_ppc_dir, cohort)
   
   # Session directory if specified
   if (!is.null(session)) {
