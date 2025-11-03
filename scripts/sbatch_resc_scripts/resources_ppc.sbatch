@@ -7,8 +7,6 @@
 #SBATCH --tmp=32gb
 #SBATCH -t 24:00:00
 #SBATCH --mail-type=ALL
-#SBATCH -o log_files/ppc/%x_%j.out
-#SBATCH -e log_files/ppc/%x_%j.err
 
 # Load necessary modules
 module load R/4.2.0-rocky8
@@ -56,59 +54,50 @@ CONFIG_DIR="${PROJ_DIR}/scripts/configs"
 FIT_CONFIG_FILE="${CONFIG_DIR}/fit_params_${FIT_CONFIG}.conf"
 DATA_CONFIG_FILE="${CONFIG_DIR}/data_params_${DATA_CONFIG}.conf"
 
-# Create a log file for this pipeline run
-LOG_FILE="log_files/ppc/ppc_${SLURM_JOB_ID}_processing.log"
-mkdir -p $(dirname "$LOG_FILE")
-
-# Function to log messages with timestamps
-log_message() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
 # Log start of processing
-log_message "Starting PPC job ${SLURM_JOB_ID}"
-log_message "Task: $TASK"
-log_message "Model: $MODEL_NAME" 
-log_message "Cohort: $COHORT"
-log_message "Group name: $GROUP_NAME"
-log_message "Group type: $GROUP"
-log_message "Session: $SESSION"
-log_message "Working directory: $(pwd)"
+echo "Starting PPC job ${SLURM_JOB_ID}"
+echo "Task: $TASK"
+echo "Model: $MODEL_NAME" 
+echo "Cohort: $COHORT"
+echo "Group name: $GROUP_NAME"
+echo "Group type: $GROUP"
+echo "Session: $SESSION"
+echo "Working directory: $(pwd)"
 
 # Source config files and log
 if [ -f "$FIT_CONFIG_FILE" ]; then
   source "$FIT_CONFIG_FILE"
-  log_message "Loaded fit config: $FIT_CONFIG_FILE"
+  echo "Loaded fit config: $FIT_CONFIG_FILE"
 else
-  log_message "Warning: Fit config file not found: $FIT_CONFIG_FILE"
+  echo "Warning: Fit config file not found: $FIT_CONFIG_FILE"
 fi
 
 if [ -f "$DATA_CONFIG_FILE" ]; then
   source "$DATA_CONFIG_FILE"
-  log_message "Loaded data config: $DATA_CONFIG_FILE"
-  log_message "RT method from config: $rt_method"
-  log_message "RT bounds from config: ${RTbound_min_ms}ms - ${RTbound_max_ms}ms"
+  echo "Loaded data config: $DATA_CONFIG_FILE"
+  echo "RT method from config: $rt_method"
+  echo "RT bounds from config: ${RTbound_min_ms}ms - ${RTbound_max_ms}ms"
 else
-  log_message "Warning: Data config file not found: $DATA_CONFIG_FILE"
+  echo "Warning: Data config file not found: $DATA_CONFIG_FILE"
   # Set defaults if config not found
   rt_method="remove"
   RTbound_min_ms=50
   RTbound_max_ms=4000
-  log_message "Using default RT parameters"
+  echo "Using default RT parameters"
 fi
 
 # Log PPC parameters
-log_message "PPC parameters:"
-log_message "  Number of simulations: $N_SIMS"
-log_message "  Block size: $BLOCK_SIZE"
-log_message "  Sampling method: $SAMPLING"
-log_message "  Width control: $WIDTH_CONTROL"
-log_message "  IC method: $IC_METHOD"
-log_message "  Steps to run: $STEPS"
+echo "PPC parameters:"
+echo "  Number of simulations: $N_SIMS"
+echo "  Block size: $BLOCK_SIZE"
+echo "  Sampling method: $SAMPLING"
+echo "  Width control: $WIDTH_CONTROL"
+echo "  IC method: $IC_METHOD"
+echo "  Steps to run: $STEPS"
 
 # Build command arguments for run_ppc_pipeline.R
 # Use config-sourced RT parameters
-log_message "Running PPC pipeline with config-sourced parameters"
+echo "Running PPC pipeline with config-sourced parameters"
 
 # Set up the optional argument string
 EXCLUDE_ARG=""
@@ -143,12 +132,12 @@ Rscript scripts/ppc/run_ppc_pipeline.R \
 # Check exit status
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
-  log_message "PPC pipeline completed successfully"
+  echo "PPC pipeline completed successfully"
 else
-  log_message "PPC pipeline failed with exit code: $EXIT_CODE"
+  echo "PPC pipeline failed with exit code: $EXIT_CODE"
 fi
 
-log_message "PPC job ${SLURM_JOB_ID} finished"
+echo "PPC job ${SLURM_JOB_ID} finished"
 
 # Exit with the same code as the pipeline
 exit $EXIT_CODE

@@ -221,11 +221,14 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
     switch(param,
            "N" = if (is_group) data_list$N <- as.integer(length(unique(data$subjID))),
            "T" = {
-             data_list$T <- max(table(data$subjID))
-             if (is_group) data_list$Tsubj <- as.integer(data %>%
-                                                           dplyr::group_by(subjID) %>%
-                                                           count() %>%
-                                                           pull(n))
+             # T should be the ACTUAL max trial number across all subjects
+             data_list$T <- as.integer(max(data$trial))
+             if (is_group) {
+               data_list$Tsubj <- as.integer(data %>%
+                                               dplyr::group_by(subjID) %>%
+                                               dplyr::summarise(max_trial = max(trial)) %>%
+                                               pull(max_trial))
+             }
            },
            "RT" = {
              # Error if RT is requested but not available
@@ -440,14 +443,24 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
   return(data_list)
 }
 
-# Helper function to create a matrix from a data frame
-create_matrix <- function(df, value_var, n_trials) {
-  df %>%
+# Helper function to create a matrix from a data frame with variable trial counts
+create_matrix <- function(df, value_var, n_trials = NULL) {
+  # Determine the actual max trials in the data
+  max_trials_actual <- max(df$trial)
+  
+  # Create the matrix with proper dimensions
+  result <- df %>%
     select(subjID, trial, !!sym(value_var)) %>%
-    pivot_wider(names_from = trial, values_from = !!sym(value_var), names_prefix = "trial_") %>%
-    select(-subjID) %>%
-    as.matrix() %>%
-    unname()
+    pivot_wider(names_from = trial, values_from = !!sym(value_var), 
+                names_prefix = "trial_") %>%
+    select(-subjID)
+  
+  # If some subjects have fewer trials, pivot_wider creates NAs
+  # We need to fill those with appropriate values (0 for Stan compatibility)
+  result <- as.matrix(result)
+  result[is.na(result)] <- 0
+  
+  return(unname(result))
 }
 
 #' Calculate data quality metrics per subject

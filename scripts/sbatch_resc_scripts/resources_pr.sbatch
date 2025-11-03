@@ -7,8 +7,6 @@
 #SBATCH --tmp=64gb
 #SBATCH -t 96:00:00
 #SBATCH --mail-type=ALL
-#SBATCH -o log_files/pipeline/%x_%j.out
-#SBATCH -e log_files/pipeline/%x_%j.err
 
 # Load necessary modules
 module load R/4.2.0-rocky8
@@ -55,38 +53,29 @@ FIT_CONFIG_FILE="${CONFIG_DIR}/fit_params_${FIT_CONFIG}.conf"
 DATA_CONFIG_FILE="${CONFIG_DIR}/data_params_${DATA_CONFIG}.conf"
 
 source "$FIT_CONFIG_FILE"
-log_message "Loaded fit config: $FIT_CONFIG_FILE"
+echo "Loaded fit config: $FIT_CONFIG_FILE"
 
 source "$DATA_CONFIG_FILE"
-log_message "Loaded data config: $DATA_CONFIG_FILE"
+echo "Loaded data config: $DATA_CONFIG_FILE"
 
 # Source helper bash script for directory functions
 source "${SCRIPT_DIR}/helpers/dir_helpers.sh"
 
-# Create a log file for this pipeline run
-LOG_FILE="log_files/pipeline/pipeline_${SLURM_JOB_ID}_processing.log"
-mkdir -p $(dirname "$LOG_FILE")
-
-# Function to log messages with timestamps
-log_message() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
 # Log start of processing
-log_message "Starting pipeline job ${SLURM_JOB_ID}"
-log_message "Task: $TASK"
-log_message "Model: $MODEL" 
-log_message "Source: $SOURCE"
-log_message "Group type: $GROUP_TYPE"
-log_message "Components: $COMPONENTS"
-log_message "Session: $SESSION"
-log_message "Number of sim subjects: $N_SUBJECTS_FIT"
-log_message "Number of PR subjects: $N_SUBJECTS_PR"
-log_message "Number of trials: $N_TRIALS"
-log_message "MCMC iterations: $n_iter"
-log_message "Checkpoint interval: $check_iter"
-log_message "No individual fitting: $NO_INDIV"
-log_message "Working directory: $(pwd)"
+echo "Starting pipeline job ${SLURM_JOB_ID}"
+echo "Task: $TASK"
+echo "Model: $MODEL" 
+echo "Source: $SOURCE"
+echo "Group type: $GROUP_TYPE"
+echo "Components: $COMPONENTS"
+echo "Session: $SESSION"
+echo "Number of sim subjects: $N_SUBJECTS_FIT"
+echo "Number of PR subjects: $N_SUBJECTS_PR"
+echo "Number of trials: $N_TRIALS"
+echo "MCMC iterations: $n_iter"
+echo "Checkpoint interval: $check_iter"
+echo "No individual fitting: $NO_INDIV"
+echo "Working directory: $(pwd)"
 
 # Build command arguments for run_full_PR.sh
 CMD_ARGS=("-k" "$TASK" "-m" "$MODEL" "-s" "$SOURCE" "-g" "$GROUP_TYPE")
@@ -118,10 +107,10 @@ fi
 CMD_ARGS+=("$COMPONENTS")
 
 # Log the full command
-log_message "Executing: ${SCRIPT_DIR}/parameter_recovery/run_full_PR.sh ${CMD_ARGS[*]}"
+echo "Executing: ${SCRIPT_DIR}/parameter_recovery/run_full_PR.sh ${CMD_ARGS[*]}"
 
 # Run the pipeline
-log_message "Pipeline execution started"
+echo "Pipeline execution started"
 
 # Execute the pipeline script
 ${SCRIPT_DIR}/parameter_recovery/run_full_PR.sh "${CMD_ARGS[@]}"
@@ -129,12 +118,12 @@ ${SCRIPT_DIR}/parameter_recovery/run_full_PR.sh "${CMD_ARGS[@]}"
 # Check exit status
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
-  log_message "Pipeline completed successfully"
+  echo "Pipeline completed successfully"
 else
-  log_message "Pipeline failed with exit code: $EXIT_CODE"
+  echo "Pipeline failed with exit code: $EXIT_CODE"
 fi
 
-log_message "Pipeline job ${SLURM_JOB_ID} finished"
+echo "Pipeline job ${SLURM_JOB_ID} finished"
 
 # Exit with the same code as the pipeline
 exit $EXIT_CODE
