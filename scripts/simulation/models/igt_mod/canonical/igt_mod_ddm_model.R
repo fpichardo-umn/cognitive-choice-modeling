@@ -104,17 +104,10 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                  }
                                }
                                
-                               # Format outcomes as task expects
-                               formatted_outcomes <- data.table(
-                                 gain = pmax(0, outcomes),
-                                 loss = pmin(0, outcomes),
-                                 net_outcome = outcomes
-                               )
-                               
                                return(list(
                                  choices = choices,
                                  RTs = RTs,
-                                 outcomes = formatted_outcomes
+                                 outcomes = outcomes
                                ))
                              },
                              calculate_loglik = function(data, parameters, task_params) {

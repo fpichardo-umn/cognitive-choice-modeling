@@ -4,7 +4,7 @@ functions {
   real igt_subject(
       array[] int choice, array[] int shown, array[] real outcome,
       vector ev, int Tsub, real sensitivity,
-      real gain, real loss, real retend
+      real gain, real loss, real decay
       ) {
     real log_lik = 0.0;
     real curUtil;
@@ -24,7 +24,7 @@ functions {
   curUtil = 0;
 }
 
-      local_ev *= retend;
+      local_ev *= (1 - decay);
       local_ev[curDeck] += curUtil * choice[t];
     }
     
@@ -37,7 +37,7 @@ functions {
                         array[,] int choice, array[,] int shown, array[,] real outcome,
                         array[] int Tsubj,
                         array[] real con, array[] real gain,
-                        array[] real loss, array[] real retend) {
+                        array[] real loss, array[] real decay) {
     real log_lik = 0.0;
     
     for (n in start:end) {
@@ -46,7 +46,7 @@ functions {
       
       log_lik += igt_subject(choice[n, 1:Tsubj[n]], shown[n, 1:Tsubj[n]], 
                              outcome[n, 1:Tsubj[n]], ev, Tsubj[n], sensitivity,
-                             gain[n], loss[n], retend[n]);
+                             gain[n], loss[n], decay[n]);
     }
     return log_lik;
   }
@@ -75,19 +75,19 @@ parameters {
   array[N] real con_pr;
   array[N] real gain_pr;
   array[N] real loss_pr;
-  array[N] real retend_pr;
+  array[N] real decay_pr;
 }
 
 transformed parameters {
   array[N] real<lower=0, upper=5> con;
   array[N] real<lower=0, upper=2> gain;
   array[N] real<lower=0, upper=10> loss;
-  array[N] real<lower=0, upper=1> retend;
+  array[N] real<lower=0, upper=1> decay;
 
   con    = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 5);
   gain   = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(gain_pr)) * 2);
   loss   = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(loss_pr)) * 10);
-  retend = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(retend_pr)));
+  decay = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(decay_pr)));
 }
 
 model {
@@ -97,22 +97,22 @@ model {
   con_pr    ~ normal(0, 1);
   gain_pr   ~ normal(0, 1);
   loss_pr   ~ normal(0, 1);
-  retend_pr ~ normal(0, 1);
+  decay_pr ~ normal(0, 1);
 
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum_func, subject_indices, grainsize,
                        choice, shown, outcome, Tsubj,
-                       con, gain, loss, retend);
+                       con, gain, loss, decay);
 }
 
 generated quantities {
   real<lower=0, upper=5> mu_con;
   real<lower=0, upper=2> mu_gain;
   real<lower=0, upper=10> mu_loss;
-  real<lower=0, upper=1> mu_retend;
+  real<lower=0, upper=1> mu_decay;
   
   mu_con    = inv_logit(mu_pr[1]) * 5;
   mu_gain   = inv_logit(mu_pr[2]) * 2;
   mu_loss   = inv_logit(mu_pr[3]) * 10;
-  mu_retend = inv_logit(mu_pr[4]);
+  mu_decay  = inv_logit(mu_pr[4]);
 }

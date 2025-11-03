@@ -177,17 +177,10 @@ igt_modORL_DDM_B1P2Model <- R6::R6Class("igt_modORL_DDM_B1P2Model",
         }
       }
       
-      # Format outcomes as task expects
-      formatted_outcomes <- data.table(
-        gain = pmax(0, outcomes),
-        loss = pmin(0, outcomes),
-        net_outcome = outcomes
-      )
-      
       return(list(
         choices = choices,
         RTs = RTs,
-        outcomes = formatted_outcomes,
+        outcomes = outcomes,
         ev_history = ev_history,
         ef_history = ef_history,
         drift_history = drift_history

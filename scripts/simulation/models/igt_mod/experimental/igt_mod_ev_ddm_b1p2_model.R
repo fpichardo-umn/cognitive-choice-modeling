@@ -4,7 +4,7 @@ suppressPackageStartupMessages({
   library(rtdists)
 })
 
-igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMB1P2Model",
+igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                  inherit = ModelBase,
                                  
                                  public = list(
@@ -139,17 +139,10 @@ igt_modEVDDMModel <- R6::R6Class("igt_modEVDDMB1P2Model",
                                        }
                                      }
                                      
-                                     # Format outcomes as task expects
-                                     formatted_outcomes <- data.table(
-                                       gain = pmax(0, outcomes),
-                                       loss = pmin(0, outcomes),
-                                       net_outcome = outcomes
-                                     )
-                                     
                                      return(list(
                                        choices = choices,
                                        RTs = RTs,
-                                       outcomes = formatted_outcomes,
+                                       outcomes = outcomes,
                                        ev_history = ev_history
                                      ))
                                    },

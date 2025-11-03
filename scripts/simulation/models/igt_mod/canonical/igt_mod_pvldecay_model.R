@@ -76,16 +76,9 @@ igt_modPVLDECAYModel <- R6::R6Class("igt_modPVLDECAYModel",
                                           }
                                         }
                                         
-                                        # Format outcomes as task expects
-                                        formatted_outcomes <- data.table(
-                                          gain = pmax(0, outcomes),
-                                          loss = pmin(0, outcomes),
-                                          net_outcome = outcomes
-                                        )
-                                        
                                         return(list(
                                           choices = choices,
-                                          outcomes = formatted_outcomes,
+                                          outcomes = outcomes,
                                           ev_history = ev_history
                                         ))
                                       },

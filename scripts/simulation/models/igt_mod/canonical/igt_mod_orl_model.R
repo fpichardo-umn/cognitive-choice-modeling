@@ -90,7 +90,7 @@ igt_modORLModel <- R6::R6Class("igt_modORLModel",
           PEfreq_fic <- rep(-sign_outcome / 3.0, 4) - self$ef
           
           # Store pre-update ef for correction
-          efChosen = ef[shown_deck];
+          efChosen = self$ef[shown_deck];
           
           # Update EV and EF based on valence (gain vs loss)
           if (outcome >= 0) {

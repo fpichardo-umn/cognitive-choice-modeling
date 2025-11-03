@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 # IGT_MOD DDM Model with Block-Specific Parameters
 # Different boundary separation and non-decision time for Block 1 (trials 1-20) vs later blocks
 
-igt_modDDM_B1P2Model <- R6::R6Class("igt_modDDM_B1P2Model",
+igt_modDDMB1P2Model <- R6::R6Class("igt_modDDMB1P2Model",
   inherit = ModelBase,
   
   public = list(
@@ -125,17 +125,10 @@ igt_modDDM_B1P2Model <- R6::R6Class("igt_modDDM_B1P2Model",
         }
       }
       
-      # Format outcomes as task expects
-      formatted_outcomes <- data.table(
-        gain = pmax(0, outcomes),
-        loss = pmin(0, outcomes),
-        net_outcome = outcomes
-      )
-      
       return(list(
         choices = choices,
         RTs = RTs,
-        outcomes = formatted_outcomes
+        outcomes = outcomes
       ))
     },
     
