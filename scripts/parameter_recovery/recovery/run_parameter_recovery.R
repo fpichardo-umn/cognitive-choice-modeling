@@ -495,3 +495,6 @@ tryCatch({
 message("\nParameter recovery data extraction complete.")
 message("- Combined fit file saved to: ", combined_fit_file)
 message("- Recovery data CSV saved to: ", recovery_csv_file)
+
+# Explicitly exit with success status
+quit(status = 0, save = "no")
