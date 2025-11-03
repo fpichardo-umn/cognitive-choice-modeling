@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64gb
 #SBATCH --tmp=64gb
-#SBATCH -t 96:00:00
+#SBATCH -t 48:00:00
 #SBATCH --mail-type=ALL
 
 # Load necessary modules

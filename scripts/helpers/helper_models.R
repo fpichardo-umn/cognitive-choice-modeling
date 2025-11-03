@@ -1320,7 +1320,7 @@ get_igt_mod_defaults = function() {
     exclude_params = NULL
   )
   
-  models[["igt_mod_hier_pvldelta"]] <- list(
+  models[["igt_mod_hier_pvldecay"]] <- list(
     data = data_types$basic_hier_igt_mod,
     params = param_sets$pvl_decay,
     non_pr_params = NULL,

@@ -1,12 +1,12 @@
-opt_model = "ev_rdm_b1p2"
+opt_model = "ev"
 # =======
 #opt_model = "orl"
 
-opt_task = "igt"
-opt_cohort = "adb"
+opt_task = "igt_mod"
+opt_cohort = "ahrb"
 opt_session = "00"
 opt_nsubs = 50#182#92
-opt_group = "sing"
+opt_group = "hier"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 opt_n_trials = 80
@@ -22,7 +22,7 @@ opt_max_treedepth = 10
 # Fit
 opt <- list(
   subjects = "1-3",
-  subs_file = "subject_ids_all.txt",#"subs_list_full_orig_sort.txt",
+  subs_file = "subjects_retained_list.txt",#"subs_list_full_orig_sort.txt",
   model = opt_model,
   type = "fit",
   task = opt_task,
@@ -46,8 +46,8 @@ opt <- list(
   dry_run = FALSE,
   check_iter = 20000,
   init = FALSE,
-  min_valid_rt_pct = 0.7,
-  subid = "9104700"#"1002"#"9104700"
+  min_valid_rt_pct = 0.7
+  #,subid = "9104700"#"1002"#"9104700"
 )
 
 # Gen Params

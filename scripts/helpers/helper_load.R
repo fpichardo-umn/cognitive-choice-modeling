@@ -4,14 +4,8 @@
 #' Load data from a specific source and file
 #' @param source Character string specifying the data source (required)
 #' @return Data frame with the loaded data
-load_data <- function(task, source, ses = NULL, ext = NULL) {
+load_data <- function(task, source, ses = NULL, ext = "csv") {
   # Construct full file path
-  if (source %in% c("ahrb")){
-    ext = "sav"
-  } else {
-    ext = "csv"
-  }
-  
   filename = paste0(paste(c(task, source, if (!is.null(ses)) ses), collapse = "_"), ".", ext)
   
   data_path <- file.path(get_safe_data_dir(), source, filename)
@@ -45,16 +39,16 @@ standardize_task_data <- function(data, task) {
     # For igt_mod: standardize column names
     std_data <- data %>%
       dplyr::mutate(
-        subjID = as.factor(sid),
-        trial = as.integer(
-          ifelse("trial" %in% names(data), trial, v_cardoffered)
-        ),
-        choice = as.integer(v_response) - 1,  # Convert from 1/2 to 0/1 (0=pass, 1=play)
-        deck = as.integer(v_targetdeck),
-        outcome = as.numeric(v_netchange),
-        RT = as.numeric(latency) / 1000      # Convert to seconds
+        subjID = as.factor(subjID),#as.factor(sid),
+        trial = as.integer(trial),#as.integer(
+          #ifelse("trial" %in% names(data), trial, v_cardoffered)
+        #),
+        choice = as.integer(choice),#as.integer(v_response) - 1,  # Convert from 1/2 to 0/1 (0=pass, 1=play)
+        shown = as.integer(shown),#as.integer(v_targetdeck),
+        outcome = as.integer(outcome),#as.numeric(v_netchange),
+        RT = as.numeric(rt) / 1000      # Convert to seconds
       ) %>%
-      dplyr::select(subjID, trial, choice, deck, outcome, RT)
+      dplyr::select(subjID, trial, choice, shown, outcome, RT)
     
   } else if (task == "igt") {
     # For regular IGT: standardize column names

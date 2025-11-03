@@ -336,7 +336,7 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
       switch(param,
              "shown" = {
                # Handle both 'deck' and 'deck_shown' column names and output as 'shown'
-               deck_col <- if ("deck_shown" %in% names(data)) "deck_shown" else "deck"
+               deck_col <- if ("deck_shown" %in% names(data)) "deck_shown" else "shown"
                data_list$shown <- if (is_group) as.matrix(create_matrix(data, deck_col, n_trials)) else as.vector(as.integer(data[[deck_col]]))
              },
              "outcome" = data_list$outcome <- if (is_group) as.matrix(create_matrix(data, "outcome", n_trials)) else as.vector(as.numeric(data$outcome)),
