@@ -72,7 +72,7 @@ data {
   int<lower=1> T;
   array[N] int<lower=1> Tsubj;
   array[N, T] int<lower=0, upper=1> choice;
-  array[N, T] int<lower=1, upper=4> shown;
+  array[N, T] int<lower=0, upper=4> shown;
   array[N, T] real outcome;
 }
 
