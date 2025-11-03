@@ -625,6 +625,7 @@ run_fit() {
     fi
     
     if [ "$FIT_APPROACH" == "batch" ]; then
+        SUBJECTS="1-${N_SUBJECTS_FIT}"  # Convert 200 → "1-200"
         # Build command arguments for batch fitting
         CMD_ARGS=(
             "-m $MODEL"

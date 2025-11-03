@@ -1327,6 +1327,20 @@ get_igt_mod_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_mod_sing_orl"]] <- list(
+    data = data_types$basic_igt_mod,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt_mod),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_mod_hier_orl"]] <- list(
+    data = data_types$basic_hier_igt_mod,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt_mod),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_mod_sing_pvlboth"]] <- list(
     data = data_types$basic_igt_mod,
     params = param_sets$pvl_both,
@@ -1344,13 +1358,6 @@ get_igt_mod_defaults = function() {
   models[["igt_mod_sing_pvlbothsd"]] <- list(
     data = data_types$basic_igt_mod,
     params = param_sets$pvl_both,
-    non_pr_params = NULL,
-    exclude_params = NULL
-  )
-  
-  models[["igt_mod_hier_orl"]] <- list(
-    data = data_types$basic_hier_igt_mod,
-    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt_mod),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -1494,6 +1501,13 @@ get_igt_mod_defaults = function() {
   models[["igt_mod_hier_ev_ddm"]] <- list(
     data = c(data_types$basic_hier_igt_mod, data_types$with_rt_igt),
     params = setdiff(c(param_sets$ddm_drift, param_sets$ev), "con"),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_mod_sing_orl_ddm_b1p2"]] <- list(
+    data = c(data_types$basic_igt_mod, data_types$with_rt_igt),
+    params = setdiff(c(param_sets$ddm_b1p2, c(param_sets$orl_base, param_sets$orl_delta)), "con"),
     non_pr_params = NULL,
     exclude_params = NULL
   )
