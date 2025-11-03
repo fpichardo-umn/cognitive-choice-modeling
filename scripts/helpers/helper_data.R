@@ -221,14 +221,11 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
     switch(param,
            "N" = if (is_group) data_list$N <- as.integer(length(unique(data$subjID))),
            "T" = {
-             # T should be the ACTUAL max trial number across all subjects
-             data_list$T <- as.integer(max(data$trial))
-             if (is_group) {
-               data_list$Tsubj <- as.integer(data %>%
-                                               dplyr::group_by(subjID) %>%
-                                               dplyr::summarise(max_trial = max(trial)) %>%
-                                               pull(max_trial))
-             }
+             data_list$T <- max(table(data$subjID))
+             if (is_group) data_list$Tsubj <- as.integer(data %>%
+                                                           dplyr::group_by(subjID) %>%
+                                                           count() %>%
+                                                           pull(n))
            },
            "RT" = {
              # Error if RT is requested but not available
