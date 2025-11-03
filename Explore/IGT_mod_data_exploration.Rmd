@@ -1,0 +1,386 @@
+---
+title: "Play/Pass IGT Data Cleaning & Exploration Report"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+date: "2025-10-15"
+---
+This R Markdown template is designed for exploring and cleaning trial-level data from Play/Pass IGT variants. The process is broken into several steps:
+
+* **Setup**: Load libraries and data, and define initial parameters.
+* **Response Time (RT) Exploration**: Visualize and summarize RTs to identify outliers and timeouts.
+* **Subject-Level Compliance**: Calculate and review metrics like trial completion and valid RT percentages.
+* **Exploratory Behavioral Metrics**: Investigate play/pass patterns and voluntary vs. forced passes.
+* **Final Filtering & Saving**: Apply the cleaning criteria you've decided upon and save the final lists of included and excluded subjects.
+
+# 1. Setup
+Load libraries, read in the raw data file, and set the initial cleaning parameters. You should adjust the parameters in this chunk based on your specific task and initial data exploration.
+```{r}
+# Load necessary libraries
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(knitr)
+})
+
+# --- Parameters to Set ---
+# Define the path to your raw data file
+# EXAMPLE: data_file_path <- "path/to/your/data.csv"
+
+task = "igt_mod"
+cohort = "ahrb"
+ses = "02"
+
+data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
+
+# RT Cleaning Parameters
+MIN_RT_MS <- 50 # Minimum response time in milliseconds
+MAX_RT_MS <- Inf # Maximum response time (useful for tasks with timeouts)
+TIMEOUT_RT_MS <- 4000 # RT threshold for forced passes
+
+# Subject-level Inclusion Criteria
+MIN_VALID_RT_PERCENTAGE <- 0.70 # Minimum percentage of trials that must have a valid RT
+MIN_VALID_TRIAL_COUNT <- 80 # Minimum number of valid trials a subject must have to be included
+MIN_PLAY_RATE <- 0.20 # Minimum proportion of trials where subject must play
+MIN_PASS_RATE <- 0.05 # Minimum proportion of trials where subject must pass
+
+# Task Structure
+TOTAL_TRIALS <- 100 # Adjust for your specific task
+
+
+# --- Load Data ---
+# Read the data file. The script will stop if the file isn't found.
+if (file.exists(data_file_path)) {
+  data_raw <- read_csv(data_file_path, show_col_types = FALSE)
+  
+  # Standardize column names (e.g., 'sid', 'subjID' -> 'subject'; 'latency', 'rt' -> 'rt')
+  # Add more standardization as needed for your files
+  if ("subject" %in% names(data_raw) | "sid" %in% names(data_raw)) {
+    data_raw <- data_raw %>%
+      rename_with(~"subjID", any_of(c("sid", "subject")))
+    }
+  if ("latency" %in% names(data_raw)){
+    data_raw <- data_raw %>%
+      rename_with(~"rt", any_of(c("latency")))
+    }
+
+} else {
+  stop("Data file not found. Please update 'data_file_path' in the setup chunk.")
+}
+```
+
+
+# 2. Response Time (RT) Exploration
+This section visualizes the distribution of response times. It helps in identifying potential issues like preemptive responses (too fast) or forced passes due to timeouts.
+```{r}
+# Plot a histogram of the RTs with timeout threshold marked
+rt_histogram <- ggplot(data_raw, aes(x = rt)) +
+  geom_histogram(bins = 100, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = TIMEOUT_RT_MS, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = TIMEOUT_RT_MS, y = Inf, label = "Timeout (Forced Pass)", vjust = 2, hjust = 1.1, color = "red") +
+  ggtitle("Distribution of Response Times (All Trials)") +
+  xlab("Response Time (ms)") +
+  ylab("Frequency") +
+  theme_bw()
+
+print(rt_histogram)
+
+# Display summary statistics and key quantiles for RTs
+cat("--- Summary of All Response Times ---\n")
+print(summary(data_raw$rt))
+
+cat("\n--- Quantiles of All Response Times ---\n")
+print(quantile(data_raw$rt, probs = c(.0005, .001, .01, .05, .95, .99, .999, .9995), na.rm = TRUE))
+
+# Count and report timeout trials
+n_timeout_trials <- sum(data_raw$rt >= TIMEOUT_RT_MS, na.rm = TRUE)
+pct_timeout_trials <- n_timeout_trials / nrow(data_raw)
+cat("\n--- Timeout Trials ---\n")
+cat("Number of timeout trials (RT >= ", TIMEOUT_RT_MS, "ms): ", n_timeout_trials, "\n", sep = "")
+cat("Percentage of all trials: ", scales::percent(pct_timeout_trials), "\n")
+
+# Mark trials based on RT validity
+data_raw <- data_raw %>%
+  mutate(
+    is_valid_rt = rt >= MIN_RT_MS & rt <= MAX_RT_MS,
+    is_timeout = rt >= TIMEOUT_RT_MS
+  )
+```
+
+
+# 3. Subject-Level Compliance
+Here, we aggregate the data by subject to see who was compliant with the task instructions. We calculate the total number of trials, the percentage of trials with a valid RT, and the final count of valid trials.
+```{r}
+# Calculate compliance metrics for each subject
+subject_summary <- data_raw %>%
+  group_by(subjID) %>%
+  summarise(
+    n_total_trials = n(),
+    # If 'is_valid_rt' column exists, use it. Otherwise, assume all trials are valid.
+    n_valid_rt_trials = if("is_valid_rt" %in% names(.)) sum(is_valid_rt, na.rm = TRUE) else n(),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    pct_valid_rt = n_valid_rt_trials / n_total_trials
+  )
+
+# Plot the distribution of the percentage of valid RTs per subject
+pct_valid_rt_histogram <- ggplot(subject_summary, aes(x = pct_valid_rt)) +
+  geom_histogram(bins = 30, fill = "lightgreen", color = "black") +
+  geom_vline(xintercept = MIN_VALID_RT_PERCENTAGE, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = MIN_VALID_RT_PERCENTAGE, y = Inf, label = paste0("Cutoff: ", MIN_VALID_RT_PERCENTAGE*100, "%"), vjust = 2, hjust = -0.1, color = "red") +
+  ggtitle("Distribution of Valid RT Trial Percentage per Subject") +
+  xlab("Percentage of Trials with Valid RT") +
+  ylab("Number of Subjects") +
+  scale_x_continuous(labels = scales::percent) +
+  theme_bw()
+
+print(pct_valid_rt_histogram)
+
+
+# Display summary statistics and quantiles for pct_valid_rt
+cat("--- Summary of Valid RT Trial Percentage ---\n")
+print(summary(subject_summary$pct_valid_rt))
+
+cat("\n--- Quantiles of Valid RT Trial Percentage ---\n")
+print(quantile(subject_summary$pct_valid_rt, probs = c(.01, .05, .10, .25, .50, .75, .90, .95, .99)))
+```
+
+
+# 4. Exploratory Behavioral Metrics
+This section is for investigating participant behavior before making final exclusion decisions.
+
+## A. Play/Pass Rates
+We examine the overall distribution of play vs. pass decisions to identify subjects who may not be engaging properly with the task (e.g., always playing, always passing).
+```{r}
+# Calculate play/pass rates for each subject
+# Assuming choice = 1 for play, choice = 0 for pass
+playpass_summary <- data_raw %>%
+  group_by(subjID) %>%
+  summarise(
+    n_play_trials = sum(choice == 1, na.rm = TRUE),
+    n_pass_trials = sum(choice == 0, na.rm = TRUE),
+    n_total = n(),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    play_rate = n_play_trials / n_total,
+    pass_rate = n_pass_trials / n_total
+  )
+
+# Plot play rate distribution
+play_rate_hist <- ggplot(playpass_summary, aes(x = play_rate)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "black") +
+  geom_vline(xintercept = MIN_PLAY_RATE, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = MIN_PLAY_RATE, y = Inf, label = paste0("Min: ", MIN_PLAY_RATE*100, "%"), vjust = 2, hjust = -0.1, color = "red") +
+  ggtitle("Distribution of Play Rate per Subject") +
+  xlab("Proportion of Trials Where Subject Played") +
+  ylab("Number of Subjects") +
+  scale_x_continuous(labels = scales::percent) +
+  theme_bw()
+
+print(play_rate_hist)
+
+# Plot pass rate distribution
+pass_rate_hist <- ggplot(playpass_summary, aes(x = pass_rate)) +
+  geom_histogram(bins = 30, fill = "coral", color = "black") +
+  geom_vline(xintercept = MIN_PASS_RATE, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = MIN_PASS_RATE, y = Inf, label = paste0("Min: ", MIN_PASS_RATE*100, "%"), vjust = 2, hjust = -0.1, color = "red") +
+  ggtitle("Distribution of Pass Rate per Subject") +
+  xlab("Proportion of Trials Where Subject Passed") +
+  ylab("Number of Subjects") +
+  scale_x_continuous(labels = scales::percent) +
+  theme_bw()
+
+print(pass_rate_hist)
+
+# Display summary statistics
+cat("--- Summary of Play Rates ---\n")
+print(summary(playpass_summary$play_rate))
+
+cat("\n--- Summary of Pass Rates ---\n")
+print(summary(playpass_summary$pass_rate))
+
+cat("\n--- Quantiles of Play Rates ---\n")
+print(quantile(playpass_summary$play_rate, probs = c(0, .05, .25, .50, .75, .95, 1)))
+
+cat("\n--- Quantiles of Pass Rates ---\n")
+print(quantile(playpass_summary$pass_rate, probs = c(0, .05, .25, .50, .75, .95, 1)))
+```
+
+## B. Voluntary vs. Forced Passes
+Here we distinguish between voluntary passes (RT < 4000ms) and forced passes (RT >= 4000ms due to timeout). This helps identify subjects who may be disengaged or struggling with the task timing.
+```{r}
+# Calculate voluntary vs. forced pass metrics
+# Forced passes are those where RT >= TIMEOUT_RT_MS and choice == 0
+voluntary_pass_summary <- data_raw %>%
+  filter(choice == 0) %>%  # Only look at pass trials
+  group_by(subjID) %>%
+  summarise(
+    n_pass_total = n(),
+    n_forced_pass = sum(rt >= TIMEOUT_RT_MS, na.rm = TRUE),
+    n_voluntary_pass = sum(rt < TIMEOUT_RT_MS, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    voluntary_pass_prop = n_voluntary_pass / n_pass_total,
+    forced_pass_prop = n_forced_pass / n_pass_total
+  )
+
+# Plot distribution of voluntary pass proportion (out of all passes)
+voluntary_pass_prop_hist <- ggplot(voluntary_pass_summary, aes(x = voluntary_pass_prop)) +
+  geom_histogram(bins = 30, fill = "gold", color = "black") +
+  ggtitle("Distribution of Voluntary Pass Proportion (Out of All Passes)") +
+  xlab("Proportion of Passes That Were Voluntary") +
+  ylab("Number of Subjects") +
+  scale_x_continuous(labels = scales::percent) +
+  theme_bw()
+
+print(voluntary_pass_prop_hist)
+
+# Display summary statistics
+cat("--- Summary of Voluntary Pass Proportion ---\n")
+print(summary(voluntary_pass_summary$voluntary_pass_prop))
+
+cat("\n--- Quantiles of Voluntary Pass Proportion ---\n")
+print(quantile(voluntary_pass_summary$voluntary_pass_prop, probs = c(0, .05, .25, .50, .75, .95, 1)))
+
+# Count subjects with 100% forced passes (voluntary_pass_prop == 0)
+n_all_forced <- sum(voluntary_pass_summary$voluntary_pass_prop == 0, na.rm = TRUE)
+pct_all_forced <- n_all_forced / nrow(voluntary_pass_summary)
+cat("\n--- Subjects with Only Forced Passes ---\n")
+cat("Number of subjects with voluntary_pass_prop = 0: ", n_all_forced, "\n")
+cat("Percentage of all subjects: ", scales::percent(pct_all_forced), "\n")
+
+# Calculate timeout rate per subject (across all trials)
+timeout_summary <- data_raw %>%
+  group_by(subjID) %>%
+  summarise(
+    n_timeout = sum(is_timeout, na.rm = TRUE),
+    n_total = n(),
+    timeout_rate = n_timeout / n_total,
+    .groups = 'drop'
+  )
+
+# Plot timeout rate distribution
+timeout_rate_hist <- ggplot(timeout_summary, aes(x = timeout_rate)) +
+  geom_histogram(bins = 30, fill = "tomato", color = "black") +
+  ggtitle("Distribution of Timeout Rate per Subject") +
+  xlab("Proportion of Trials With Timeout") +
+  ylab("Number of Subjects") +
+  scale_x_continuous(labels = scales::percent) +
+  theme_bw()
+
+print(timeout_rate_hist)
+
+# Display summary statistics for timeout rate
+cat("\n--- Summary of Timeout Rates ---\n")
+print(summary(timeout_summary$timeout_rate))
+
+cat("\n--- Quantiles of Timeout Rates ---\n")
+print(quantile(timeout_summary$timeout_rate, probs = c(0, .05, .25, .50, .75, .95, 1)))
+
+# Flag subjects with high timeout rates (>50%)
+high_timeout_subjects <- timeout_summary %>%
+  filter(timeout_rate > 0.50)
+
+cat("\n--- Subjects with High Timeout Rates (>50%) ---\n")
+cat("Number of subjects: ", nrow(high_timeout_subjects), "\n")
+if(nrow(high_timeout_subjects) > 0) {
+  print(high_timeout_subjects)
+}
+```
+
+
+# 5. Final Filtering & Saving
+**This section is intentionally not run by default.**
+
+After reviewing the summaries and plots above, you can finalize your criteria in the setup chunk and then uncomment and run the code below to generate the clean dataset and the lists of included/excluded subjects.
+```{r}
+# --- Step 1: Join all subject-level metrics together ---
+subjects_final <- subject_summary %>%
+  left_join(playpass_summary, by = "subjID") %>%
+  left_join(voluntary_pass_summary, by = "subjID") %>%
+  left_join(timeout_summary, by = "subjID")
+
+# --- Step 2: Define the inclusion criteria ---
+# These rules use the parameters defined in the 'setup' chunk.
+subjects_final <- subjects_final %>%
+  mutate(
+    is_retained = 
+      pct_valid_rt >= MIN_VALID_RT_PERCENTAGE &
+      n_valid_rt_trials >= MIN_VALID_TRIAL_COUNT &
+      play_rate >= MIN_PLAY_RATE &
+      pass_rate >= MIN_PASS_RATE &
+      voluntary_pass_prop > 0  # Must have at least some voluntary passes
+  )
+
+# --- Step 3: Report the outcome ---
+orig_num <- nrow(subjects_final)
+retained_num <- sum(subjects_final$is_retained)
+excluded_num <- orig_num - retained_num
+retained_pct <- retained_num / orig_num
+
+cat("--- Data Cleaning Summary ---\n")
+cat("Original number of subjects:      ", orig_num, "\n")
+cat("Subjects retained after cleaning: ", retained_num, "\n")
+cat("Subjects excluded:                ", excluded_num, "\n")
+cat("Percentage of subjects retained:  ", scales::percent(retained_pct), "\n")
+
+# Show breakdown of why subjects were excluded
+exclusion_reasons <- subjects_final %>%
+  filter(is_retained == FALSE) %>%
+  summarise(
+    low_valid_rt_pct = sum(pct_valid_rt < MIN_VALID_RT_PERCENTAGE),
+    low_valid_trial_count = sum(n_valid_rt_trials < MIN_VALID_TRIAL_COUNT),
+    low_play_rate = sum(play_rate < MIN_PLAY_RATE),
+    low_pass_rate = sum(pass_rate < MIN_PASS_RATE),
+    all_forced_passes = sum(voluntary_pass_prop == 0, na.rm = TRUE)
+  )
+
+cat("\n--- Exclusion Reason Breakdown ---\n")
+cat("(Note: subjects can be excluded for multiple reasons)\n")
+print(exclusion_reasons)
+
+
+# --- Step 4: Create the final clean dataset and ID lists ---
+# Get the list of subject IDs to keep
+retained_sids <- subjects_final %>%
+  filter(is_retained == TRUE) %>%
+  pull(subjID)
+
+# Get the list of subject IDs to drop
+excluded_sids <- subjects_final %>%
+  filter(is_retained == FALSE) %>%
+  pull(subjID)
+
+# Create the final clean trial-level dataset
+data_clean <- data_raw %>%
+  filter(subjID %in% retained_sids)
+
+# --- Step 5: Save the output files ---
+# Define output directory and filenames
+output_dir <- file.path(dirname(data_file_path), 
+                        paste0("ses-", ses)) # Saves in the ses folder
+filename_retained_ids <- file.path(output_dir, "subjects_retained_list.txt")
+filename_excluded_ids <- file.path(output_dir, "subjects_excluded_list.txt")
+
+# Create output directory if it doesn't exist
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+# Save the subject ID lists
+writeLines(as.character(retained_sids), filename_retained_ids)
+writeLines(as.character(excluded_sids), filename_excluded_ids)
+
+cat("\n--- Files Saved ---\n")
+cat("Retained IDs saved to:    ", filename_retained_ids, "\n")
+cat("Excluded IDs saved to:    ", filename_excluded_ids, "\n")
+```
+
+# EOF
+```{r}
+```

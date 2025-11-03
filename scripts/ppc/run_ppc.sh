@@ -24,7 +24,7 @@ Optional arguments:
   --steps STEPS          Steps to run (default: all)
   --force                Force re-running steps
   --render               Render the Rmd file to HTML
-  --sampling METHOD      Sampling method (default: weighted)
+  --sampling METHOD      Sampling method (default: random)
   --width_control NUM    Width control parameter (default: 0.95)
   --rt_method METHOD     RT handling method (default: remove)
   --RTbound_min_ms N     RT lower bound ms (default: 100)
@@ -47,7 +47,7 @@ n_cores=2
 steps="all"
 force=false
 render=false
-sampling="weighted"
+sampling="random"
 width_control=0.95
 rt_method="remove"
 RTbound_min_ms=100

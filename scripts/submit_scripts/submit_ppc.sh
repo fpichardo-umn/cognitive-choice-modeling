@@ -23,7 +23,7 @@ print_usage() {
   echo "  -D    Data config name (default: default)"
   echo "  -n    Number of simulations per subject (default: 100)"
   echo "  -b    Block size (default: 20)"
-  echo "  -p    Sampling method (default: weighted, options: random, width, weighted)"
+  echo "  -p    Sampling method (default: random, options: random, width, weighted)"
   echo "  -w    Width control for width sampling (default: 0.95)"
   echo "  -x    Excludes file path (default: Data/txt/subs/subject_ids_excludes.txt)"
   echo "  -i    Information criteria method (default: loo, options: loo, waic)"
@@ -43,7 +43,7 @@ FIT_CONFIG="default"
 DATA_CONFIG="default"
 N_SIMS=100
 BLOCK_SIZE=20
-SAMPLING="weighted"
+SAMPLING="random"
 WIDTH_CONTROL=0.95
 EXCLUDES_FILE=""
 IC_METHOD="loo"

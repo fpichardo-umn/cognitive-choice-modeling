@@ -1,5 +1,5 @@
 ---
-title: "IGT Data Cleaning & Exploration Report"
+title: "IGT Data Cleaning & Exploration Report (No RT)"
 output: 
   html_document:
     toc: true
@@ -8,17 +8,15 @@ output:
     theme: flatly
 date: "2025-10-15"
 ---
-This R Markdown template is designed for exploring and cleaning trial-level data from Iowa Gambling Task (IGT) variants. The process is broken into several steps:
+This R Markdown template is designed for exploring and cleaning trial-level data from Iowa Gambling Task (IGT) variants **when response time data is not available**. The process is broken into several steps:
 
 * **Setup**: Load libraries and data, and define initial parameters.
-* **Response Time (RT) Exploration**: Visualize and summarize RTs to identify outliers. (This section is skipped if no RT column is found).
-* **Subject-Level Compliance**: Calculate and review metrics like trial completion and valid RT percentages.
+* **Subject-Level Compliance**: Calculate and review metrics like trial completion.
 * **Exploratory Behavioral Metrics**: Investigate response patterns like choice perseveration and entropy to understand participant strategies without prematurely filtering.
 * **Final Filtering & Saving**: Apply the cleaning criteria you've decided upon and save the final lists of included and excluded subjects.
 
 # 1. Setup
 Load libraries, read in the raw data file, and set the initial cleaning parameters. You should adjust the parameters in this chunk based on your specific task and initial data exploration.
-
 ```{r}
 # Load necessary libraries
 suppressPackageStartupMessages({
@@ -31,20 +29,13 @@ suppressPackageStartupMessages({
 # EXAMPLE: data_file_path <- "path/to/your/data.csv"
 
 task = "igt"
-cohort = "adb"
-ses = "01"
+cohort = "luc"
+ses = "00"
 
 data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
 
-#adb/igt_adb_00.csv
-
-# RT Cleaning Parameters
-MIN_RT_MS <- 50 # Minimum response time in milliseconds
-MAX_RT_MS <- Inf # Maximum response time (useful for tasks with timeouts)
-
 # Subject-level Inclusion Criteria
-MIN_VALID_RT_PERCENTAGE <- 0.70 # Minimum percentage of trials that must have a valid RT
-MIN_VALID_TRIAL_COUNT <- 80 # Minimum number of valid trials a subject must have to be included
+MIN_TRIAL_COUNT <- 80 # Minimum number of trials a subject must have to be included
 
 # Task Structure
 TOTAL_TRIALS <- 100 # Adjust for standard IGT (100) or HDT (200)
@@ -56,15 +47,11 @@ NUM_BLOCKS <- 5 # How many blocks to divide the task into for entropy analysis
 if (file.exists(data_file_path)) {
   data_raw <- read_csv(data_file_path, show_col_types = FALSE)
   
-  # Standardize column names (e.g., 'sid', 'subjID' -> 'subject'; 'latency', 'rt' -> 'rt')
+  # Standardize column names (e.g., 'sid', 'subjID' -> 'subject')
   # Add more standardization as needed for your files
   if ("subject" %in% names(data_raw) | "sid" %in% names(data_raw)) {
     data_raw <- data_raw %>%
       rename_with(~"subjID", any_of(c("sid", "subject")))
-    }
-  if ("latency" %in% names(data_raw)){
-    data_raw <- data_raw %>%
-      rename_with(~"rt", any_of(c("latency")))
     }
 
 } else {
@@ -82,82 +69,56 @@ calculate_entropy <- function(choices) {
 ```
 
 
-# 2. Response Time (RT) Exploration
-This section visualizes the distribution of response times. It helps in identifying potential issues like preemptive responses (too fast) or task timeouts
-
-**This entire section will be skipped if an rt column is not found in your data.**
-
-```{r}
-# Plot a histogram of the RTs
-# This is useful for visually spotting bimodal distributions or timeouts.
-rt_histogram <- ggplot(data_raw, aes(x = rt)) +
-  geom_histogram(bins = 100, fill = "skyblue", color = "black") +
-  ggtitle("Distribution of Response Times (All Trials)") +
-  xlab("Response Time (ms)") +
-  ylab("Frequency") +
-  theme_bw()
-
-print(rt_histogram)
-
-# Display summary statistics and key quantiles for RTs
-cat("--- Summary of All Response Times ---\n")
-print(summary(data_raw$rt))
-
-cat("\n--- Quantiles of All Response Times ---\n")
-print(quantile(data_raw$rt, probs = c(.0005, .001, .01, .05, .95, .99, .999, .9995), na.rm = TRUE))
-
-# Mark trials based on RT validity
-data_raw <- data_raw %>%
-  mutate(is_valid_rt = rt >= MIN_RT_MS & rt <= MAX_RT_MS)
-```
-
-
-# 3. Subject-Level Compliance
-Here, we aggregate the data by subject to see who was compliant with the task instructions. We calculate the total number of trials, the percentage of trials with a valid RT, and the final count of valid trials.
-
+# 2. Subject-Level Compliance
+Here, we aggregate the data by subject to see who completed the task. We calculate the total number of trials for each subject.
 ```{r}
 # Calculate compliance metrics for each subject
 subject_summary <- data_raw %>%
   group_by(subjID) %>%
   summarise(
     n_total_trials = n(),
-    # If 'is_valid_rt' column exists, use it. Otherwise, assume all trials are valid.
-    n_valid_rt_trials = if("is_valid_rt" %in% names(.)) sum(is_valid_rt, na.rm = TRUE) else n(),
     .groups = 'drop'
-  ) %>%
-  mutate(
-    pct_valid_rt = n_valid_rt_trials / n_total_trials
   )
 
-# Plot the distribution of the percentage of valid RTs per subject
-pct_valid_rt_histogram <- ggplot(subject_summary, aes(x = pct_valid_rt)) +
+# Plot the distribution of trial counts per subject
+trial_count_histogram <- ggplot(subject_summary, aes(x = n_total_trials)) +
   geom_histogram(bins = 30, fill = "lightgreen", color = "black") +
-  geom_vline(xintercept = MIN_VALID_RT_PERCENTAGE, color = "red", linetype = "dashed", size = 1) +
-  annotate("text", x = MIN_VALID_RT_PERCENTAGE, y = Inf, label = paste0("Cutoff: ", MIN_VALID_RT_PERCENTAGE*100, "%"), vjust = 2, hjust = -0.1, color = "red") +
-  ggtitle("Distribution of Valid RT Trial Percentage per Subject") +
-  xlab("Percentage of Trials with Valid RT") +
+  geom_vline(xintercept = MIN_TRIAL_COUNT, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = MIN_TRIAL_COUNT, y = Inf, label = paste0("Min: ", MIN_TRIAL_COUNT), vjust = 2, hjust = -0.1, color = "red") +
+  ggtitle("Distribution of Trial Counts per Subject") +
+  xlab("Number of Trials Completed") +
   ylab("Number of Subjects") +
-  scale_x_continuous(labels = scales::percent) +
   theme_bw()
 
-print(pct_valid_rt_histogram)
+print(trial_count_histogram)
 
 
-# Display summary statistics and quantiles for pct_valid_rt
-cat("--- Summary of Valid RT Trial Percentage ---\n")
-print(summary(subject_summary$pct_valid_rt))
+# Display summary statistics and quantiles for trial counts
+cat("--- Summary of Trial Counts ---\n")
+print(summary(subject_summary$n_total_trials))
 
-cat("\n--- Quantiles of Valid RT Trial Percentage ---\n")
-print(quantile(subject_summary$pct_valid_rt, probs = c(.01, .05, .10, .25, .50, .75, .90, .95, .99)))
+cat("\n--- Quantiles of Trial Counts ---\n")
+print(quantile(subject_summary$n_total_trials, probs = c(.01, .05, .10, .25, .50, .75, .90, .95, .99)))
+
+# Flag subjects with incomplete data
+incomplete_subjects <- subject_summary %>%
+  filter(n_total_trials < TOTAL_TRIALS)
+
+cat("\n--- Subjects with Incomplete Data (< ", TOTAL_TRIALS, " trials) ---\n", sep = "")
+cat("Number of subjects: ", nrow(incomplete_subjects), "\n")
+if(nrow(incomplete_subjects) > 0 & nrow(incomplete_subjects) <= 20) {
+  print(incomplete_subjects)
+} else if (nrow(incomplete_subjects) > 20) {
+  cat("Too many to display; check subject_summary dataframe\n")
+}
 ```
 
 
-# 4. Exploratory Behavioral Metrics
+# 3. Exploratory Behavioral Metrics
 This section is for investigating participant behavior before making final exclusion decisions.
 
 ## A. Choice Perseveration
 We check if any subjects chose the same deck an overwhelming majority of the time, which could indicate non-engagement.
-
 ```{r}
 # Calculate the proportion of the most-chosen deck for each subject
 choice_summary <- data_raw %>%
@@ -185,18 +146,28 @@ print(summary(choice_summary$max_deck_prop))
 cat("\n--- Quantiles of Max Deck Choice Proportion ---\n")
 print(quantile(choice_summary$max_deck_prop, probs = c(0, .05, .5, .95, .99, 1)))
 
-data_raw %>%
-  filter(subjID %in% choice_summary$subjID[choice_summary$max_deck_prop > .85]) %>%
-  count(subjID, choice) %>%
-  group_by(subjID) %>%
-  mutate(deck_prop = n / sum(n)) %>%
-  ungroup() %>%
-  data.frame()
+# Show detailed choice patterns for subjects with high perseveration (>85%)
+high_perseveration_subjects <- choice_summary %>%
+  filter(max_deck_prop > .85)
+
+if(nrow(high_perseveration_subjects) > 0) {
+  cat("\n--- Subjects with High Perseveration (>85% one deck) ---\n")
+  cat("Number of subjects: ", nrow(high_perseveration_subjects), "\n\n")
+  
+  high_persev_details <- data_raw %>%
+    filter(subjID %in% high_perseveration_subjects$subjID) %>%
+    count(subjID, choice) %>%
+    group_by(subjID) %>%
+    mutate(deck_prop = n / sum(n)) %>%
+    ungroup() %>%
+    arrange(subjID, desc(deck_prop))
+  
+  print(high_persev_details)
+}
 ```
 
 ## B. Mean Choice Entropy
 We calculate choice entropy across blocks to see how random or structured choices were. High entropy (~2.0 for 4 decks) suggests random exploration, while low entropy suggests a focused strategy.
-
 ```{r}
 # Create blocks
 block_size <- TOTAL_TRIALS / NUM_BLOCKS
@@ -229,13 +200,15 @@ print(mean_entropy_hist)
 # Display summary statistics and quantiles
 cat("--- Summary of Mean Choice Entropy ---\n")
 print(summary(entropy_summary$mean_entropy))
+
+cat("\n--- Quantiles of Mean Choice Entropy ---\n")
+print(quantile(entropy_summary$mean_entropy, probs = c(0, .05, .25, .50, .75, .95, 1)))
 ```
 
-# 5. Final Filtering & Saving
+# 4. Final Filtering & Saving
 **This section is intentionally not run by default.**
 
 After reviewing the summaries and plots above, you can finalize your criteria in the setup chunk and then uncomment and run the code below to generate the clean dataset and the lists of included/excluded subjects.
-
 ```{r}
 # --- Step 1: Join all subject-level metrics together ---
 subjects_final <- subject_summary %>%
@@ -244,13 +217,12 @@ subjects_final <- subject_summary %>%
 
 # --- Step 2: Define the inclusion criteria ---
 # These rules use the parameters defined in the 'setup' chunk.
-# You can add or remove rules as needed (e.g., a max_deck_prop rule).
+# You can add or remove rules as needed (e.g., entropy thresholds).
 subjects_final <- subjects_final %>%
   mutate(
     is_retained = 
-      pct_valid_rt >= MIN_VALID_RT_PERCENTAGE &
-      n_valid_rt_trials >= MIN_VALID_TRIAL_COUNT
-      & max_deck_prop < 0.95
+      n_total_trials >= MIN_TRIAL_COUNT &
+      max_deck_prop < 0.95
   )
 
 # --- Step 3: Report the outcome ---
@@ -260,10 +232,22 @@ excluded_num <- orig_num - retained_num
 retained_pct <- retained_num / orig_num
 
 cat("--- Data Cleaning Summary ---\n")
-cat("Original number of subjects:    ", orig_num, "\n")
+cat("Original number of subjects:      ", orig_num, "\n")
 cat("Subjects retained after cleaning: ", retained_num, "\n")
 cat("Subjects excluded:                ", excluded_num, "\n")
 cat("Percentage of subjects retained:  ", scales::percent(retained_pct), "\n")
+
+# Show breakdown of why subjects were excluded
+exclusion_reasons <- subjects_final %>%
+  filter(is_retained == FALSE) %>%
+  summarise(
+    low_trial_count = sum(n_total_trials < MIN_TRIAL_COUNT),
+    high_perseveration = sum(max_deck_prop >= 0.95)
+  )
+
+cat("\n--- Exclusion Reason Breakdown ---\n")
+cat("(Note: subjects can be excluded for multiple reasons)\n")
+print(exclusion_reasons)
 
 
 # --- Step 4: Create the final clean dataset and ID lists ---
@@ -288,6 +272,11 @@ output_dir <- file.path(dirname(data_file_path),
 filename_retained_ids <- file.path(output_dir, "subjects_retained_list.txt")
 filename_excluded_ids <- file.path(output_dir, "subjects_excluded_list.txt")
 
+# Create output directory if it doesn't exist
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
 # Save the subject ID lists
 writeLines(as.character(retained_sids), filename_retained_ids)
 writeLines(as.character(excluded_sids), filename_excluded_ids)
@@ -299,6 +288,4 @@ cat("Excluded IDs saved to:    ", filename_excluded_ids, "\n")
 
 # EOF
 ```{r}
-
 ```
-
