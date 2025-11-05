@@ -40,13 +40,11 @@ standardize_task_data <- function(data, task) {
     std_data <- data %>%
       dplyr::mutate(
         subjID = as.factor(subjID),#as.factor(sid),
-        trial = as.integer(trial),#as.integer(
-          #ifelse("trial" %in% names(data), trial, v_cardoffered)
-        #),
+        trial = as.integer(trial),#as.integer(v_cardoffered),
         choice = as.integer(choice),#as.integer(v_response) - 1,  # Convert from 1/2 to 0/1 (0=pass, 1=play)
         shown = as.integer(shown),#as.integer(v_targetdeck),
         outcome = as.integer(outcome),#as.numeric(v_netchange),
-        RT = as.numeric(rt) / 1000      # Convert to seconds
+        RT = as.numeric(rt) / 1000      # as.numeric(latency), # Convert to seconds
       ) %>%
       dplyr::select(subjID, trial, choice, shown, outcome, RT)
     

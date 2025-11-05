@@ -391,19 +391,19 @@ create_batch_recommendations <- function(batch_analysis) {
   }
   
   # Specific issues
-  if (agg$status$pct_fail > 5) {
+  if (!is.null(agg$status$pct_fail) && !is.na(agg$status$pct_fail) && agg$status$pct_fail > 5) {
     recommendations <- c(recommendations,
                         sprintf("• %.1f%% of subjects failed diagnostics. Consider refitting these subjects.",
                                agg$status$pct_fail))
   }
   
-  if (agg$rhat$pct_problematic > 10) {
+  if (!is.null(agg$rhat$pct_problematic) && !is.na(agg$rhat$pct_problematic) && agg$rhat$pct_problematic > 10) {
     recommendations <- c(recommendations,
                         sprintf("• %.1f%% of subjects have high R-hat values (>1.1).",
                                agg$rhat$pct_problematic))
   }
   
-  if (agg$divergences$pct_problematic > 5) {
+  if (!is.null(agg$divergences$pct_problematic) && !is.na(agg$divergences$pct_problematic) && agg$divergences$pct_problematic > 5) {
     recommendations <- c(recommendations,
                         sprintf("• %.1f%% of subjects have high divergence rates.",
                                agg$divergences$pct_problematic),

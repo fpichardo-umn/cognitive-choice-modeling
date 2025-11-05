@@ -30,9 +30,6 @@ igt_modTask <- R6::R6Class("igt_modTask",
                                # Convert numeric deck index to letter (1->A, 2->B, etc.)
                                deck_letter <- LETTERS[deck_num]
                                props <- self$deck_properties[[deck_letter]]
-                               
-                               # Increment the counter for this specific deck
-                               self$deck_counts[deck_num] <- self$deck_counts[deck_num] + 1
                                deck_trial <- self$deck_counts[deck_num]
                                
                                # Sanity check - sum of all deck counts should match trial number
@@ -113,6 +110,8 @@ igt_modTask <- R6::R6Class("igt_modTask",
                                forced_wins_remaining <- matrix(0, nrow = n_trials, ncol = 4)
                                
                                for(t in 1:n_trials) {
+                                 shown_deck <- decks_shown[t]
+                                 
                                  # Record forced wins remaining for each deck (before the current choice)
                                  for(d in 1:4) {
                                    deck_letter <- LETTERS[d]
@@ -120,6 +119,9 @@ igt_modTask <- R6::R6Class("igt_modTask",
                                    trials_so_far <- self$deck_counts[d]
                                    forced_wins_remaining[t, d] <- props$first_loss - trials_so_far - 1
                                  }
+                                 
+                                 # *** INCREMENT COUNTER FOR SHOWN DECK (always, regardless of choice) ***
+                                 self$deck_counts[shown_deck] <- self$deck_counts[shown_deck] + 1
                                  
                                  # If a choice was made (1) for the deck shown
                                  if(choices[t] == 1) {
