@@ -92,7 +92,7 @@ show_help() {
     echo "  --rt_min N           - RT upper bound in milliseconds (default: 4000)"
     echo ""
     echo "Parameter generation options:"
-    echo "  --method METHOD      - Parameter generation method (default: mbSPSepse)"
+    echo "  --method METHOD      - Parameter generation method (default: ibSPSepse)"
     echo "  --exclude-file FILE  - Exclude file for parameter generation"
     echo "  --n-subjects-pr N    - Number of subjects for sim model (default: 100)"
     echo ""
