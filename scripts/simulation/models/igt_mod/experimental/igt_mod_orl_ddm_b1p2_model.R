@@ -8,7 +8,7 @@ suppressPackageStartupMessages({
 # ORL learning drives DDM drift rates
 # Different boundary/tau for Block 1 (trials 1-20) vs later blocks
 
-igt_modORL_DDM_B1P2Model <- R6::R6Class("igt_modORL_DDM_B1P2Model",
+igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
   inherit = ModelBase,
   
   public = list(
