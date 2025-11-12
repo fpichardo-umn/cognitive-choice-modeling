@@ -847,16 +847,16 @@ run_pr_recovery() {
     
     # Build command arguments
     CMD_ARGS=(
-        "-m $MODEL"
-        "--task $TASK"
-        "--group $GROUP_TYPE"
-        "--cohort $SOURCE"
+        "-m" "$MODEL"
+        "--task" "$TASK"
+        "--group" "$GROUP_TYPE"
+        "--cohort" "$SOURCE"
     )
     if [ ! -z "$SESSION" ]; then
-        CMD_ARGS+=("--session $SESSION")
+        CMD_ARGS+=("--session" "$SESSION")
     fi
     CMD_ARGS+=(
-        "--sim_data $SIM_FILE"
+        "--sim_data" "$SIM_FILE"
     )
     if [ "$FIT_APPROACH" == "batch" ] && [ "$INDIV" = true ]; then
         CMD_ARGS+=("--indiv")
@@ -865,21 +865,33 @@ run_pr_recovery() {
         CMD_ARGS+=("--render")
     fi
     CMD_ARGS+=(
-        "--n_warmup $N_WARMUP"
-        "--n_iter $N_ITER"
-        "--n_chains $N_CHAINS"
-        "--adapt_delta $ADAPT_DELTA"
-        "--max_treedepth $MAX_TREEDEPTH"
-        "--check_iter $CHECK_ITER"
-        "--seed $SEED"
-        "--rt_method $RT_METHOD"
-        "--RTbound_min_ms $RTBOUND_MIN_MS"
-        "--RTbound_max_ms $RTBOUND_MAX_MS"
-        "--n_trials ${N_TRIALS}"
+        "--n_warmup" "$n_warmup"
+        "--n_iter" "$n_iter"
+        "--n_chains" "$n_chains"
+        "--adapt_delta" "$adapt_delta"
+        "--max_treedepth" "$max_treedepth"
+        "--check_iter" "$check_iter"
+        "--seed" "$SEED"
+        "--rt_method" "$RT_METHOD"
+        "--RTbound_min_ms" "$RTBOUND_MIN_MS"
+        "--RTbound_max_ms" "$RTBOUND_MAX_MS"
+        "--n_trials" "${N_TRIALS}"
     )
     
+    # Add adaptive iteration parameters if enabled in config
+    if [ "${enable_adaptive_iter}" = "TRUE" ]; then
+        [ ! -z "${min_iter}" ] && CMD_ARGS+=("--min_iter" "${min_iter}")
+        [ ! -z "${max_iter}" ] && CMD_ARGS+=("--max_iter" "${max_iter}")
+        [ ! -z "${iter_increment}" ] && CMD_ARGS+=("--iter_increment" "${iter_increment}")
+        [ ! -z "${target_rhat}" ] && CMD_ARGS+=("--target_rhat" "${target_rhat}")
+        [ ! -z "${target_ess_bulk}" ] && CMD_ARGS+=("--target_ess_bulk" "${target_ess_bulk}")
+        [ ! -z "${target_ess_tail}" ] && CMD_ARGS+=("--target_ess_tail" "${target_ess_tail}")
+    elif [ "${enable_adaptive_iter}" = "FALSE" ]; then
+        CMD_ARGS+=("--disable_adaptive_iter")
+    fi
+    
     # Run the command
-    Rscript "scripts/parameter_recovery/recovery/run_parameter_recovery.R" ${CMD_ARGS[@]}
+    Rscript "scripts/parameter_recovery/recovery/run_parameter_recovery.R" "${CMD_ARGS[@]}"
     
     echo "Recovery analysis and report generation completed."
 }

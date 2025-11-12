@@ -38,7 +38,21 @@ option_list = list(
   make_option(c("--rt_method"), type="character", default="mark", help="RT method"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=4000, help="RT max bound in milliseconds"),
-  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT")
+  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
+  make_option(c("--min_iter"), type="integer", default=NULL, 
+              help="Minimum post-warmup iterations for adaptive fitting (enables adaptive mode)"),
+  make_option(c("--max_iter"), type="integer", default=NULL,
+              help="Maximum post-warmup iterations for adaptive fitting"),
+  make_option(c("--iter_increment"), type="integer", default=1000,
+              help="Iterations to add at each diagnostic check (default: 1000)"),
+  make_option(c("--target_rhat"), type="double", default=1.01,
+              help="Target Rhat threshold (default: 1.01)"),
+  make_option(c("--target_ess_bulk"), type="integer", default=400,
+              help="Target ESS bulk threshold (default: 400)"),
+  make_option(c("--target_ess_tail"), type="integer", default=400,
+              help="Target ESS tail threshold (default: 400)"),
+  make_option(c("--disable_adaptive_iter"), action="store_true", default=FALSE,
+              help="Disable adaptive iteration feature (use fixed n_iter)")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -233,7 +247,12 @@ if (opt$indiv || is_batch) {
       index = sub, 
       checkpoint_interval = opt$check_iter,
       is_simulation = TRUE,
-      cohort_sub_dir = FALSE
+      cohort_sub_dir = FALSE,
+      min_iter = opt$min_iter,
+      max_iter = opt$max_iter,
+      iter_increment = opt$iter_increment,
+      diag_thresholds = diag_thresholds,
+      enable_adaptive_iter = !opt$disable_adaptive_iter
     )
     
     # Save individual fit
@@ -298,7 +317,12 @@ if (opt$indiv || is_batch) {
     model_params = model_params,
     output_dir = output_fit_dir, 
     checkpoint_interval = opt$check_iter, 
-    cohort_sub_dir = FALSE
+    cohort_sub_dir = FALSE,
+    min_iter = opt$min_iter,
+    max_iter = opt$max_iter,
+    iter_increment = opt$iter_increment,
+    diag_thresholds = diag_thresholds,
+    enable_adaptive_iter = !opt$disable_adaptive_iter
   )
   
   # Save hierarchical fit
@@ -335,6 +359,13 @@ recovery_csv_file <- file.path(
     ),
     ext = "csv"
   )
+)
+
+# Construct diagnostic thresholds for adaptive iteration
+diag_thresholds <- list(
+  rhat = opt$target_rhat,
+  ess_bulk = opt$target_ess_bulk,
+  ess_tail = opt$target_ess_tail
 )
 
 # Extract and save recovery data
