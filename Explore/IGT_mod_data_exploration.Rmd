@@ -36,7 +36,7 @@ ses = "00"
 data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
 
 # RT Cleaning Parameters
-MIN_RT_MS <- 50 # Minimum response time in milliseconds
+MIN_RT_MS <- 100 # Minimum response time in milliseconds
 MAX_RT_MS <- Inf # Maximum response time (useful for tasks with timeouts)
 TIMEOUT_RT_MS <- 4000 # RT threshold for forced passes
 
