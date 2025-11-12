@@ -31,15 +31,15 @@ suppressPackageStartupMessages({
 # EXAMPLE: data_file_path <- "path/to/your/data.csv"
 
 task = "igt"
-cohort = "adb"
-ses = "01"
+cohort = "mf"
+ses = "06"
 
 data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
 
 #adb/igt_adb_00.csv
 
 # RT Cleaning Parameters
-MIN_RT_MS <- 50 # Minimum response time in milliseconds
+MIN_RT_MS <- 100 # Minimum response time in milliseconds
 MAX_RT_MS <- Inf # Maximum response time (useful for tasks with timeouts)
 
 # Subject-level Inclusion Criteria
@@ -265,6 +265,18 @@ cat("Subjects retained after cleaning: ", retained_num, "\n")
 cat("Subjects excluded:                ", excluded_num, "\n")
 cat("Percentage of subjects retained:  ", scales::percent(retained_pct), "\n")
 
+# Show breakdown of why subjects were excluded
+exclusion_reasons <- subjects_final %>%
+  filter(is_retained == FALSE) %>%
+  summarise(
+    low_valid_rt_pct = sum(pct_valid_rt < MIN_VALID_RT_PERCENTAGE),
+    low_valid_trial_count = sum(n_valid_rt_trials < MIN_VALID_TRIAL_COUNT),
+    high_max_deck_prop = sum(max_deck_prop >= 0.95)
+  )
+
+cat("\n--- Exclusion Reason Breakdown ---\n")
+cat("(Note: subjects can be excluded for multiple reasons)\n")
+print(exclusion_reasons)
 
 # --- Step 4: Create the final clean dataset and ID lists ---
 # Get the list of subject IDs to keep

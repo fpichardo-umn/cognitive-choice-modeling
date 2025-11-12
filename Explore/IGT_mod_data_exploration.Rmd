@@ -31,7 +31,7 @@ suppressPackageStartupMessages({
 
 task = "igt_mod"
 cohort = "ahrb"
-ses = "00"
+ses = "02"
 
 data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
 
