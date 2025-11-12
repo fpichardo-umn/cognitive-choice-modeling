@@ -647,7 +647,7 @@ run_fit() {
             "--fit_config" "$FIT_CONFIG"
             "--data_config" "$DATA_CONFIG"
             "--subjects" "$SUBJECTS"
-            "--n_trials" "${N_TRIALS:-120}"
+            "--n_trials" "${N_TRIALS:-100}"
             "--subs_file" "$SUBS_FILE"
             "--n_warmup" "$N_WARMUP"
             "--n_iter" "$N_ITER"
@@ -696,7 +696,7 @@ run_fit() {
         CMD_ARGS+=(
             "--subs_file" "$SUBS_FILE"
             "--n_subs" "$N_SUBJECTS_FIT"
-            "--n_trials" "${N_TRIALS:-120}"
+            "--n_trials" "${N_TRIALS:-100}"
             "--n_warmup" "$N_WARMUP"
             "--n_iter" "$N_ITER"
             "--n_chains" "$N_CHAINS"
