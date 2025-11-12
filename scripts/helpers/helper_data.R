@@ -213,6 +213,19 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
     }
   }
   
+  # Verify we still have data after all filtering
+  if (nrow(data) == 0) {
+    stop("No subjects remain after filtering. Possible causes:\n",
+         "  - All subjects dropped for low valid RT percentage (< ",
+         min_valid_rt_pct * 100, "%)\n",
+         "  - All subjects filtered by RT bounds (reject_min: ", RTbound_reject_min_ms, 
+         "ms, reject_max: ", ifelse(is.null(RTbound_reject_max_ms), "none", 
+                                    paste0(RTbound_reject_max_ms, "ms")), ")\n",
+         "  - Insufficient subjects meeting n_trials requirement (", n_trials, " trials)\n",
+         "  - participant_list filtering removed all subjects\n",
+         "Please adjust your filtering parameters and try again.")
+  }
+  
   # UPDATE SID ====
   data_list$sid = as.numeric(as.character(unique(data$subjID)))
   
@@ -696,6 +709,19 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
   
   # 4. Determine the ACTUAL max trials (T) from the kept subjects
   n_trials_actual <- max(Tsubj_counts)
+  
+  # Verify we still have data after all filtering
+  if (nrow(data) == 0) {
+    stop("No subjects remain after filtering. Possible causes:\n",
+         "  - All subjects dropped for low valid RT percentage (< ",
+         min_valid_rt_pct * 100, "%)\n",
+         "  - All subjects filtered by RT bounds (reject_min: ", RTbound_reject_min_ms, 
+         "ms, reject_max: ", ifelse(is.null(RTbound_reject_max_ms), "none", 
+                                    paste0(RTbound_reject_max_ms, "ms")), ")\n",
+         "  - Insufficient subjects meeting n_trials requirement (", n_trials, " trials)\n",
+         "  - participant_list filtering removed all subjects\n",
+         "Please adjust your filtering parameters and try again.")
+  }
   
   data_list$sid <- as.integer(subjects)
   data_list$N <- as.integer(n_subs)
