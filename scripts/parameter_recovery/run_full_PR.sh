@@ -619,6 +619,14 @@ run_fit() {
     source "$FIT_CONFIG_FILE"
     source "$DATA_CONFIG_FILE"
     
+    # Convert lowercase config vars to uppercase for consistency
+    N_TRIALS=${n_trials:-$N_TRIALS}
+    N_SUBS=${n_subs:-$N_SUBJECTS_FIT}
+    RTBOUND_MIN_MS=${RTbound_min_ms:-$RTBOUND_MIN_MS}
+    RTBOUND_MAX_MS=${RTbound_max_ms:-$RTBOUND_MAX_MS}
+    RT_METHOD=${rt_method:-$RTMETHOD}
+    N_BLOCKS=${n_blocks:-$N_BLOCKS}
+
     if [ "$DRY_RUN" = true ]; then
         print_fit_options
         return
