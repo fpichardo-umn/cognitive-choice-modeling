@@ -43,8 +43,7 @@ option_list <- list(
               help="Adapt delta"),
   make_option(c("--max_treedepth"), type="integer", default=12, 
               help="Max tree depth"),
-  make_option(c("--seed"), type="integer", default=29518, 
-              help="Set seed"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
   make_option(c("--check_iter"), type="integer", default=5000, 
               help="Iteration interval for checkpoint runs"),
@@ -77,7 +76,12 @@ if (is.null(opt$model) || is.null(opt$task) || is.null(opt$source)) {
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
 
-# Set random seed
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
 set.seed(opt$seed)
 
 # Get model defaults

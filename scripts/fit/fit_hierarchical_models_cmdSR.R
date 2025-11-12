@@ -37,7 +37,7 @@ option_list = list(
   make_option(c("--n_chains"), type="integer", default=4, help="Number of chains"),
   make_option(c("--adapt_delta"), type="double", default=0.95, help="Adapt delta"),
   make_option(c("--max_treedepth"), type="integer", default=12, help="Max tree depth"),
-  make_option(c("--seed"), type="integer", default=29518, help="Set seed. Default: 29518"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("--dry_run"), action="store_true", default=FALSE, help="Perform a dry run"),
   make_option(c("--check_iter"), type="integer", default=1000, help="Iteration interval for checkpoint runs. Default: 1000"),
   make_option(c("--init"), action="store_true", default=FALSE, help="Initialize values to 0"),
@@ -80,6 +80,11 @@ if (is.null(opt$task)) {
 }
 
 # Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
 set.seed(opt$seed)
 
 # Get model defaults using helper function

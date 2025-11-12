@@ -24,7 +24,7 @@ option_list = list(
   make_option(c("-o", "--output_dir"), type="character", default=NULL, help="./Data/sim/txt/"),
   make_option(c("-b", "--n_blocks"), type="integer", default=6),
   make_option(c("-k", "--trials_per_block"), type="integer", default=20),
-  make_option(c("-s", "--seed"), type="integer", default=12345),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("--RTbound_min_ms"), type="numeric", default=50, 
               help="RT lower bound in milliseconds [default: %default]"),
   make_option(c("--RTbound_max_ms"), type="numeric", default=1200000, 
@@ -36,6 +36,14 @@ opt <- parse_args(opt_parser)
 
 cat("Options used:\n")
 dput(opt)
+
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
+set.seed(opt$seed)
 
 # Get directory structure
 dirs <- setup_directories(opt$task)

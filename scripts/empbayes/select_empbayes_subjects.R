@@ -25,8 +25,7 @@ option_list <- list(
               help="RT maximum bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="mark", 
               help="RT preprocessing method"),
-  make_option(c("--seed"), type="integer", default=29518, 
-              help="Random seed for sampling"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("-l", "--subs_file"), type="character", default="subject_ids_complete_valid.txt", 
               help="Subs list file [Data/raw/COHORT/ses-SES/] (default: subject_ids_complete_valid.txt)"),
   make_option(c("--hier_subs_file"), type="character", default=NULL, 
@@ -54,7 +53,12 @@ if (is.null(opt$n_hier) && is.null(opt$hier_subs_file)) {
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
 
-# Set random seed
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
 set.seed(opt$seed)
 
 # Set up output directory

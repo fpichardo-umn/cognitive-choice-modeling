@@ -96,6 +96,7 @@ CMD_ARGS+=("--method" "$METHOD")
 CMD_ARGS+=("--rt_method" "$RT_METHOD")
 CMD_ARGS+=("--rt_min" "$RTBOUND_MIN_MS")
 CMD_ARGS+=("--rt_max" "$RTBOUND_MAX_MS")
+CMD_ARGS+=("--seed" "$SEED")
 CMD_ARGS+=("--n_blocks" "$N_BLOCKS")
 
 # Add no-indiv flag if enabled

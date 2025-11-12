@@ -45,8 +45,7 @@ option_list <- list(
               help="Max tree depth"),
   make_option(c("--check_iter"), type="integer", default=5000, 
               help="Iteration interval for checkpoint runs"),
-  make_option(c("--seed"), type="integer", default=29518, 
-              help="Random seed"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("-o", "--overwrite"), action="store_true", default=FALSE, 
               help="Overwrite existing fits (default: skip if fit already exists)"),
   make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
@@ -81,7 +80,12 @@ if (is.null(opt$subjects) && is.null(opt$n_subs)) {
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
 source(file.path(here::here(), "scripts", "helpers", "helper_common.R"))
 
-# Set random seed
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
 set.seed(opt$seed)
 
 # Create log directory

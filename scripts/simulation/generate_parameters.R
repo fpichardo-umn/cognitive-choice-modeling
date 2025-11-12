@@ -27,7 +27,7 @@ option_list = list(
   make_option(c("-f", "--fit_file"), type="character", default=NULL, 
               help="Path to fit data (required for EPSE methods)"),
   make_option(c("-p", "--params"), type="character", default=NULL),
-  make_option(c("-s", "--seed"), type="integer", default=12345),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("-e", "--exclude_file"), type="character", default=NULL, 
               help="Path to list of subs to filter out")
 )
@@ -37,6 +37,14 @@ opt <- parse_args(opt_parser)
 
 cat("Options used:\n")
 dput(opt)
+
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
+set.seed(opt$seed)
 
 # Get directory structure
 dirs <- setup_directories(opt$task)

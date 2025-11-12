@@ -70,8 +70,7 @@ option_list <- list(
               help="Pathfinder: draws per path (default: 250)"),
   
   # Other parameters
-  make_option(c("--seed"), type="integer", default=29518, 
-              help="Random seed"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("--parallel"), action="store_true", default=FALSE, 
               help="Use parallel processing in step 4"),
   make_option(c("--cores"), type="integer", default=4, 
@@ -165,6 +164,14 @@ if (!is.null(opt$ses)) {
 if (!is.null(opt$model_status)) {
   common_args <- c(common_args, "--model_status", opt$model_status)
 }
+
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
+set.seed(opt$seed)
 
 common_args <- c(common_args, "--seed", as.character(opt$seed))
 

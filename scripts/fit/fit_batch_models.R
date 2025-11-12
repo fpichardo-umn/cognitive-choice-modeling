@@ -52,7 +52,7 @@ option_list = list(
   make_option(c("--adapt_delta"), type = "double", default = 0.95, help = "Stan adapt delta"),
   make_option(c("--max_treedepth"), type = "integer", default = 12, help = "Stan max tree depth"),
   make_option(c("--check_iter"), type = "integer", default = 1000, help = "Iteration interval to check convergence"),
-  make_option(c("--seed"), type = "integer", help = "Random seed"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("--min_iter"), type = "integer", default = NULL, 
               help = "Minimum post-warmup iterations for adaptive fitting (enables adaptive mode)"),
   make_option(c("--max_iter"), type = "integer", default = NULL,
@@ -74,6 +74,12 @@ opt <- parse_args(opt_parser)
 
 cat("Options used:\n")
 dput(opt)
+
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
 
 # Function to expand array specification (e.g., "40-45,50,52-54" -> c(40,41,42,43,44,45,50,52,53,54))
 expand_array_spec <- function(spec) {

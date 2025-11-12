@@ -29,7 +29,7 @@ option_list = list(
   make_option(c("-w", "--n_warmup"), type="integer", default=1000),
   make_option(c("-i", "--n_iter"), type="integer", default=2000),
   make_option(c("-c", "--n_chains"), type="integer", default=4),
-  make_option(c("-s", "--seed"), type="integer", default=12345),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("-a", "--adapt_delta"), type="double", default=0.95),
   make_option(c("-d", "--max_treedepth"), type="integer", default=12),
   make_option(c("--check_iter"), type="integer", default=10000, help="Iteration interval for checkpoint runs. Default: 10000"),
@@ -60,6 +60,14 @@ opt <- parse_args(opt_parser)
 
 cat("Options used:\n")
 dput(opt)
+
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
+set.seed(opt$seed)
 
 # Get directory structure
 dirs <- setup_directories(opt$task)

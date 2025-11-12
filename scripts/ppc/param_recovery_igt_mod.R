@@ -135,7 +135,7 @@ option_list = list(
   make_option(c("-c", "--n_chains"), type="integer", default=4, help="Number of chains"),
   make_option(c("-a", "--adapt_delta"), type="double", default=0.95, help="Adapt delta"),
   make_option(c("-d", "--max_treedepth"), type="integer", default=12, help="Max tree depth"),
-  make_option(c("-s", "--seed"), type="integer", default=1205234970, help="Random seed"),
+  make_option(c("--seed"), type="integer", default=NULL, help="Set seed. Default: random"),
   make_option(c("-p", "--param_space_exp"), type="character", default="ssFPSE", help="Parameter Space Exploration type (def: ssFPSE) [mbSPSepse, sbSPSepse, tSPSepse, hpsEPSE, thpsEPSE]"),
   make_option(c("-m", "--model"), type="character", default=NULL, help="Model name"),
   make_option(c("-k", "--task"), type="character", default=NULL, help="Task name"),
@@ -146,6 +146,12 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+# Set random seed for reproducibility
+# If seed not provided, generate one
+if (is.null(opt$seed)) {
+  opt$seed <- sample.int(.Machine$integer.max, 1)
+  message(sprintf("No seed provided. Using random seed: %d", opt$seed))
+}
 set.seed(opt$seed)
 
 # Check for required options
