@@ -52,7 +52,21 @@ option_list = list(
   make_option(c("--adapt_delta"), type = "double", default = 0.95, help = "Stan adapt delta"),
   make_option(c("--max_treedepth"), type = "integer", default = 12, help = "Stan max tree depth"),
   make_option(c("--check_iter"), type = "integer", default = 1000, help = "Iteration interval to check convergence"),
-  make_option(c("--seed"), type = "integer", help = "Random seed")
+  make_option(c("--seed"), type = "integer", help = "Random seed"),
+  make_option(c("--min_iter"), type = "integer", default = NULL, 
+              help = "Minimum post-warmup iterations for adaptive fitting (enables adaptive mode)"),
+  make_option(c("--max_iter"), type = "integer", default = NULL,
+              help = "Maximum post-warmup iterations for adaptive fitting"),
+  make_option(c("--iter_increment"), type = "integer", default = 1000,
+              help = "Iterations to add at each diagnostic check (default: 1000)"),
+  make_option(c("--target_rhat"), type = "double", default = 1.01,
+              help = "Target Rhat threshold (default: 1.01)"),
+  make_option(c("--target_ess_bulk"), type = "integer", default = 400,
+              help = "Target ESS bulk threshold (default: 400)"),
+  make_option(c("--target_ess_tail"), type = "integer", default = 400,
+              help = "Target ESS tail threshold (default: 400)"),
+  make_option(c("--disable_adaptive_iter"), action = "store_true", default = FALSE,
+              help = "Disable adaptive iteration feature (use fixed n_iter)")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -320,6 +334,29 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
     "--check_iter", as.character(opt$check_iter),
     "--seed", as.character(opt$seed)
   )
+  
+  # Add adaptive iteration parameters if provided
+  if (!is.null(opt$min_iter)) {
+    cmd_args <- c(cmd_args, "--min_iter", as.character(opt$min_iter))
+  }
+  if (!is.null(opt$max_iter)) {
+    cmd_args <- c(cmd_args, "--max_iter", as.character(opt$max_iter))
+  }
+  if (!is.null(opt$iter_increment) && opt$iter_increment != 1000) {
+    cmd_args <- c(cmd_args, "--iter_increment", as.character(opt$iter_increment))
+  }
+  if (!is.null(opt$target_rhat) && opt$target_rhat != 1.01) {
+    cmd_args <- c(cmd_args, "--target_rhat", as.character(opt$target_rhat))
+  }
+  if (!is.null(opt$target_ess_bulk) && opt$target_ess_bulk != 400) {
+    cmd_args <- c(cmd_args, "--target_ess_bulk", as.character(opt$target_ess_bulk))
+  }
+  if (!is.null(opt$target_ess_tail) && opt$target_ess_tail != 400) {
+    cmd_args <- c(cmd_args, "--target_ess_tail", as.character(opt$target_ess_tail))
+  }
+  if (opt$disable_adaptive_iter) {
+    cmd_args <- c(cmd_args, "--disable_adaptive_iter")
+  }
   
   # Add session parameter if provided
   if (!is.null(opt$ses)) {

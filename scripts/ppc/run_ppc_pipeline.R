@@ -48,7 +48,9 @@ option_list = list(
   make_option(c("--exclude_file"), type="character", default=NULL, 
               help="Path to file with subject IDs to exclude"),
   make_option(c("--ic_method"), type="character", default="loo", 
-              help="Information criterion method: loo or waic")
+              help="Information criterion method: loo or waic"),
+  make_option(c("--n_samples_loglik"), type="character", default="all",
+              help="Number of posterior samples for loglik (default: all, or integer)")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -168,7 +170,7 @@ if (!is.null(opt$fit_file)) {
                                                      additional_tags = list("type" = "fit", "desc" = "output")))
 }
 
-# LOOIC args - NO n_samples parameter (always uses all posterior draws)
+# Build loglik args with user-specified n_samples
 run_loglik_args <- paste0(
   " --model ", opt$model,
   " --task ", opt$task,
@@ -178,9 +180,10 @@ run_loglik_args <- paste0(
   " --ic_method ", opt$ic_method,
   " --rt_method ", opt$rt_method,
   " --RTbound_min_ms ", opt$RTbound_min_ms,
-  " --RTbound_max_ms ", opt$RTbound_max_ms
+  " --RTbound_max_ms ", opt$RTbound_max_ms,
+  " --n_samples ", opt$n_samples_loglik
 )
-message("Log-likelihood will use ALL posterior draws from fit file")
+message("Log-likelihood will use ", opt$n_samples_loglik, " posterior draws from fit file")
 
 # Add exclude_file to loglik args if provided
 if (!is.null(opt$exclude_file)) {

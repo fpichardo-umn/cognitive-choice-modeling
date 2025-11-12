@@ -68,4 +68,11 @@ Rscript ./scripts/fit/fit_single_model.R \
   --max_treedepth ${max_treedepth} \
   --check_iter ${CHECK_ITER} \
   --seed ${SLURM_JOB_ID} \
+  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${min_iter}" ] && echo "--min_iter ${min_iter}") \
+  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${max_iter}" ] && echo "--max_iter ${max_iter}") \
+  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${iter_increment}" ] && echo "--iter_increment ${iter_increment}") \
+  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_rhat}" ] && echo "--target_rhat ${target_rhat}") \
+  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_ess_bulk}" ] && echo "--target_ess_bulk ${target_ess_bulk}") \
+  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_ess_tail}" ] && echo "--target_ess_tail ${target_ess_tail}") \
+  $([ "${enable_adaptive_iter}" = "FALSE" ] && echo "--disable_adaptive_iter") \
   --init

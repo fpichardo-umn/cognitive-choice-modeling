@@ -36,6 +36,7 @@ SAMPLING=${SAMPLING:-"random"}
 WIDTH_CONTROL=${WIDTH_CONTROL:-0.95}
 EXCLUDES_FILE=${EXCLUDES_FILE}
 IC_METHOD=${IC_METHOD:-"loo"}
+N_SAMPLES_LOGLIK=${N_SAMPLES_LOGLIK:-"all"}
 STEPS=${STEPS:-"all"}
 
 # Determine GROUP and GROUP_NAME_ACTUAL for R scripts
@@ -93,6 +94,7 @@ echo "  Block size: $BLOCK_SIZE"
 echo "  Sampling method: $SAMPLING"
 echo "  Width control: $WIDTH_CONTROL"
 echo "  IC method: $IC_METHOD"
+echo "  N samples for loglik: $N_SAMPLES_LOGLIK"
 echo "  Steps to run: $STEPS"
 
 # Build command arguments for run_ppc_pipeline.R
@@ -124,6 +126,7 @@ Rscript scripts/ppc/run_ppc_pipeline.R \
   --RTbound_max_ms ${RTbound_max_ms} \
   ${EXCLUDE_ARG} \
   --ic_method ${IC_METHOD} \
+  --n_samples_loglik ${N_SAMPLES_LOGLIK} \
   --steps ${STEPS} \
   --parallel \
   --n_cores 3 \

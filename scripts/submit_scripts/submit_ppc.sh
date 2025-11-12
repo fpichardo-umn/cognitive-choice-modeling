@@ -27,6 +27,7 @@ print_usage() {
   echo "  -w    Width control for width sampling (default: 0.95)"
   echo "  -x    Excludes file path (default: Data/txt/subs/subject_ids_excludes.txt)"
   echo "  -i    Information criteria method (default: loo, options: loo, waic)"
+  echo "  -l    Number of posterior samples for loglik (default: all, or integer like 2000)"
   echo "  -t    Steps to run (default: all, options: comma-separated list of simulate,stats,loglik,report,all)"
   echo "  -d    Dry run (optional)"
   echo ""
@@ -47,10 +48,11 @@ SAMPLING="random"
 WIDTH_CONTROL=0.95
 EXCLUDES_FILE=""
 IC_METHOD="loo"
+N_SAMPLES_LOGLIK="all"
 STEPS="all"
 
 # --- Parse Command Line Arguments ---
-while getopts ":m:k:s:e:g:S:F:D:n:b:p:w:x:i:t:dh" opt; do
+while getopts ":m:k:s:e:g:S:F:D:n:b:p:w:x:i:l:t:dh" opt; do
   case $opt in
     m) MODEL_NAME=$OPTARG ;;
     k) TASK=$OPTARG ;;
@@ -66,6 +68,7 @@ while getopts ":m:k:s:e:g:S:F:D:n:b:p:w:x:i:t:dh" opt; do
     w) WIDTH_CONTROL=$OPTARG ;;
     x) EXCLUDES_FILE=$OPTARG ;;
     i) IC_METHOD=$OPTARG ;;
+    l) N_SAMPLES_LOGLIK=$OPTARG ;;
     t) STEPS=$OPTARG ;;
     d) DRY_RUN=true ;;
     h) print_usage ;;
@@ -125,6 +128,7 @@ if $DRY_RUN; then
   echo "  Width control: $WIDTH_CONTROL"
   echo "  Excludes file: $EXCLUDES_FILE"
   echo "  IC method: $IC_METHOD"
+  echo "  N samples for loglik: $N_SAMPLES_LOGLIK"
   echo "  Steps to run: $STEPS"
   echo ""
   echo "Note: RT parameters will be sourced from: scripts/configs/data_params_${DATA_CONFIG}.conf"
@@ -135,7 +139,7 @@ if $DRY_RUN; then
   echo "  --mail-user=$USER_EMAIL \\"
   echo "  --output=\"${LOG_DIR}/${JOB_NAME}_%j.out\" \\"
   echo "  --error=\"${LOG_DIR}/${JOB_NAME}_%j.err\" \\"
-  echo "  --export=ALL,MODEL_NAME=$MODEL_NAME,TASK=$TASK,COHORT=$COHORT,GROUP_NAME=$GROUP_NAME,SESSION=$SESSION,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,N_SIMS=$N_SIMS,BLOCK_SIZE=$BLOCK_SIZE,SAMPLING=$SAMPLING,WIDTH_CONTROL=$WIDTH_CONTROL,EXCLUDES_FILE=$EXCLUDES_FILE,IC_METHOD=$IC_METHOD,STEPS=$STEPS \\"
+  echo "  --export=ALL,MODEL_NAME=$MODEL_NAME,TASK=$TASK,COHORT=$COHORT,GROUP_NAME=$GROUP_NAME,SESSION=$SESSION,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,N_SIMS=$N_SIMS,BLOCK_SIZE=$BLOCK_SIZE,SAMPLING=$SAMPLING,WIDTH_CONTROL=$WIDTH_CONTROL,EXCLUDES_FILE=$EXCLUDES_FILE,IC_METHOD=$IC_METHOD,N_SAMPLES_LOGLIK=$N_SAMPLES_LOGLIK,STEPS=$STEPS \\"
   echo "  $BATCH_SCRIPT"
   echo "====== DRY RUN COMPLETED ======"
 else
@@ -148,7 +152,7 @@ else
     --mail-user=$USER_EMAIL \
     --output="${LOG_DIR}/${JOB_NAME}_%j.out" \
     --error="${LOG_DIR}/${JOB_NAME}_%j.err" \
-    --export=ALL,MODEL_NAME=$MODEL_NAME,TASK=$TASK,COHORT=$COHORT,GROUP_NAME=$GROUP_NAME,SESSION=$SESSION,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,N_SIMS=$N_SIMS,BLOCK_SIZE=$BLOCK_SIZE,SAMPLING=$SAMPLING,WIDTH_CONTROL=$WIDTH_CONTROL,EXCLUDES_FILE=$EXCLUDES_FILE,IC_METHOD=$IC_METHOD,STEPS=$STEPS \
+    --export=ALL,MODEL_NAME=$MODEL_NAME,TASK=$TASK,COHORT=$COHORT,GROUP_NAME=$GROUP_NAME,SESSION=$SESSION,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,N_SIMS=$N_SIMS,BLOCK_SIZE=$BLOCK_SIZE,SAMPLING=$SAMPLING,WIDTH_CONTROL=$WIDTH_CONTROL,EXCLUDES_FILE=$EXCLUDES_FILE,IC_METHOD=$IC_METHOD,N_SAMPLES_LOGLIK=$N_SAMPLES_LOGLIK,STEPS=$STEPS \
     $BATCH_SCRIPT)
 
   if [ $? -eq 0 ]; then

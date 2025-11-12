@@ -39,7 +39,21 @@ option_list = list(
   make_option(c("--dry_run"), action="store_true", default=FALSE, help="Perform a dry run"),
   make_option(c("--check_iter"), type="integer", default=1000, help="Iteration interval for checkpoint runs. Default: 1000"),
   make_option(c("--init"), action="store_true", default=FALSE, help="Initialize values to 0"),
-  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT")
+  make_option(c("--min_valid_rt_pct"), type="double", default=0.7, help="Minimum percent valid RT"),
+  make_option(c("--min_iter"), type="integer", default=NULL, 
+              help="Minimum post-warmup iterations for adaptive fitting (enables adaptive mode)"),
+  make_option(c("--max_iter"), type="integer", default=NULL,
+              help="Maximum post-warmup iterations for adaptive fitting"),
+  make_option(c("--iter_increment"), type="integer", default=1000,
+              help="Iterations to add at each diagnostic check (default: 1000)"),
+  make_option(c("--target_rhat"), type="double", default=1.01,
+              help="Target Rhat threshold (default: 1.01)"),
+  make_option(c("--target_ess_bulk"), type="integer", default=400,
+              help="Target ESS bulk threshold (default: 400)"),
+  make_option(c("--target_ess_tail"), type="integer", default=400,
+              help="Target ESS tail threshold (default: 400)"),
+  make_option(c("--disable_adaptive_iter"), action="store_true", default=FALSE,
+              help="Disable adaptive iteration feature (use fixed n_iter)")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -156,6 +170,13 @@ if (!is.null(opt$subid)) {
   additional_tags$sub <- sprintf("%04d", opt$index)
 }
 
+# Construct diagnostic thresholds
+diag_thresholds <- list(
+  rhat = opt$target_rhat,
+  ess_bulk = opt$target_ess_bulk,
+  ess_tail = opt$target_ess_tail
+)
+
 # Fit and save model
 fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt$type, data_list, 
                           n_subs = 1, n_trials = opt$n_trials,
@@ -164,7 +185,12 @@ fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt
                           model_params = model_params, dry_run = opt$dry_run, checkpoint_interval = opt$check_iter,
                           output_dir = output_dir, index = opt$index, init_params = model_init_vals,
                           model_status = opt$model_status, cohort_sub_dir = FALSE,
-                          data_filt_list = data_filt)
+                          data_filt_list = data_filt,
+                          min_iter = opt$min_iter,
+                          max_iter = opt$max_iter,
+                          iter_increment = opt$iter_increment,
+                          diag_thresholds = diag_thresholds,
+                          enable_adaptive_iter = !opt$disable_adaptive_iter)
 
 if (!opt$dry_run) {
   cat("Model fitted and saved successfully.\n")
