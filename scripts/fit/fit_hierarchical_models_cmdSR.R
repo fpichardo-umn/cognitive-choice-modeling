@@ -28,7 +28,7 @@ option_list = list(
   make_option(c("--n_subs"), type="integer", default=1000, help="Number of subjects for hierarchical model"),
   make_option(c("-l", "--subs_file"), type="character", default="subject_ids_complete_valid.txt", 
               help="Subs list file [Data/txt/subs/] (default: subject_ids_complete_valid.txt)"),
-  make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
+  make_option(c("--n_trials"), type="integer", default=100, help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=4000, help="RT max bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="mark", help="RT method"),

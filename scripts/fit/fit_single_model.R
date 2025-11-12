@@ -26,7 +26,7 @@ option_list = list(
               help="Comma-separated list of model parameters"),
   make_option(c("--subid"), type="character", default=NULL, help="Subject ID"),
   make_option(c("--index"), type="integer", default=NULL, help="Optional index for filename"),
-  make_option(c("--n_trials"), type="integer", default=120, help="Number of trials"),
+  make_option(c("--n_trials"), type="integer", default=100, help="Number of trials"),
   make_option(c("--RTbound_min_ms"), type="integer", default=50, help="RT min bound in milliseconds"),
   make_option(c("--RTbound_max_ms"), type="integer", default=4000, help="RT max bound in milliseconds"),
   make_option(c("--rt_method"), type="character", default="mark", help="RT method"),

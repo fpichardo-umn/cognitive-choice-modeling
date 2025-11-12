@@ -42,7 +42,7 @@ option_list = list(
               help="Disable automatic retry of failed subjects"),
   make_option(c("--keep_checkpoints"), action="store_true", default=FALSE,
               help="Keep checkpoint files after successful fits (for debugging)"),
-  make_option(c("--n_trials"), type = "integer", default = 120, help = "Number of trials"),
+  make_option(c("--n_trials"), type = "integer", default = 100, help = "Number of trials"),
   make_option(c("--RTbound_min_ms"), type = "integer", default = 50, help = "Min RT bound in ms"),
   make_option(c("--RTbound_max_ms"), type = "integer", default = 4000, help = "Max RT bound in ms"),
   make_option(c("--rt_method"), type = "character", default = "raw", help = "RT preprocessing method"),
