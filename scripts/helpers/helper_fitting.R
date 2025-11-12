@@ -405,9 +405,9 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       num_divergent <- colSums(all_diagnostics[, , "divergent__"])
       divergence_pct <- (sum(num_divergent) / (n_chains * current_iter)) * 100
       
-      cat(sprintf("  Worst Rhat: %.3f, Min ESS: %d\n",
-                 diag_results$worst_rhat,
-                 min(diag_results$worst_ess_bulk, diag_results$worst_ess_tail)))
+      cat(sprintf("  Worst Rhat: %.3f, Min ESS: %.0f\n",
+                  diag_results$worst_rhat,
+                  min(c(diag_results$worst_ess_bulk, diag_results$worst_ess_tail), na.rm = TRUE)))
       
       # Check if diagnostics pass
       if (diag_results$all_pass) {
@@ -474,9 +474,9 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
         
         diag_results <- check_diagnostics(all_samples, diag_thresholds)
         
-        cat(sprintf("  Worst Rhat: %.3f, Min ESS: %d\n",
-                   diag_results$worst_rhat,
-                   min(diag_results$worst_ess_bulk, diag_results$worst_ess_tail)))
+        cat(sprintf("  Worst Rhat: %.3f, Min ESS: %.0f\n",
+                    diag_results$worst_rhat,
+                    min(c(diag_results$worst_ess_bulk, diag_results$worst_ess_tail), na.rm = TRUE)))
         
         extension_count <- extension_count + 1
       }

@@ -2,20 +2,20 @@ opt_model = "ev"
 # =======
 #opt_model = "orl"
 
-opt_task = "igt_mod"
-opt_cohort = "ahrb"
+opt_task = "igt"
+opt_cohort = "adb"
 opt_session = "00"
-opt_nsubs = 50#182#92
+opt_nsubs = 400#182#92
 opt_group = "hier"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 opt_n_trials = 80
 
-opt_RTmin_ms = 50
+opt_RTmin_ms = 100
 opt_RTmax_ms = Inf
-opt_n_warmup = 500
-opt_n_iter = 500
-opt_n_chains = 2
+opt_n_warmup = 1000
+opt_n_iter = 3000
+opt_n_chains = 4
 opt_adapt_delta = .9
 opt_max_treedepth = 10
 
@@ -46,8 +46,15 @@ opt <- list(
   dry_run = FALSE,
   check_iter = 20000,
   init = FALSE,
+  min_iter = 3000,
+  max_iter = 5000,
+  iter_increment = 1000,
+  target_rhat = 1.01,
+  target_ess_bulk = 1000,
+  target_ess_tail = 400,
+  disable_adaptive_iter = FALSE,
   min_valid_rt_pct = 0.7
-  #,subid = "9104700"#"1002"#"9104700"
+  #,subid = "200839"#"1002"#"9104700"
 )
 
 # Gen Params
