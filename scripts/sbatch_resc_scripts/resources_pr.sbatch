@@ -72,8 +72,8 @@ echo "Session: $SESSION"
 echo "Number of sim subjects: $N_SUBJECTS_FIT"
 echo "Number of PR subjects: $N_SUBJECTS_PR"
 echo "Number of trials: $N_TRIALS"
-echo "MCMC iterations: $n_iter"
-echo "Checkpoint interval: $check_iter"
+echo "MCMC iterations: $N_ITER"
+echo "Checkpoint interval: $CHECK_ITER"
 echo "No individual fitting: $NO_INDIV"
 echo "Working directory: $(pwd)"
 
@@ -86,17 +86,17 @@ CMD_ARGS+=("--n_subjects_fit" "$N_SUBJECTS_FIT")
 CMD_ARGS+=("--n_subjects_pr" "$N_SUBJECTS_PR")
 CMD_ARGS+=("--subs-file" "$SUBS_FILE")
 CMD_ARGS+=("--n-trials" "$N_TRIALS")
-CMD_ARGS+=("--n-iter" "$n_iter")
-CMD_ARGS+=("--check-iter" "$check_iter")
-CMD_ARGS+=("--n-warmup" "$n_warmup")
+CMD_ARGS+=("--n-iter" "$N_ITER")
+CMD_ARGS+=("--check-iter" "$CHECK_ITER")
+CMD_ARGS+=("--n-warmup" "$N_WARMUP")
 CMD_ARGS+=("--fit-config" "$FIT_CONFIG")
 CMD_ARGS+=("--data-config" "$DATA_CONFIG")
 CMD_ARGS+=("--sim-config" "$SIM_CONFIG")
 CMD_ARGS+=("--method" "$METHOD")
-CMD_ARGS+=("--rt_method" "$rt_method")
-CMD_ARGS+=("--rt_min" "$RTbound_min_ms")
-CMD_ARGS+=("--rt_max" "$RTbound_max_ms")
-CMD_ARGS+=("--n_blocks" "$n_blocks")
+CMD_ARGS+=("--rt_method" "$RT_METHOD")
+CMD_ARGS+=("--rt_min" "$RTBOUND_MIN_MS")
+CMD_ARGS+=("--rt_max" "$RTBOUND_MAX_MS")
+CMD_ARGS+=("--n_blocks" "$N_BLOCKS")
 
 # Add no-indiv flag if enabled
 if [ "$NO_INDIV" = true ]; then

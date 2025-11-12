@@ -62,15 +62,15 @@ if should_run_step 1; then
     -s ${SOURCE} \
     --ses ${SES} \
     -k ${TASK} \
-    --n_trials ${n_trials} \
-    --RTbound_min_ms ${RTbound_min_ms} \
-    --RTbound_max_ms ${RTbound_max_ms} \
-    --rt_method ${rt_method} \
-    --n_warmup ${n_warmup} \
-    --n_iter ${n_iter} \
-    --n_chains ${n_chains} \
-    --adapt_delta ${adapt_delta} \
-    --max_treedepth ${max_treedepth} \
+    --n_trials ${N_TRIALS} \
+    --RTbound_min_ms ${RTBOUND_MIN_MS} \
+    --RTbound_max_ms ${RTBOUND_MAX_MS} \
+    --rt_method ${RT_METHOD} \
+    --n_warmup ${N_WARMUP} \
+    --n_iter ${N_ITER} \
+    --n_chains ${N_CHAINS} \
+    --adapt_delta ${ADAPT_DELTA} \
+    --max_treedepth ${MAX_TREEDEPTH} \
     --check_iter ${CHECK_ITER} \
     --seed ${SLURM_JOB_ID}
   check_status $? "Initial hierarchical model fit"
@@ -100,17 +100,17 @@ if should_run_step 3; then
     --ses ${SES} \
     -k ${TASK} \
     -a "all" \
-    --n_trials ${n_trials} \
-    --RTbound_min_ms ${RTbound_min_ms} \
-    --RTbound_max_ms ${RTbound_max_ms} \
-    --rt_method ${rt_method} \
-    --n_warmup ${n_warmup} \
-    --n_iter ${n_iter} \
-    --n_chains ${n_chains} \
-    --adapt_delta ${adapt_delta} \
-    --max_treedepth ${max_treedepth} \
-    --subs_file ${SUBS_FILE} \
+    --n_trials ${N_TRIALS} \
+    --RTbound_min_ms ${RTBOUND_MIN_MS} \
+    --RTbound_max_ms ${RTBOUND_MAX_MS} \
+    --rt_method ${RT_METHOD} \
+    --n_warmup ${N_WARMUP} \
+    --n_iter ${N_ITER} \
+    --n_chains ${N_CHAINS} \
+    --adapt_delta ${ADAPT_DELTA} \
+    --max_treedepth ${MAX_TREEDEPTH} \
     --check_iter ${CHECK_ITER} \
+    --subs_file ${SUBS_FILE} \
     --seed ${SLURM_JOB_ID}
   check_status $? "Full empirical Bayes model fit"
 fi

@@ -35,7 +35,7 @@ CHECK_ITER=1000
 INDIV=true
 RENDER=true
 EXCLUDE_FILE=""
-RTMETHOD="mark"
+RT_METHOD="mark"
 RTBOUND_MIN_MS=50
 RTBOUND_MAX_MS=4000
 SIM_CONFIG="sim"
@@ -228,7 +228,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --rt_method|--rt-method)
-            RTMETHOD="$2"
+            RT_METHOD="$2"
             shift 2
             ;;
         --rt_max|--rt-max)
@@ -605,7 +605,7 @@ print_recovery_options() {
     echo "    --max_treedepth $MAX_TREEDEPTH \\"
     echo "    --check_iter $CHECK_ITER \\"
     echo "    --seed $SEED \\"
-    echo "    n_trials = ${N_TRIALS:-120}"
+    echo "    n_trials = ${N_TRIALS:-100}"
 }
 
 # Function to run model fitting (batch or hierarchical based on group type)
@@ -618,14 +618,6 @@ run_fit() {
 
     source "$FIT_CONFIG_FILE"
     source "$DATA_CONFIG_FILE"
-    
-    # Convert lowercase config vars to uppercase for consistency
-    N_TRIALS=${n_trials:-$N_TRIALS}
-    N_SUBS=${n_subs:-$N_SUBJECTS_FIT}
-    RTBOUND_MIN_MS=${RTbound_min_ms:-$RTBOUND_MIN_MS}
-    RTBOUND_MAX_MS=${RTbound_max_ms:-$RTBOUND_MAX_MS}
-    RT_METHOD=${rt_method:-$RTMETHOD}
-    N_BLOCKS=${n_blocks:-$N_BLOCKS}
 
     if [ "$DRY_RUN" = true ]; then
         print_fit_options
@@ -656,20 +648,20 @@ run_fit() {
             "--max_treedepth" "$MAX_TREEDEPTH"
             "--check_iter" "$CHECK_ITER"
             "--seed" "$SEED"
-            "--rt_method" "$RTMETHOD"
+            "--rt_method" "$RT_METHOD"
             "--RTbound_min_ms" "$RTBOUND_MIN_MS"
             "--RTbound_max_ms" "$RTBOUND_MAX_MS"
         )
         
         # Add adaptive iteration parameters if enabled
-        if [ "${enable_adaptive_iter}" = "TRUE" ]; then
-            [ ! -z "${min_iter}" ] && CMD_ARGS+=("--min_iter" "${min_iter}")
-            [ ! -z "${max_iter}" ] && CMD_ARGS+=("--max_iter" "${max_iter}")
-            [ ! -z "${iter_increment}" ] && CMD_ARGS+=("--iter_increment" "${iter_increment}")
-            [ ! -z "${target_rhat}" ] && CMD_ARGS+=("--target_rhat" "${target_rhat}")
-            [ ! -z "${target_ess_bulk}" ] && CMD_ARGS+=("--target_ess_bulk" "${target_ess_bulk}")
-            [ ! -z "${target_ess_tail}" ] && CMD_ARGS+=("--target_ess_tail" "${target_ess_tail}")
-        elif [ "${enable_adaptive_iter}" = "FALSE" ]; then
+        if [ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ]; then
+            [ ! -z "${MIN_ITER}" ] && CMD_ARGS+=("--min_iter" "${MIN_ITER}")
+            [ ! -z "${MAX_ITER}" ] && CMD_ARGS+=("--max_iter" "${MAX_ITER}")
+            [ ! -z "${ITER_INCREMENT}" ] && CMD_ARGS+=("--iter_increment" "${ITER_INCREMENT}")
+            [ ! -z "${TARGET_RHAT}" ] && CMD_ARGS+=("--target_rhat" "${TARGET_RHAT}")
+            [ ! -z "${TARGET_ESS_BULK}" ] && CMD_ARGS+=("--target_ess_bulk" "${TARGET_ESS_BULK}")
+            [ ! -z "${TARGET_ESS_TAIL}" ] && CMD_ARGS+=("--target_ess_tail" "${TARGET_ESS_TAIL}")
+        elif [ "${ENABLE_ADAPTIVE_ITER}" = "FALSE" ]; then
             CMD_ARGS+=("--disable_adaptive_iter")
         fi
         
@@ -704,20 +696,20 @@ run_fit() {
             "--max_treedepth" "$MAX_TREEDEPTH"
             "--check_iter" "$CHECK_ITER"
             "--seed" "$SEED"
-            "--rt_method" "$RTMETHOD"
+            "--rt_method" "$RT_METHOD"
             "--RTbound_min_ms" "$RTBOUND_MIN_MS"
             "--RTbound_max_ms" "$RTBOUND_MAX_MS"
         )
         
         # Add adaptive iteration parameters if enabled
-        if [ "${enable_adaptive_iter}" = "TRUE" ]; then
-            [ ! -z "${min_iter}" ] && CMD_ARGS+=("--min_iter" "${min_iter}")
-            [ ! -z "${max_iter}" ] && CMD_ARGS+=("--max_iter" "${max_iter}")
-            [ ! -z "${iter_increment}" ] && CMD_ARGS+=("--iter_increment" "${iter_increment}")
-            [ ! -z "${target_rhat}" ] && CMD_ARGS+=("--target_rhat" "${target_rhat}")
-            [ ! -z "${target_ess_bulk}" ] && CMD_ARGS+=("--target_ess_bulk" "${target_ess_bulk}")
-            [ ! -z "${target_ess_tail}" ] && CMD_ARGS+=("--target_ess_tail" "${target_ess_tail}")
-        elif [ "${enable_adaptive_iter}" = "FALSE" ]; then
+        if [ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ]; then
+            [ ! -z "${MIN_ITER}" ] && CMD_ARGS+=("--min_iter" "${MIN_ITER}")
+            [ ! -z "${MAX_ITER}" ] && CMD_ARGS+=("--max_iter" "${MAX_ITER}")
+            [ ! -z "${ITER_INCREMENT}" ] && CMD_ARGS+=("--iter_increment" "${ITER_INCREMENT}")
+            [ ! -z "${TARGET_RHAT}" ] && CMD_ARGS+=("--target_rhat" "${TARGET_RHAT}")
+            [ ! -z "${TARGET_ESS_BULK}" ] && CMD_ARGS+=("--target_ess_bulk" "${TARGET_ESS_BULK}")
+            [ ! -z "${TARGET_ESS_TAIL}" ] && CMD_ARGS+=("--target_ess_tail" "${TARGET_ESS_TAIL}")
+        elif [ "${ENABLE_ADAPTIVE_ITER}" = "FALSE" ]; then
             CMD_ARGS+=("--disable_adaptive_iter")
         fi
         
@@ -873,14 +865,14 @@ run_pr_recovery() {
         CMD_ARGS+=("--render")
     fi
     CMD_ARGS+=(
-        "--n_warmup $n_warmup"
-        "--n_iter $n_iter"
-        "--n_chains $n_chains"
-        "--adapt_delta $adapt_delta"
-        "--max_treedepth $max_treedepth"
-        "--check_iter $check_iter"
+        "--n_warmup $N_WARMUP"
+        "--n_iter $N_ITER"
+        "--n_chains $N_CHAINS"
+        "--adapt_delta $ADAPT_DELTA"
+        "--max_treedepth $MAX_TREEDEPTH"
+        "--check_iter $CHECK_ITER"
         "--seed $SEED"
-        "--rt_method $RTMETHOD"
+        "--rt_method $RT_METHOD"
         "--RTbound_min_ms $RTBOUND_MIN_MS"
         "--RTbound_max_ms $RTBOUND_MAX_MS"
         "--n_trials ${N_TRIALS}"

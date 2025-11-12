@@ -32,11 +32,11 @@ source ./scripts/configs/fit_params_${FIT_CONFIG}.conf
 source ./scripts/configs/data_params_${DATA_CONFIG}.conf
 
 # Determine RT handling
-if [ -z "${rt_method}" ]; then
+if [ -z "${RT_METHOD}" ]; then
   if [[ "${MODEL_NAME}" == *"ddm"* ]]; then
-    rt_method="remove"
+    RT_METHOD="mark"
   else
-    rt_method="force"
+    RT_METHOD="force"
   fi
 
 fi
@@ -48,20 +48,20 @@ Rscript ./scripts/fit/fit_hierarchical_models_cmdSR.R \
   -k ${TASK} \
   -g ${GROUP_TYPE} \
   --n_subs ${n_subs} \
-  --n_trials ${n_trials} \
-  --RTbound_min_ms ${RTbound_min_ms} \
-  --RTbound_max_ms ${RTbound_max_ms} \
-  --rt_method ${rt_method} \
-  --n_warmup ${n_warmup} \
-  --n_iter ${n_iter} \
-  --n_chains ${n_chains} \
-  --adapt_delta ${adapt_delta} \
-  --max_treedepth ${max_treedepth} \
+  --n_trials ${N_TRIALS} \
+  --RTbound_min_ms ${RTBOUND_MIN_MS} \
+  --RTbound_max_ms ${RTBOUND_MAX_MS} \
+  --rt_method ${RT_METHOD} \
+  --n_warmup ${N_WARMUP} \
+  --n_iter ${N_ITER} \
+  --n_chains ${N_CHAINS} \
+  --adapt_delta ${ADAPT_DELTA} \
+  --max_treedepth ${MAX_TREEDEPTH} \
   --check_iter ${CHECK_ITER} \
-  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${min_iter}" ] && echo "--min_iter ${min_iter}") \
-  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${max_iter}" ] && echo "--max_iter ${max_iter}") \
-  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${iter_increment}" ] && echo "--iter_increment ${iter_increment}") \
-  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_rhat}" ] && echo "--target_rhat ${target_rhat}") \
-  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_ess_bulk}" ] && echo "--target_ess_bulk ${target_ess_bulk}") \
-  $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_ess_tail}" ] && echo "--target_ess_tail ${target_ess_tail}") \
-  $([ "${enable_adaptive_iter}" = "FALSE" ] && echo "--disable_adaptive_iter")
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${MIN_ITER}" ] && echo "--min_iter ${MIN_ITER}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${MAX_ITER}" ] && echo "--max_iter ${MAX_ITER}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${ITER_INCREMENT}" ] && echo "--iter_increment ${ITER_INCREMENT}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${TARGET_RHAT}" ] && echo "--target_rhat ${TARGET_RHAT}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${TARGET_ESS_BULK}" ] && echo "--target_ess_bulk ${TARGET_ESS_BULK}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${TARGET_ESS_TAIL}" ] && echo "--target_ess_tail ${TARGET_ESS_TAIL}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "FALSE" ] && echo "--disable_adaptive_iter")

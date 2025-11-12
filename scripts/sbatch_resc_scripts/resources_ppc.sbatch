@@ -76,14 +76,14 @@ fi
 if [ -f "$DATA_CONFIG_FILE" ]; then
   source "$DATA_CONFIG_FILE"
   echo "Loaded data config: $DATA_CONFIG_FILE"
-  echo "RT method from config: $rt_method"
-  echo "RT bounds from config: ${RTbound_min_ms}ms - ${RTbound_max_ms}ms"
+  echo "RT method from config: $RT_METHOD"
+  echo "RT bounds from config: ${RTBOUND_MIN_MS}ms - ${RTBOUND_MAX_MS}ms"
 else
   echo "Warning: Data config file not found: $DATA_CONFIG_FILE"
   # Set defaults if config not found
-  rt_method="remove"
-  RTbound_min_ms=50
-  RTbound_max_ms=4000
+  RT_METHOD="mark"
+  RTBOUND_MIN_MS=100
+  RTBOUND_MAX_MS=4000
   echo "Using default RT parameters"
 fi
 
@@ -121,9 +121,9 @@ Rscript scripts/ppc/run_ppc_pipeline.R \
   --block_size ${BLOCK_SIZE} \
   --sampling ${SAMPLING} \
   --width_control ${WIDTH_CONTROL} \
-  --rt_method ${rt_method} \
-  --RTbound_min_ms ${RTbound_min_ms} \
-  --RTbound_max_ms ${RTbound_max_ms} \
+  --rt_method ${RT_METHOD} \
+  --RTbound_min_ms ${RTBOUND_MIN_MS} \
+  --RTbound_max_ms ${RTBOUND_MAX_MS} \
   ${EXCLUDE_ARG} \
   --ic_method ${IC_METHOD} \
   --n_samples_loglik ${N_SAMPLES_LOGLIK} \

@@ -44,13 +44,10 @@ SUBS_LIST_FILE="${SUBS_DIR}/${SUBS_LIST_FILENAME}"
 source ${SCRIPT_DIR}/configs/fit_params_${FIT_CONFIG}.conf
 source ${SCRIPT_DIR}/configs/data_params_${DATA_CONFIG}.conf
 
-# Create a log file for this batch
-LOG_FILE="log_files/fit/batch_${SLURM_JOB_ID}_processing.log"
-mkdir -p $(dirname "$LOG_FILE")
 
 # Function to log messages with timestamps
 log_message() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
 # Log start of processing
@@ -76,11 +73,11 @@ for index in "${SUBJECT_INDICES[@]}"; do
   log_message "Processing subject ${SUBJECT_ID} (${CURRENT_SUBJECT}/${TOTAL_SUBJECTS})"
   
   # Determine RT handling method
-  if [ -z "${rt_method}" ]; then
+  if [ -z "${RT_METHOD}" ]; then
     if [[ "${MODEL_NAME}" == *"ddm"* ]]; then
-      rt_method="remove"
+      RT_METHOD="mark"
     else
-      rt_method="force"
+      RT_METHOD="force"
     fi
   fi
   
@@ -93,24 +90,24 @@ for index in "${SUBJECT_INDICES[@]}"; do
     $([ ! -z "${SESSION}" ] && echo "--ses ${SESSION}") \
     --subid ${SUBJECT_ID} \
     --index ${index} \
-    --n_trials ${n_trials} \
-    --RTbound_min_ms ${RTbound_min_ms} \
-    --RTbound_max_ms ${RTbound_max_ms} \
-    --rt_method ${rt_method} \
-    --n_warmup ${n_warmup} \
-    --n_iter ${n_iter} \
-    --n_chains ${n_chains} \
-    --adapt_delta ${adapt_delta} \
-    --max_treedepth ${max_treedepth} \
-    --check_iter ${check_iter} \
+    --n_trials ${N_TRIALS} \
+    --RTbound_min_ms ${RTBOUND_MIN_MS} \
+    --RTbound_max_ms ${RTBOUND_MAX_MS} \
+    --rt_method ${RT_METHOD} \
+    --n_warmup ${N_WARMUP} \
+    --n_iter ${N_ITER} \
+    --n_chains ${N_CHAINS} \
+    --adapt_delta ${ADAPT_DELTA} \
+    --max_treedepth ${MAX_TREEDEPTH} \
+    --check_iter ${CHECK_ITER} \
     --seed $RANDOM \
-    $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${min_iter}" ] && echo "--min_iter ${min_iter}") \
-    $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${max_iter}" ] && echo "--max_iter ${max_iter}") \
-    $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${iter_increment}" ] && echo "--iter_increment ${iter_increment}") \
-    $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_rhat}" ] && echo "--target_rhat ${target_rhat}") \
-    $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_ess_bulk}" ] && echo "--target_ess_bulk ${target_ess_bulk}") \
-    $([ "${enable_adaptive_iter}" = "TRUE" ] && [ ! -z "${target_ess_tail}" ] && echo "--target_ess_tail ${target_ess_tail}") \
-    $([ "${enable_adaptive_iter}" = "FALSE" ] && echo "--disable_adaptive_iter") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${MIN_ITER}" ] && echo "--min_iter ${MIN_ITER}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${MAX_ITER}" ] && echo "--max_iter ${MAX_ITER}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${ITER_INCREMENT}" ] && echo "--iter_increment ${ITER_INCREMENT}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${TARGET_RHAT}" ] && echo "--target_rhat ${TARGET_RHAT}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${TARGET_ESS_BULK}" ] && echo "--target_ess_bulk ${TARGET_ESS_BULK}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "TRUE" ] && [ ! -z "${TARGET_ESS_TAIL}" ] && echo "--target_ess_tail ${TARGET_ESS_TAIL}") \
+    $([ "${ENABLE_ADAPTIVE_ITER}" = "FALSE" ] && echo "--disable_adaptive_iter") \
     --init
   
   if [ $? -eq 0 ]; then
