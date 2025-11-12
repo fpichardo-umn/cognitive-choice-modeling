@@ -26,6 +26,9 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 # Source helper functions
 source(file.path(here::here(), "scripts", "helpers", "helper_functions_cmdSR.R"))
 source(file.path(here::here(), "scripts", "parameter_recovery", "helper_functions_PR.R"))

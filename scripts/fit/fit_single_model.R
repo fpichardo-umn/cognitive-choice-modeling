@@ -59,6 +59,9 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 #set_cmdstan_path("~/stan/cmdstan-2.36.0/")
 
 # Load helper functions for directory structure

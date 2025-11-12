@@ -72,6 +72,9 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 # Function to expand array specification (e.g., "40-45,50,52-54" -> c(40,41,42,43,44,45,50,52,53,54))
 expand_array_spec <- function(spec) {
   result <- integer(0)

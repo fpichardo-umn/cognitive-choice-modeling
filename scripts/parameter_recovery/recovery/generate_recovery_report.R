@@ -18,6 +18,9 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 # Validate required parameters
 if (is.null(opt$task) || is.null(opt$model) || is.null(opt$group)) {
   stop("Task, model, and group parameters are required.")

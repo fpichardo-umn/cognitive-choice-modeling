@@ -32,6 +32,9 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 # Check required arguments
 if (is.null(opt$models)) {
   stop("List of models is required. Use --models flag.")

@@ -43,6 +43,9 @@ option_list <- list(
 opt_parser <- OptionParser(option_list = option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 # Validate required arguments
 if (is.null(opt$task) || is.null(opt$cohort) || is.null(opt$model) || is.null(opt$group)) {
   stop("Task, cohort, model, and group are required. Use --task, --cohort, --model, and --group flags.")

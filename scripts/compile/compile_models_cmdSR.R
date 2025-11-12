@@ -37,6 +37,9 @@ option_list <- list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+cat("Options used:\n")
+dput(opt)
+
 # Get task-specific directories
 if (is.null(opt$model_status)) {
   stop("Validation status of model is required using the -o/--model_status option.")
