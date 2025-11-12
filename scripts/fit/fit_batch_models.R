@@ -121,30 +121,11 @@ if (!is.null(opt$task)) {
   stop("Task name is required using the -k option.")
 }
 
-# Create task-specific log directory
-log_dir <- file.path(PROJ_DIR, "log_files", opt$task, "fit")
-dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-
-# Create log file with BIDS-style naming
-log_filename <- generate_bids_filename(
-  prefix = "batch_processing",
-  cohort = opt$source,
-  ses = opt$ses,
-  task = opt$task,
-  group = "sing",
-  model = opt$model,
-  additional_tags = list("date" = format(Sys.time(), "%Y%m%d-%H%M%S")),
-  ext = "log"
-)
-log_file <- file.path(log_dir, log_filename)
-cat(sprintf("Log file: %s\n", log_file))
-
 # Function to log messages with timestamps
 log_message <- function(message) {
   timestamp <- format(Sys.time(), "[%Y-%m-%d %H:%M:%S]")
   log_entry <- sprintf("%s %s", timestamp, message)
   cat(log_entry, "\n")
-  cat(log_entry, "\n", file = log_file, append = TRUE)
 }
 
 # Check required arguments
