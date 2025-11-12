@@ -90,6 +90,13 @@ if (!is.null(opt$output_rec_dir)) {
 ensure_dir_exists(output_fit_dir)
 ensure_dir_exists(output_rec_dir)
 
+# Construct diagnostic thresholds for adaptive iteration
+diag_thresholds <- list(
+  rhat = opt$target_rhat,
+  ess_bulk = opt$target_ess_bulk,
+  ess_tail = opt$target_ess_tail
+)
+
 # Load simulated data - use new path if not specified
 if (is.null(opt$sim_data)) {
   sim_data_file <- file.path(
@@ -367,13 +374,6 @@ recovery_csv_file <- file.path(
     ),
     ext = "csv"
   )
-)
-
-# Construct diagnostic thresholds for adaptive iteration
-diag_thresholds <- list(
-  rhat = opt$target_rhat,
-  ess_bulk = opt$target_ess_bulk,
-  ess_tail = opt$target_ess_tail
 )
 
 # Extract and save recovery data
