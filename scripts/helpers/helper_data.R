@@ -133,7 +133,7 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
   
   # RT Filtering ====
   # Preprocess data with both min and max RT bounds
-  if ("rt" %in% names(data) || "latency" %in% names(data) || "RT" %in% names(data)) {
+  if ("RT" %in% data_params && ("rt" %in% names(data) || "latency" %in% names(data) || "RT" %in% names(data))) {
     results <- preprocess_data(data, task, RTbound_reject_min_ms, RTbound_reject_max_ms, rt_method, return_dropped_indices = TRUE)
     data <- results$data
     drop_idx <- results$dropped_indices
@@ -142,7 +142,7 @@ extract_sample_data <- function(data, data_params, task, n_trials = NULL, n_subs
   }
   
   # Check data quality for 'mark' method BEFORE building data_list ====
-  if (rt_method == "mark" && data_has_rt) {
+  if ("RT" %in% data_params && rt_method == "mark" && data_has_rt) {
     # Calculate valid RT percentage per subject
     rt_quality <- data %>%
       group_by(subjID) %>%
