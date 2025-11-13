@@ -76,7 +76,7 @@ igt_modORLModel <- R6::R6Class("igt_modORLModel",
         # Learning only occurs if participant chose to play
         if (choices[t] == 1) {
           # Generate outcome
-          outcome <- self$task$generate_deck_outcome(shown_deck, t)
+          outcome <- self$task$generate_deck_outcome(shown_deck)
           outcomes[t] <- outcome
           
           # Calculate sign of outcome for EF updates

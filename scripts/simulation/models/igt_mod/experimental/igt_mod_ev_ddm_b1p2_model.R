@@ -120,7 +120,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                        # Update EV if deck was played
                                        if(choices[t] == 1) {
                                          # Generate outcome
-                                         outcome <- self$task$generate_deck_outcome(shown_deck, t)
+                                         outcome <- self$task$generate_deck_outcome(shown_deck)
                                          outcomes[t] <- outcome
                                          
                                          # Calculate utility using weighted outcome according to Stan implementation

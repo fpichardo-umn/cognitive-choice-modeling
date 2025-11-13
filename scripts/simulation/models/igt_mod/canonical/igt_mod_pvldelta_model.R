@@ -58,7 +58,7 @@ igt_modPVLDELTAModel <- R6::R6Class("igt_modPVLDELTAModel",
                                  # Update EV if deck was played
                                  if(choices[t] == 1) {
                                    # Generate outcome
-                                   outcome <- self$task$generate_deck_outcome(shown_deck, t)
+                                   outcome <- self$task$generate_deck_outcome(shown_deck)
                                    outcomes[t] <- outcome
                                    
                                    # Calculate utility

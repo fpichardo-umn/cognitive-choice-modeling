@@ -99,7 +99,7 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                  # Obtain outcomes if deck was played
                                  if(choices[t] == 1) {
                                    # Generate outcome
-                                   outcome <- self$task$generate_deck_outcome(shown_deck, t)
+                                   outcome <- self$task$generate_deck_outcome(shown_deck)
                                    outcomes[t] <- outcome
                                  }
                                }

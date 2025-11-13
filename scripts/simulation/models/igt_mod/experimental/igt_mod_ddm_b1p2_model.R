@@ -120,7 +120,7 @@ igt_modDDMB1P2Model <- R6::R6Class("igt_modDDMB1P2Model",
         
         # Obtain outcomes if deck was played
         if (choices[t] == 1) {
-          outcome <- self$task$generate_deck_outcome(shown_deck, t)
+          outcome <- self$task$generate_deck_outcome(shown_deck)
           outcomes[t] <- outcome
         }
       }
