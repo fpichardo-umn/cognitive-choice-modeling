@@ -40,10 +40,16 @@ option_list = list(
               help="Number of cores to use for parallel processing (default: 4)"),
   make_option(c("--no_retry"), action="store_true", default=FALSE,
               help="Disable automatic retry of failed subjects"),
+  make_option(c("--max_retry_passes"), type="integer", default=3,
+              help="Maximum number of retry passes for failed subjects (default: 3)"),
+  make_option(c("--final_retry_warmup_increase"), type="integer", default=1000,
+              help="Additional warmup iterations for final retry pass (default: 1000)"),
+  make_option(c("--final_retry_adapt_delta_increase"), type="double", default=0.025,
+              help="Additional adapt_delta for final retry pass (default: 0.025)"),
   make_option(c("--keep_checkpoints"), action="store_true", default=FALSE,
               help="Keep checkpoint files after successful fits (for debugging)"),
   make_option(c("--n_trials"), type = "integer", default = 100, help = "Number of trials"),
-  make_option(c("--RTbound_min_ms"), type = "integer", default = 50, help = "Min RT bound in ms"),
+  make_option(c("--RTbound_min_ms"), type = "integer", default = 100, help = "Min RT bound in ms"),
   make_option(c("--RTbound_max_ms"), type = "integer", default = 4000, help = "Max RT bound in ms"),
   make_option(c("--rt_method"), type = "character", default = "raw", help = "RT preprocessing method"),
   make_option(c("--n_warmup"), type = "integer", default = 3000, help = "Number of warmup iterations"),
@@ -157,7 +163,7 @@ if (!is.null(opt$ses)) {
 }
 log_message(sprintf("Fit config: %s, Data config: %s", opt$fit_config, opt$data_config))
 log_message(sprintf("Overwrite mode: %s", if(opt$overwrite) "ON (re-fit all)" else "OFF (skip existing fits)"))
-log_message(sprintf("Retry mode: %s", if(opt$no_retry) "DISABLED" else "ENABLED"))
+log_message(sprintf("Retry mode: %s", if(opt$no_retry) "DISABLED" else sprintf("ENABLED (%d max passes)", opt$max_retry_passes)))
 log_message(sprintf("Checkpoint cleanup: %s", if(opt$keep_checkpoints) "DISABLED (keep all)" else "ENABLED (clean successful)"))
 
 # Validate subject indices
@@ -259,7 +265,7 @@ if (length(existing_checkpoints) > 0) {
 }
 
 # Function to process a single subject
-fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params, data_params) {
+fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params, data_params, escalate = FALSE) {
   subject_id <- subject_ids[index]
   
   if (is.na(subject_id) || subject_id == "") {
@@ -303,6 +309,15 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
     fit_params$rt_method
   }
   
+  # Apply escalation if this is the final retry
+  n_warmup_val <- opt$n_warmup
+  adapt_delta_val <- opt$adapt_delta
+  
+  if (escalate) {
+    n_warmup_val <- opt$n_warmup + opt$final_retry_warmup_increase
+    adapt_delta_val <- min(opt$adapt_delta + opt$final_retry_adapt_delta_increase, 0.9999)
+  }
+  
   # Build command arguments for Rscript
   cmd_args <- c(
     file.path(SCRIPT_DIR, "fit", "fit_single_model.R"),
@@ -316,10 +331,10 @@ fit_single_sub <- function(index, subject_indices, subject_ids, opt, fit_params,
     "--RTbound_min_ms", as.character(opt$RTbound_min_ms),
     "--RTbound_max_ms", as.character(opt$RTbound_max_ms),
     "--rt_method", opt$rt_method,
-    "--n_warmup", as.character(opt$n_warmup),
+    "--n_warmup", as.character(n_warmup_val),
     "--n_iter", as.character(opt$n_iter),
     "--n_chains", as.character(opt$n_chains),
-    "--adapt_delta", as.character(opt$adapt_delta),
+    "--adapt_delta", as.character(adapt_delta_val),
     "--max_treedepth", as.character(opt$max_treedepth),
     "--check_iter", as.character(opt$check_iter),
     "--seed", as.character(opt$seed)
@@ -432,61 +447,101 @@ first_pass_failed <- length(first_pass_failed_indices)
 log_message(sprintf("First pass complete: %d successful, %d failed", 
                     first_pass_successful, first_pass_failed))
 
-# Retry failed subjects if retry is enabled
+# Retry failed subjects with multiple passes if retry is enabled
 retry_successful <- 0
 retry_failed <- 0
 permanently_failed_indices <- c()
+total_recovered_across_retries <- 0
 
 if (first_pass_failed > 0 && !opt$no_retry && !opt$dry_run) {
-  log_message("")
-  log_message("========================================")
-  log_message(sprintf("RETRY PASS: Retrying %d failed subjects", first_pass_failed))
-  log_message("========================================")
+  failed_indices <- first_pass_failed_indices
   
-  # Optional: Add a brief delay to let system resources settle
-  Sys.sleep(5)
-  
-  if (opt$parallel) {
-    log_message(sprintf("Processing retry subjects in parallel with %d cores", opt$cores))
-    
-    # Create cluster
-    cl <- makeCluster(min(opt$cores, first_pass_failed))
-    
-    # Export necessary variables and functions to the cluster
-    clusterExport(cl, c("log_message", "SCRIPT_DIR", "opt", "fit_params", "data_params", "get_safe_data_dir"))
-    
-    # Process failed subjects in parallel
-    retry_results <- parLapply(cl, first_pass_failed_indices, function(index) {
-      fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params)
-    })
-    
-    # Close cluster
-    stopCluster(cl)
-    
-  } else {
-    # Process failed subjects sequentially
-    retry_results <- list()
-    
-    for (i in seq_along(first_pass_failed_indices)) {
-      index <- first_pass_failed_indices[i]
-      log_message(sprintf("Retrying subject %d of %d", i, first_pass_failed))
-      
-      result <- fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params)
-      retry_results[[i]] <- result
+  for (retry_pass in 1:opt$max_retry_passes) {
+    if (length(failed_indices) == 0) {
+      log_message("")
+      log_message("All subjects successful - stopping retry early")
+      break
     }
+    
+    # Check if this is the final retry pass
+    is_final_retry <- (retry_pass == opt$max_retry_passes)
+    
+    log_message("")
+    log_message("========================================")
+    if (is_final_retry) {
+      log_message(sprintf("FINAL RETRY PASS %d/%d: Using escalated parameters", 
+                          retry_pass, opt$max_retry_passes))
+      log_message(sprintf("  Retrying %d failed subjects", length(failed_indices)))
+      log_message(sprintf("  Warmup: %d → %d (+%d)", 
+                          opt$n_warmup, 
+                          opt$n_warmup + opt$final_retry_warmup_increase,
+                          opt$final_retry_warmup_increase))
+      log_message(sprintf("  Adapt_delta: %.3f → %.3f (+%.3f)", 
+                          opt$adapt_delta,
+                          min(opt$adapt_delta + opt$final_retry_adapt_delta_increase, 0.9999),
+                          opt$final_retry_adapt_delta_increase))
+    } else {
+      log_message(sprintf("RETRY PASS %d/%d: Retrying %d failed subjects", 
+                          retry_pass, opt$max_retry_passes, length(failed_indices)))
+    }
+    log_message("========================================")
+    
+    # Add a brief delay to let system resources settle
+    Sys.sleep(5)
+    
+    if (opt$parallel) {
+      log_message(sprintf("Processing retry subjects in parallel with %d cores", opt$cores))
+      
+      # Create cluster
+      cl <- makeCluster(min(opt$cores, length(failed_indices)))
+      
+      # Export necessary variables and functions to the cluster
+      clusterExport(cl, c("log_message", "SCRIPT_DIR", "opt", "fit_params", "data_params", "get_safe_data_dir"))
+      
+      # Process failed subjects in parallel
+      retry_results <- parLapply(cl, failed_indices, function(index) {
+        fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params, escalate = is_final_retry)
+      })
+      
+      # Close cluster
+      stopCluster(cl)
+      
+    } else {
+      # Process failed subjects sequentially
+      retry_results <- list()
+      
+      for (i in seq_along(failed_indices)) {
+        index <- failed_indices[i]
+        log_message(sprintf("Retrying subject %d of %d", i, length(failed_indices)))
+        
+        result <- fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params, escalate = is_final_retry)
+        retry_results[[i]] <- result
+      }
+    }
+    
+    # Extract retry statistics for this pass
+    retry_success <- sapply(retry_results, function(x) !is.null(x) && x$success)
+    pass_recovered <- sum(retry_success)
+    total_recovered_across_retries <- total_recovered_across_retries + pass_recovered
+    
+    log_message(sprintf("Pass %d: recovered %d/%d subjects", 
+                        retry_pass, pass_recovered, length(failed_indices)))
+    
+    # Update failed list for next pass
+    failed_indices <- failed_indices[!retry_success]
   }
   
-  # Extract retry statistics
-  retry_success <- sapply(retry_results, function(x) !is.null(x) && x$success)
-  retry_successful <- sum(retry_success)
-  retry_failed <- first_pass_failed - retry_successful
-  permanently_failed_indices <- first_pass_failed_indices[!retry_success]
+  # Final statistics after all retry passes
+  retry_successful <- total_recovered_across_retries
+  retry_failed <- length(failed_indices)
+  permanently_failed_indices <- failed_indices
   
-  log_message(sprintf("Retry pass complete: %d recovered, %d permanently failed", 
+  log_message("")
+  log_message(sprintf("All retry passes complete: %d total recovered, %d permanently failed", 
                       retry_successful, retry_failed))
   
   if (retry_failed > 0) {
-    failed_subject_ids <- sapply(retry_results[!retry_success], function(x) x$subject_id)
+    failed_subject_ids <- sapply(permanently_failed_indices, function(idx) subject_ids[idx])
     log_message(sprintf("Permanently failed subjects: %s", 
                         paste(failed_subject_ids, collapse = ", ")))
   }
@@ -502,7 +557,12 @@ if (!opt$keep_checkpoints && !opt$dry_run) {
   # Get all successful subject indices (first pass + retry)
   successful_indices <- c(
     subject_indices[first_pass_success],
-    if (retry_successful > 0) first_pass_failed_indices[sapply(retry_results, function(x) !is.null(x) && x$success)] else c()
+    if (retry_successful > 0) {
+      # Get all indices that were eventually successful
+      setdiff(first_pass_failed_indices, permanently_failed_indices)
+    } else {
+      c()
+    }
   )
   
   cleaned_count <- 0
@@ -582,7 +642,7 @@ log_message("========================================")
 log_message(sprintf("Total subjects processed: %d", total_subjects))
 log_message(sprintf("First pass: %d successful, %d failed", first_pass_successful, first_pass_failed))
 if (!opt$no_retry && first_pass_failed > 0 && !opt$dry_run) {
-  log_message(sprintf("Retry pass: %d recovered, %d permanently failed", retry_successful, retry_failed))
+  log_message(sprintf("Retry passes: %d total recovered, %d permanently failed", retry_successful, retry_failed))
 }
 log_message(sprintf("Final results: %d successful, %d failed", 
                     first_pass_successful + retry_successful, 

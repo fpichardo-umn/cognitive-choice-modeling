@@ -31,8 +31,8 @@ suppressPackageStartupMessages({
 # EXAMPLE: data_file_path <- "path/to/your/data.csv"
 
 task = "igt"
-cohort = "mf"
-ses = "06"
+cohort = "adb"
+ses = "01"
 
 data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
 
@@ -108,7 +108,7 @@ print(quantile(data_raw$rt, probs = c(.0005, .001, .01, .05, .95, .99, .999, .99
 
 # Mark trials based on RT validity
 data_raw <- data_raw %>%
-  mutate(is_valid_rt = rt >= MIN_RT_MS & rt <= MAX_RT_MS)
+  mutate(is_valid_rt = rt > MIN_RT_MS & rt < MAX_RT_MS)
 ```
 
 

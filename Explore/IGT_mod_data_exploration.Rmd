@@ -37,7 +37,7 @@ data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/
 
 # RT Cleaning Parameters
 MIN_RT_MS <- 100 # Minimum response time in milliseconds
-MAX_RT_MS <- Inf # Maximum response time (useful for tasks with timeouts)
+MAX_RT_MS <- 4000 # Maximum response time (useful for tasks with timeouts)
 TIMEOUT_RT_MS <- 4000 # RT threshold for forced passes
 
 # Subject-level Inclusion Criteria
@@ -78,6 +78,7 @@ This section visualizes the distribution of response times. It helps in identify
 # Plot a histogram of the RTs with timeout threshold marked
 rt_histogram <- ggplot(data_raw, aes(x = rt)) +
   geom_histogram(bins = 100, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = MIN_RT_MS, color = "red", linetype = "dashed", size = 1) +
   geom_vline(xintercept = TIMEOUT_RT_MS, color = "red", linetype = "dashed", size = 1) +
   annotate("text", x = TIMEOUT_RT_MS, y = Inf, label = "Timeout (Forced Pass)", vjust = 2, hjust = 1.1, color = "red") +
   ggtitle("Distribution of Response Times (All Trials)") +
@@ -104,7 +105,7 @@ cat("Percentage of all trials: ", scales::percent(pct_timeout_trials), "\n")
 # Mark trials based on RT validity
 data_raw <- data_raw %>%
   mutate(
-    is_valid_rt = rt >= MIN_RT_MS & rt <= MAX_RT_MS,
+    is_valid_rt = rt > MIN_RT_MS & rt < MAX_RT_MS,
     is_timeout = rt >= TIMEOUT_RT_MS
   )
 ```
@@ -359,7 +360,9 @@ excluded_sids <- subjects_final %>%
 # Create the final clean trial-level dataset
 data_clean <- data_raw %>%
   filter(subjID %in% retained_sids)
+```
 
+```{r}
 # --- Step 5: Save the output files ---
 # Define output directory and filenames
 output_dir <- file.path(dirname(data_file_path), 
