@@ -1267,7 +1267,7 @@ create_init_list = function(last_draws, chain_idx) {
   last_draw_chain <- last_draws[1, chain_idx, ]
   
   # Get all the parameter names
-  param_names <- names(last_draw_chain)
+  param_names <- posterior::variables(last_draw_chain)
   if (is.null(param_names)) {
     stop("Last draws are missing parameter names. Cannot create init list.")
   }
