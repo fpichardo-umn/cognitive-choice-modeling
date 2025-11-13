@@ -1,5 +1,5 @@
-opt = list(model = "ev", type = "fit", task = "igt_mod", source = "ahrb", 
-           ses = "00", subid = "202031", index = 21L, n_trials = 96, 
+opt = list(model = "ddm_b1p2", type = "fit", task = "igt_mod", source = "ahrb", 
+           ses = "00", subid = "200001", index = 21L, n_trials = 96, 
            RTbound_min_ms = 100L, RTbound_max_ms = 4000L, rt_method = "mark", 
            n_warmup = 1500L, n_iter = "NA", 
            n_chains = 6, adapt_delta = 0.95, 
@@ -99,3 +99,4 @@ fit <- fit_and_save_model(task, opt$source, opt$ses, group_type, model_name, opt
                           iter_increment = opt$iter_increment,
                           diag_thresholds = diag_thresholds,
                           enable_adaptive_iter = !opt$disable_adaptive_iter)
+
