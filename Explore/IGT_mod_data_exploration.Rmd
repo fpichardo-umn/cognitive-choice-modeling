@@ -31,7 +31,10 @@ suppressPackageStartupMessages({
 
 task = "igt_mod"
 cohort = "ahrb"
-ses = "02"
+ses = "00"
+
+# Task Structure
+TOTAL_TRIALS <- 120 # Adjust for your specific task
 
 data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
 
@@ -42,12 +45,9 @@ TIMEOUT_RT_MS <- 4000 # RT threshold for forced passes
 
 # Subject-level Inclusion Criteria
 MIN_VALID_RT_PERCENTAGE <- 0.70 # Minimum percentage of trials that must have a valid RT
-MIN_VALID_TRIAL_COUNT <- 80 # Minimum number of valid trials a subject must have to be included
+MIN_VALID_TRIAL_COUNT <- TOTAL_TRIALS*.8 # Minimum number of valid trials a subject must have to be included
 MIN_PLAY_RATE <- 0.20 # Minimum proportion of trials where subject must play
 MIN_PASS_RATE <- 0.05 # Minimum proportion of trials where subject must pass
-
-# Task Structure
-TOTAL_TRIALS <- 100 # Adjust for your specific task
 
 
 # --- Load Data ---

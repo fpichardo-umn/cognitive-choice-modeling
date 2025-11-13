@@ -338,6 +338,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
         current_warmup <- settings$warmup
         current_adapt_delta <- settings$adapt_delta
         current_max_treedepth <- settings$max_treedepth
+        
         cat("Fundamental sampling problem detected. Restarting with adjusted settings...\n")
         cat(sprintf("  New settings: warmup=%d, adapt_delta=%.3f, max_treedepth=%d\n",
                    current_warmup, current_adapt_delta, current_max_treedepth))
@@ -352,9 +353,15 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       warmup_done <- FALSE
       extension_count <- 0
       
+      # Calculate total iterations needed (warmup + post-warmup)
+      # min_iter and max_iter represent POST-WARMUP samples
+      target_total_min <- current_warmup + min_iter
+      target_total_max <- current_warmup + max_iter
+      
       # Run to min_iter first
-      cat(sprintf("Running warmup + minimum %d iterations...\n", min_iter))
-      target_iter <- min_iter
+      cat(sprintf("Running warmup (%d) + minimum post-warmup iterations (%d) = %d total...\n", 
+                 current_warmup, min_iter, target_total_min))
+      target_iter <- target_total_min
       
       # Checkpoint loop to reach target_iter
       while (current_iter < target_iter) {
@@ -437,10 +444,10 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       }
       
       # No fundamental problem - try extending iterations
-      while (current_iter < max_iter && !diag_results$all_pass) {
+      while (current_iter < target_total_max && !diag_results$all_pass) {
         cat(sprintf("  Diagnostics failed. Adding %d iterations...\n", iter_increment))
         
-        target_iter <- min(current_iter + iter_increment, max_iter)
+        target_iter <- min(current_iter + iter_increment, target_total_max)
         
         # Checkpoint loop to reach new target
         while (current_iter < target_iter) {
@@ -486,15 +493,18 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
         cat("  All diagnostics passed.\n")
         converged <- TRUE
       } else {
-        cat(sprintf("  WARNING: Reached maximum iterations (%d) without full convergence.\n", max_iter))
+        cat(sprintf("  WARNING: Reached maximum total iterations (%d) without full convergence.\n", target_total_max))
       }
       
       break  # Exit restart loop (either converged or hit max_iter)
     }
     
+    # Calculate actual post-warmup iterations
+    actual_postwarmup_iter <- current_iter - current_warmup
+    
     # Process final results with ACTUAL settings used
     fit_result <- process_sampling_results(
-      accumulated_samples, accumulated_diagnostics, current_warmup, current_iter, n_chains,
+      accumulated_samples, accumulated_diagnostics, current_warmup, actual_postwarmup_iter, n_chains,
       current_adapt_delta, current_max_treedepth, model_str, task, n_subs, model_params, output_file
     )
     
@@ -504,7 +514,8 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       converged = converged,
       requested_min_iter = min_iter,
       requested_max_iter = max_iter,
-      actual_iter = current_iter,
+      actual_postwarmup_iter = actual_postwarmup_iter,
+      actual_total_iter = current_iter,
       extensions_applied = extension_count,
       restart_count = restart_count,
       restart_attempts = if (length(restart_attempts) > 0) restart_attempts else NULL,

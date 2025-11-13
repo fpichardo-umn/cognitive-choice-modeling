@@ -32,15 +32,14 @@ task = "igt"
 cohort = "luc"
 ses = "00"
 
-data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
-
-# Subject-level Inclusion Criteria
-MIN_TRIAL_COUNT <- 80 # Minimum number of trials a subject must have to be included
-
 # Task Structure
 TOTAL_TRIALS <- 100 # Adjust for standard IGT (100) or HDT (200)
 NUM_BLOCKS <- 5 # How many blocks to divide the task into for entropy analysis
 
+data_file_path <- paste0("~/Dropbox/Projects/cognitive-choice-modeling/Data/raw/", cohort, "/", task, "_", cohort, "_", ses, ".csv")
+
+# Subject-level Inclusion Criteria
+MIN_TRIAL_COUNT <- TOTAL_TRIALS*.80 # Minimum number of trials a subject must have to be included
 
 # --- Load Data ---
 # Read the data file. The script will stop if the file isn't found.
