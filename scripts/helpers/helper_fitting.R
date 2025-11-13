@@ -19,18 +19,20 @@ source(file.path(here::here(), "scripts", "helpers", "helper_functions.R"))
 
 # Hardcoded problematic thresholds (trigger restart)
 PROBLEMATIC_THRESHOLDS <- list(
-  min_ess = 100,
-  max_divergence_pct = 1.0
+  min_ess = 100, # Per your rule: ESS < 100 is a "big problem"
+  max_divergence_pct = 1.0 # Your 1% divergence tolerance
 )
 
 # Hardcoded restart settings
-RESTART_WARMUP_INCREMENT <- 1000
-RESTART_ADAPT_DELTA_INCREMENT <- 0.025
-RESTART_MAX_ADAPT_DELTA <- 0.99
-RESTART_MAX_TREEDEPTH_INCREMENT <- 2
+RESTART_WARMUP_INCREMENT <- 500 # Your rule
+RESTART_ADAPT_DELTA_INCREMENT <- 0.025 # Your rule
+RESTART_MAX_ADAPT_DELTA <- 0.99 # Per your rule to keep the original
+RESTART_MAX_TREEDEPTH_INCREMENT <- 2 # Per your rule to include this
+RESTART_CHAIN_INCREMENT <- 2 # Per your "ESS < 100" rule
 MAX_RESTARTS <- 2
 
 # Default acceptable thresholds (user can override)
+# Per your rule, we keep these as the defaults
 DEFAULT_DIAG_THRESHOLDS <- list(
   rhat = 1.01,
   ess_bulk = 400,
@@ -59,7 +61,7 @@ check_diagnostics <- function(draws, diag_thresholds) {
   ess_bulks <- ess_bulks[!is.na(ess_bulks)]
   ess_tails <- ess_tails[!is.na(ess_tails)]
   
-  # Check if all pass
+  # Check if all pass using the *supplied thresholds*
   rhat_pass <- all(rhats < diag_thresholds$rhat)
   ess_bulk_pass <- all(ess_bulks >= diag_thresholds$ess_bulk)
   ess_tail_pass <- all(ess_tails >= diag_thresholds$ess_tail)
@@ -68,46 +70,92 @@ check_diagnostics <- function(draws, diag_thresholds) {
   
   return(list(
     all_pass = all_pass,
-    worst_rhat = max(rhats),
-    worst_ess_bulk = min(ess_bulks),
-    worst_ess_tail = min(ess_tails)
+    worst_rhat = if (length(rhats) > 0) max(rhats) else 0,
+    worst_ess_bulk = if (length(ess_bulks) > 0) min(ess_bulks) else Inf,
+    worst_ess_tail = if (length(ess_tails) > 0) min(ess_tails) else Inf
   ))
 }
 
-#' Detect if there's a fundamental sampling problem requiring restart
+#' Detect problem type based on diagnostics
 #' @param diag_results Results from check_diagnostics()
 #' @param num_divergent Total number of divergent transitions
 #' @param total_samples Total number of post-warmup samples
-#' @return TRUE if fundamental problem detected, FALSE otherwise
-detect_fundamental_problem <- function(diag_results, num_divergent, total_samples) {
-  # Check ESS thresholds
-  ess_problem <- (diag_results$worst_ess_bulk < PROBLEMATIC_THRESHOLDS$min_ess) ||
-                 (diag_results$worst_ess_tail < PROBLEMATIC_THRESHOLDS$min_ess)
+#' @param diag_thresholds The *target* thresholds (used for Rhat check)
+#' @return String problem type: "pass", "divergence", "rhat", "ess_low", "extension_needed"
+get_problem_type <- function(diag_results, num_divergent, total_samples, diag_thresholds) {
+  # 1. Check Divergences (Fatal)
+  # Handle case where total_samples is 0 to avoid NaN
+  if (total_samples > 0) {
+    divergence_pct <- (num_divergent / total_samples) * 100
+    if (divergence_pct > PROBLEMATIC_THRESHOLDS$max_divergence_pct) {
+      return("divergence")
+    }
+  } else if (num_divergent > 0) {
+    return("divergence") # Divergences with 0 samples is bad
+  }
   
-  # Check divergence percentage
-  divergence_pct <- (num_divergent / total_samples) * 100
-  divergence_problem <- divergence_pct > PROBLEMATIC_THRESHOLDS$max_divergence_pct
+  # 2. Check Rhat (Fatal)
+  # Uses the *passed-in* Rhat threshold (per your Rule 2)
+  if (diag_results$worst_rhat >= diag_thresholds$rhat) {
+    return("rhat")
+  }
   
-  return(ess_problem || divergence_problem)
+  # 3. Check Fatal ESS (Fatal)
+  # Uses the hardcoded "big problem" ESS threshold (per your Rule 1)
+  if (diag_results$worst_ess_bulk < PROBLEMATIC_THRESHOLDS$min_ess ||
+      diag_results$worst_ess_tail < PROBLEMATIC_THRESHOLDS$min_ess) {
+    return("ess_low")
+  }
+  
+  # 4. Check if final goal is met
+  if (!diag_results$all_pass) {
+    # We failed the goal (e.g., ESS < 1000), but not fatally. Time to extend.
+    return("extension_needed")
+  }
+  
+  # 5. Success
+  return("pass")
 }
+
 
 #' Calculate escalated settings for a restart attempt
 #' @param original_warmup Original warmup iterations
 #' @param original_adapt_delta Original adapt_delta value
 #' @param original_max_treedepth Original max_treedepth value
+#' @param original_n_chains Original number of chains
 #' @param restart_count Current restart attempt number (1 or 2)
-#' @return List with new warmup, adapt_delta, max_treedepth
+#' @param problem_type The string code for the problem detected
+#' @return List with new warmup, adapt_delta, max_treedepth, n_chains
 calculate_restart_settings <- function(original_warmup, original_adapt_delta, 
-                                      original_max_treedepth, restart_count) {
-  new_warmup <- original_warmup + (restart_count * RESTART_WARMUP_INCREMENT)
-  new_adapt_delta <- min(original_adapt_delta + (restart_count * RESTART_ADAPT_DELTA_INCREMENT), 
-                        RESTART_MAX_ADAPT_DELTA)
-  new_max_treedepth <- original_max_treedepth + (restart_count * RESTART_MAX_TREEDEPTH_INCREMENT)
+                                       original_max_treedepth, original_n_chains, 
+                                       restart_count, problem_type) {
+  
+  # Start with original settings
+  new_warmup <- original_warmup
+  new_adapt_delta <- original_adapt_delta
+  new_max_treedepth <- original_max_treedepth
+  new_n_chains <- original_n_chains
+  
+  # Apply escalations based on the problem
+  if (problem_type == "divergence") {
+    new_warmup <- original_warmup + (restart_count * RESTART_WARMUP_INCREMENT)
+    new_adapt_delta <- min(original_adapt_delta + (restart_count * RESTART_ADAPT_DELTA_INCREMENT), 
+                           RESTART_MAX_ADAPT_DELTA)
+    new_max_treedepth <- original_max_treedepth + (restart_count * RESTART_MAX_TREEDEPTH_INCREMENT) # Rule 4
+    
+  } else if (problem_type == "rhat") {
+    new_warmup <- original_warmup + (restart_count * RESTART_WARMUP_INCREMENT)
+    
+  } else if (problem_type == "ess_low") {
+    new_warmup <- original_warmup + (restart_count * RESTART_WARMUP_INCREMENT)
+    new_n_chains <- original_n_chains + (restart_count * RESTART_CHAIN_INCREMENT) # Rule 1
+  }
   
   return(list(
     warmup = new_warmup,
     adapt_delta = new_adapt_delta,
-    max_treedepth = new_max_treedepth
+    max_treedepth = new_max_treedepth,
+    n_chains = new_n_chains
   ))
 }
 
@@ -163,15 +211,15 @@ fix_duplicate_cohort_path <- function(file_path, cohort) {
 #' @param enable_adaptive_iter Boolean to enable adaptive iteration feature (default: TRUE)
 #' @return List with fitted model results or NULL for dry run
 fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_type, data_list, 
-                              n_subs, n_trials, n_warmup, n_iter, n_chains, adapt_delta, max_treedepth, 
-                              model_params, dry_run = FALSE, checkpoint_interval = 1000, 
-                              output_dir = NULL, emp_bayes = FALSE, informative_priors = NULL,
-                              init_params = NULL, cohort_sub_dir = TRUE, model_status = NULL,
-                              is_simulation = FALSE, index = NULL, data_filt_list = NULL,
-                              fitting_method = "mcmc", pf_num_paths = 4, pf_draws = 1000,
-                              pf_single_path_draws = 250, pf_psis_resample = TRUE, pf_calculate_lp = TRUE,
-                              min_iter = NULL, max_iter = NULL, iter_increment = 1000,
-                              diag_thresholds = NULL, enable_adaptive_iter = TRUE) {
+                               n_subs, n_trials, n_warmup, n_iter, n_chains, adapt_delta, max_treedepth, 
+                               model_params, dry_run = FALSE, checkpoint_interval = 1000, 
+                               output_dir = NULL, emp_bayes = FALSE, informative_priors = NULL,
+                               init_params = NULL, cohort_sub_dir = TRUE, model_status = NULL,
+                               is_simulation = FALSE, index = NULL, data_filt_list = NULL,
+                               fitting_method = "mcmc", pf_num_paths = 4, pf_draws = 1000,
+                               pf_single_path_draws = 250, pf_psis_resample = TRUE, pf_calculate_lp = TRUE,
+                               min_iter = NULL, max_iter = NULL, iter_increment = 1000,
+                               diag_thresholds = NULL, enable_adaptive_iter = TRUE) {
   
   # Create the model string and get the model path
   model_str <- paste(task, group_type, model_name, sep="_")
@@ -216,19 +264,23 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       stop("iter_increment must be >= 1")
     }
     
-    # Set up diagnostic thresholds
+    # Set up diagnostic thresholds (Rule 2 & 5: Use passed-in or default)
     if (is.null(diag_thresholds)) {
       diag_thresholds <- DEFAULT_DIAG_THRESHOLDS
+      cat("Using default diagnostic thresholds.\n")
     } else {
       # Validate provided thresholds
       if (!all(c("rhat", "ess_bulk", "ess_tail") %in% names(diag_thresholds))) {
         stop("diag_thresholds must contain rhat, ess_bulk, and ess_tail")
       }
+      cat("Using user-supplied diagnostic thresholds.\n")
     }
     
     use_adaptive_iter <- TRUE
     cat("Adaptive iteration enabled: min=", min_iter, ", max=", max_iter, 
         ", increment=", iter_increment, "\n", sep="")
+    cat(sprintf("  Target thresholds: Rhat < %.2f, ESS_Bulk >= %d, ESS_Tail >= %d\n",
+                diag_thresholds$rhat, diag_thresholds$ess_bulk, diag_thresholds$ess_tail))
   } else if (enable_adaptive_iter && (is.null(min_iter) || is.null(max_iter))) {
     # Adaptive requested but missing parameters - use old behavior
     cat("Adaptive iteration requested but min_iter/max_iter not provided. Using fixed iterations.\n")
@@ -255,9 +307,9 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
   
   # Generate output and checkpoint file paths
   output_file <- get_output_file_path(task, cohort, group_type, model_name, model_type, 
-                                     emp_bayes, if (length(data_list$sid) == 1) data_list$sid else NULL,
-                                     index, ses = ses, 
-                                     output_dir = output_dir, cohort_sub_dir)
+                                      emp_bayes, if (length(data_list$sid) == 1) data_list$sid else NULL,
+                                      index, ses = ses, 
+                                      output_dir = output_dir, cohort_sub_dir)
   output_file <- fix_duplicate_cohort_path(output_file, cohort)
   checkpoint_file <- paste0(tools::file_path_sans_ext(output_file), "_checkpoint.rds")
   
@@ -323,26 +375,18 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
     original_warmup <- n_warmup
     original_adapt_delta <- adapt_delta
     original_max_treedepth <- max_treedepth
+    original_n_chains <- n_chains
+    # This is the "double post warmup" chunk from Rule 6
+    initial_post_warmup_chunk <- min_iter 
+    
+    # Current settings for this attempt
+    current_warmup <- original_warmup
+    current_adapt_delta <- original_adapt_delta
+    current_max_treedepth <- original_max_treedepth
+    current_n_chains <- original_n_chains
     
     # Outer restart loop
     while (restart_count <= MAX_RESTARTS && !converged) {
-      
-      # Determine settings for this attempt
-      if (restart_count == 0) {
-        current_warmup <- original_warmup
-        current_adapt_delta <- original_adapt_delta
-        current_max_treedepth <- original_max_treedepth
-      } else {
-        settings <- calculate_restart_settings(original_warmup, original_adapt_delta, 
-                                              original_max_treedepth, restart_count)
-        current_warmup <- settings$warmup
-        current_adapt_delta <- settings$adapt_delta
-        current_max_treedepth <- settings$max_treedepth
-        
-        cat("Fundamental sampling problem detected. Restarting with adjusted settings...\n")
-        cat(sprintf("  New settings: warmup=%d, adapt_delta=%.3f, max_treedepth=%d\n",
-                   current_warmup, current_adapt_delta, current_max_treedepth))
-      }
       
       # Reset state for this restart attempt
       current_iter <- 0
@@ -360,7 +404,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       
       # Run to min_iter first
       cat(sprintf("Running warmup (%d) + minimum post-warmup iterations (%d) = %d total...\n", 
-                 current_warmup, min_iter, target_total_min))
+                  current_warmup, min_iter, target_total_min))
       target_iter <- target_total_min
       
       # Checkpoint loop to reach target_iter
@@ -369,7 +413,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
         
         if (!warmup_done) {
           sampling_result <- run_initial_sampling(
-            stanmodel_arg, data_list, current_warmup, remaining_iter, n_chains,
+            stanmodel_arg, data_list, current_warmup, remaining_iter, current_n_chains,
             current_adapt_delta, current_max_treedepth, init_params
           )
           
@@ -382,7 +426,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
           warmup_done <- TRUE
         } else {
           sampling_result <- continue_sampling(
-            stanmodel_arg, data_list, remaining_iter, n_chains,
+            stanmodel_arg, data_list, remaining_iter, current_n_chains,
             current_adapt_delta, current_max_treedepth,
             accumulated_samples, step_size, inv_metric
           )
@@ -397,7 +441,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
         accumulated_diagnostics <- c(accumulated_diagnostics, list(new_diagnostics))
         
         save_checkpoint(checkpoint_file, current_iter, accumulated_samples,
-                       accumulated_diagnostics, step_size, inv_metric, warmup_done)
+                        accumulated_diagnostics, step_size, inv_metric, warmup_done)
         
         cat("Checkpoint saved at iteration", current_iter, "\n")
       }
@@ -410,51 +454,99 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       
       diag_results <- check_diagnostics(all_samples, diag_thresholds)
       num_divergent <- colSums(all_diagnostics[, , "divergent__"])
-      divergence_pct <- (sum(num_divergent) / (n_chains * current_iter)) * 100
       
-      cat(sprintf("  Worst Rhat: %.3f, Min ESS: %.0f\n",
+      # Calculate total POST-WARMUP samples for divergence rate
+      total_post_warmup_samples <- current_n_chains * (current_iter - current_warmup)
+      
+      # Get the problem type
+      problem_type <- get_problem_type(diag_results, sum(num_divergent), 
+                                       total_post_warmup_samples, diag_thresholds)
+      
+      cat(sprintf("  Worst Rhat: %.3f, Min ESS: %.0f, Problem: %s\n",
                   diag_results$worst_rhat,
-                  min(c(diag_results$worst_ess_bulk, diag_results$worst_ess_tail), na.rm = TRUE)))
+                  min(c(diag_results$worst_ess_bulk, diag_results$worst_ess_tail), na.rm = TRUE),
+                  problem_type))
       
-      # Check if diagnostics pass
-      if (diag_results$all_pass) {
+      # --- New Decision Tree ---
+      
+      # 1. Did we pass?
+      if (problem_type == "pass") {
         cat("  All diagnostics passed.\n")
         converged <- TRUE
         break  # Exit restart loop
       }
       
-      # Diagnostics failed - decide whether to restart or extend
-      fundamental_problem <- detect_fundamental_problem(diag_results, sum(num_divergent),
-                                                       n_chains * current_iter)
-      
-      if (fundamental_problem && restart_count < MAX_RESTARTS) {
-        # Save this failed attempt
-        restart_attempts[[restart_count + 1]] <- list(
-          warmup = current_warmup,
-          adapt_delta = current_adapt_delta,
-          max_treedepth = current_max_treedepth,
-          iterations = current_iter,
-          worst_rhat = diag_results$worst_rhat,
-          min_ess = min(diag_results$worst_ess_bulk, diag_results$worst_ess_tail),
-          divergence_pct = divergence_pct
-        )
+      # 2. Is it a restart-level problem?
+      if (problem_type %in% c("divergence", "rhat", "ess_low")) {
+        cat(sprintf("  Fundamental problem '%s' detected.\n", problem_type))
         
-        restart_count <- restart_count + 1
-        next  # Go to next restart iteration
+        if (restart_count < MAX_RESTARTS) {
+          # Save this failed attempt
+          restart_attempts[[restart_count + 1]] <- list(
+            warmup = current_warmup,
+            adapt_delta = current_adapt_delta,
+            max_treedepth = current_max_treedepth,
+            n_chains = current_n_chains,
+            iterations = current_iter,
+            worst_rhat = diag_results$worst_rhat,
+            min_ess = min(diag_results$worst_ess_bulk, diag_results$worst_ess_tail),
+            divergence_pct = if (total_post_warmup_samples > 0) (sum(num_divergent) / total_post_warmup_samples) * 100 else 0
+          )
+          
+          restart_count <- restart_count + 1
+          
+          # Calculate new settings for *next* loop
+          settings <- calculate_restart_settings(original_warmup, original_adapt_delta, 
+                                                 original_max_treedepth, original_n_chains, 
+                                                 restart_count, problem_type)
+          current_warmup <- settings$warmup
+          current_adapt_delta <- settings$adapt_delta
+          current_max_treedepth <- settings$max_treedepth
+          current_n_chains <- settings$n_chains
+          
+          cat(sprintf("  Restarting (Attempt %d/%d) with settings: warmup=%d, adapt_delta=%.3f, treedepth=%d, chains=%d\n", 
+                      restart_count, MAX_RESTARTS, current_warmup, current_adapt_delta, current_max_treedepth, current_n_chains))
+          next  # Go to next restart iteration
+          
+        } else {
+          cat("  MAX_RESTARTS reached. Failing.\n")
+          break # Exit restart loop
+        }
       }
       
+      # 3. If we are here, problem_type == "extension_needed"
       # No fundamental problem - try extending iterations
       while (current_iter < target_total_max && !diag_results$all_pass) {
-        cat(sprintf("  Diagnostics failed. Adding %d iterations...\n", iter_increment))
         
-        target_iter <- min(current_iter + iter_increment, target_total_max)
+        # --- NEW ESS-based Increment Logic (Rule 6) ---
+        worst_ess <- min(diag_results$worst_ess_bulk, diag_results$worst_ess_tail, na.rm = TRUE)
+        # Use the PASSED-IN target ESS (Rule 2)
+        target_ess <- diag_thresholds$ess_bulk 
+        
+        # Default to the small, user-supplied increment (Rule 2 & 6C)
+        next_increment <- iter_increment 
+        
+        if (target_ess >= 800) {
+          if (worst_ess < 400) { # Condition 6A
+            cat(sprintf("  ESS %d < 400. Applying large increment (%d).\n", floor(worst_ess), initial_post_warmup_chunk))
+            next_increment <- initial_post_warmup_chunk 
+          } else if (worst_ess < (target_ess / 2)) { # Condition 6B
+            cat(sprintf("  ESS %d < target/2 (%d). Applying large increment (%d).\n", floor(worst_ess), (target_ess/2), initial_post_warmup_chunk))
+            next_increment <- initial_post_warmup_chunk
+          }
+          # Else (Condition 6C) is handled by the default
+        }
+        # --- End of NEW Logic ---
+        
+        cat(sprintf("  Diagnostics failed. Adding %d iterations...\n", next_increment))
+        target_iter <- min(current_iter + next_increment, target_total_max)
         
         # Checkpoint loop to reach new target
         while (current_iter < target_iter) {
           remaining_iter <- min(checkpoint_interval, target_iter - current_iter)
           
           sampling_result <- continue_sampling(
-            stanmodel_arg, data_list, remaining_iter, n_chains,
+            stanmodel_arg, data_list, remaining_iter, current_n_chains,
             current_adapt_delta, current_max_treedepth,
             accumulated_samples, step_size, inv_metric
           )
@@ -468,7 +560,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
           accumulated_diagnostics <- c(accumulated_diagnostics, list(new_diagnostics))
           
           save_checkpoint(checkpoint_file, current_iter, accumulated_samples,
-                         accumulated_diagnostics, step_size, inv_metric, warmup_done)
+                          accumulated_diagnostics, step_size, inv_metric, warmup_done)
           
           cat("Checkpoint saved at iteration", current_iter, "\n")
         }
@@ -504,7 +596,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
     
     # Process final results with ACTUAL settings used
     fit_result <- process_sampling_results(
-      accumulated_samples, accumulated_diagnostics, current_warmup, actual_postwarmup_iter, n_chains,
+      accumulated_samples, accumulated_diagnostics, current_warmup, actual_postwarmup_iter, current_n_chains,
       current_adapt_delta, current_max_treedepth, model_str, task, n_subs, model_params, output_file
     )
     
@@ -516,6 +608,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
       requested_max_iter = max_iter,
       actual_postwarmup_iter = actual_postwarmup_iter,
       actual_total_iter = current_iter,
+      actual_n_chains = current_n_chains,
       extensions_applied = extension_count,
       restart_count = restart_count,
       restart_attempts = if (length(restart_attempts) > 0) restart_attempts else NULL,
@@ -526,7 +619,7 @@ fit_and_save_model <- function(task, cohort, ses, group_type, model_name, model_
     
   } else {
     # === MCMC Fitting with Checkpointing (Original Behavior) ===
-  
+    
     # Initialize or load checkpoint state
     checkpoint_state <- initialize_or_load_checkpoint(checkpoint_file)
     
@@ -657,9 +750,17 @@ initialize_or_load_checkpoint <- function(checkpoint_file) {
 #' @param init_params Optional list of parameter initializations
 #' @return List with fit object, new samples, and current iteration
 run_initial_sampling <- function(stanmodel_arg, data_list, n_warmup, remaining_iter, n_chains, 
-                               adapt_delta, max_treedepth, init_params) {
+                                 adapt_delta, max_treedepth, init_params) {
   # Ensure iter_to_run is at least n_warmup + 1
   iter_to_run <- max(n_warmup + 1, remaining_iter)
+  
+  # Adjust init_params if n_chains has changed
+  if (!is.null(init_params) && length(init_params) != n_chains) {
+    cat("Adjusting init_params list from", length(init_params), "to", n_chains, "chains.\n")
+    # This just repeats the first init list. A more robust way might be needed
+    # but for most cases (single init list repeated) this works.
+    init_params <- replicate(n_chains, init_params[[1]], simplify = FALSE)
+  }
   
   # Run sampling
   fit <- stanmodel_arg$sample(
@@ -694,13 +795,19 @@ run_initial_sampling <- function(stanmodel_arg, data_list, n_warmup, remaining_i
 #' @param inv_metric Inverse metric from warmup
 #' @return List with fit object, new samples, and iterations added
 continue_sampling <- function(stanmodel_arg, data_list, remaining_iter, n_chains, 
-                            adapt_delta, max_treedepth, accumulated_samples, 
-                            step_size, inv_metric) {
+                              adapt_delta, max_treedepth, accumulated_samples, 
+                              step_size, inv_metric) {
   # Get the last draws for initialization
   last_draws <- accumulated_samples[[length(accumulated_samples)]]
-  last_draws <- last_draws[dim(last_draws)[1],,]  # Get the last iteration for all chains
+  last_draws <- last_draws[dim(last_draws)[1],,,drop=FALSE]  # Get the last iteration for all chains
   
   # Create initialization lists from last draws
+  # Check if number of chains in last_draws matches n_chains
+  if (dim(last_draws)[2] != n_chains) {
+    stop(paste("Mismatch in chains. Accumulated samples have", dim(last_draws)[2],
+               "chains, but current run asks for", n_chains))
+  }
+  
   init_list <- lapply(1:n_chains, function(chain_idx) create_init_list(last_draws, chain_idx))
   
   # Run sampling
@@ -738,7 +845,7 @@ continue_sampling <- function(stanmodel_arg, data_list, remaining_iter, n_chains
 #' @param warmup_done Boolean indicating whether warmup is done
 #' @return NULL (saves checkpoint to file)
 save_checkpoint <- function(checkpoint_file, current_iter, accumulated_samples,
-                          accumulated_diagnostics, step_size, inv_metric, warmup_done) {
+                            accumulated_diagnostics, step_size, inv_metric, warmup_done) {
   saveRDS(
     list(
       current_iter = current_iter, 
@@ -767,8 +874,8 @@ save_checkpoint <- function(checkpoint_file, current_iter, accumulated_samples,
 #' @param output_file Character string with output file path
 #' @return List with processed sampling results
 process_sampling_results <- function(accumulated_samples, accumulated_diagnostics, n_warmup, n_iter, 
-                                   n_chains, adapt_delta, max_treedepth, model_str, task,
-                                   n_subs, model_params, output_file) {
+                                     n_chains, adapt_delta, max_treedepth, model_str, task,
+                                     n_subs, model_params, output_file) {
   # Combine all accumulated samples into a single draws object
   all_samples <- do.call(posterior::bind_draws, c(accumulated_samples, along = "iteration"))
   
@@ -780,6 +887,8 @@ process_sampling_results <- function(accumulated_samples, accumulated_diagnostic
   num_max_treedepth <- colSums(all_diagnostics[, , "treedepth__"] == max_treedepth)
   ebfmi <- sapply(1:n_chains, function(chain) {
     energy <- all_diagnostics[, chain, "energy__"]
+    # Handle chains with no variance in energy
+    if (var(energy) == 0) return(NA)
     sum(diff(energy)^2) / (length(energy) - 1) / var(energy)
   })
   
@@ -867,10 +976,16 @@ calculate_param_diagnostics <- function(param_draws) {
 #' @param max_treedepth Integer maximum tree depth
 #' @return NULL (prints warnings to console)
 print_diagnostic_warnings <- function(num_divergent, num_max_treedepth, 
-                                    n_chains, n_iter, n_warmup, max_treedepth) {
-  total_iterations <- n_chains * (n_iter - n_warmup)
+                                      n_chains, n_iter, n_warmup, max_treedepth) {
+  # n_iter is now post-warmup iter in the adaptive flow
+  total_iterations <- n_chains * n_iter 
   total_divergent <- sum(num_divergent)
   total_max_treedepth <- sum(num_max_treedepth)
+  
+  if (total_iterations == 0) {
+    cat("Warning: No post-warmup iterations to calculate diagnostic rates.\n")
+    return()
+  }
   
   if (total_divergent > 0) {
     cat(sprintf("\nWarning: %d of %d (%.1f%%) transitions ended with a divergence.\n", 
@@ -989,9 +1104,9 @@ validate_empirical_bayes <- function(hier_fit, emp_fit, model_params, subs_df, n
 #' @param init_params Optional initialization
 #' @return List with processed pathfinder results
 run_pathfinder_and_process <- function(stanmodel_arg, data_list, num_paths, draws, 
-                                      single_path_draws, psis_resample, calculate_lp,
-                                      model_str, task, n_subs, model_params, 
-                                      output_file, init_params) {
+                                       single_path_draws, psis_resample, calculate_lp,
+                                       model_str, task, n_subs, model_params, 
+                                       output_file, init_params) {
   
   cat("Running Pathfinder with", num_paths, "paths...\n")
   
@@ -1132,10 +1247,14 @@ create_param_init_list <- function(model_params, no_suffix = NULL, exclude = NUL
 create_init_list = function(last_draws, chain_idx) {
   
   # Extract the last draw for this chain
+  # last_draws is expected to be [1, n_chains, n_params]
   last_draw_chain <- last_draws[1, chain_idx, ]
   
   # Get all the parameter names
-  param_names <- dimnames(last_draw_chain)[[3]]
+  param_names <- names(last_draw_chain)
+  if (is.null(param_names)) {
+    stop("Last draws are missing parameter names. Cannot create init list.")
+  }
   
   # Separate parameters with and without square brackets
   grouped_params <- gsub("\\[.*\\]", "", param_names)  # Remove everything in square brackets
@@ -1147,7 +1266,7 @@ create_init_list = function(last_draws, chain_idx) {
   # Loop through each unique base parameter name
   for (param in unique_grouped_params) {
     # Find all elements corresponding to this parameter
-    matching_indices <- grep(paste0("^", param), param_names)
+    matching_indices <- which(grouped_params == param)
     
     if (length(matching_indices) > 1) {
       # If there are multiple entries, it's an array/vector: group them
@@ -1160,4 +1279,3 @@ create_init_list = function(last_draws, chain_idx) {
   
   return(init_vals)
 }
-
