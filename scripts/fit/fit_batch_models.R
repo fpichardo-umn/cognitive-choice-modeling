@@ -435,6 +435,7 @@ if (opt$parallel && !opt$dry_run) {
     
     result <- fit_single_sub(index, subject_indices, subject_ids, opt, fit_params, data_params)
     results[[i]] <- result
+    Sys.sleep(1)
   }
 }
 
