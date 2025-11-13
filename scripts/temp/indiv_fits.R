@@ -2,11 +2,11 @@ opt = list(model = "ev", type = "fit", task = "igt_mod", source = "ahrb",
            ses = "00", subid = "202031", index = 21L, n_trials = 96, 
            RTbound_min_ms = 100L, RTbound_max_ms = 4000L, rt_method = "mark", 
            n_warmup = 1500L, n_iter = "NA", 
-           n_chains = 10, adapt_delta = 0.925, 
+           n_chains = 6, adapt_delta = 0.95, 
            max_treedepth = 10L, seed = 43357858L, dry_run = FALSE,
            check_iter = 60000L, 
            init = TRUE, min_valid_rt_pct = 0.7, 
-           min_iter = 5000L, max_iter = 25000L, 
+           min_iter = 3500L, max_iter = 15000L, 
            iter_increment = 2500L, target_rhat = 1.01, target_ess_bulk = 1000L, 
            target_ess_tail = 400L, disable_adaptive_iter = FALSE, help = FALSE)
 
