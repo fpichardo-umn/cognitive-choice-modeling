@@ -368,8 +368,7 @@ generate_simulation_data <- function(task_name, model_name, subject_data,
       } else if (task_config$type == "play_pass") {
         # For mIGT: Need deck sequence from the data
         trials <- data.frame(
-          deck_shown = subj_data$deck,
-          forced_choice = NA_real_  # No forced choices for PPC
+          deck_shown = subj_data$deck
         )
         
         # Run simulation

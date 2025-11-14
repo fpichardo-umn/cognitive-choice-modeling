@@ -41,7 +41,7 @@ option_list = list(
   make_option(c("--RTbound_max_ms"), type="numeric", default=4000, 
               help="RT upper bound in milliseconds"),
   make_option(c("--exclude_file"), type="character", default=NULL, 
-              help="Path to file with subject IDs to exclude")
+              help="File with subject IDs to exclude - will look here [Data/raw/COHORT/ses-SES/]")
 )
 
 opt_parser <- OptionParser(option_list=option_list)
@@ -75,11 +75,18 @@ if (is.null(opt$output_dir)) {
 # Load subject exclusion list if provided
 exclude_subjects <- NULL
 if (!is.null(opt$exclude_file)) {
-  if (file.exists(opt$exclude_file)) {
-    exclude_subjects <- readLines(opt$exclude_file)
+  # Get subjects directory with source
+  SUBS_DIR <- file.path(SAFE_DATA_DIR, opt$cohort)
+  if (!is.null(opt$ses)) {
+    SUBS_DIR <- file.path(SUBS_DIR, paste0("ses-", opt$ses))
+  }
+  SUBS_EX_FILE <- file.path(SUBS_DIR, opt$exclude_file)
+  
+  if (file.exists(SUBS_EX_FILE)) {
+    exclude_subjects <- readLines(SUBS_EX_FILE)
     message(paste("Excluding", length(exclude_subjects), "subjects from", opt$exclude_file))
   } else {
-    warning(paste("Exclusion file not found:", opt$exclude_file))
+    warning(paste("Exclusion file not found:", SUBS_EX_FILE))
   }
 }
 

@@ -29,7 +29,7 @@ option_list = list(
   make_option(c("-t", "--type"), type="character", default="fit", 
               help="Type of stan code to run (fit, postpc, prepc) (default: fit)"),
   make_option(c("-l", "--subs_file"), type="character", default="subject_ids_complete_valid.txt", 
-              help="Subs list file [Data/txt/subs/] (default: subject_ids_complete_valid.txt)"),
+              help="Subs list file [Data/raw/COHORT/ses-SES/] (default: subject_ids_complete_valid.txt)"),
   make_option(c("-n", "--dry_run"), action="store_true", default=FALSE, 
               help="Perform a dry run"),
   make_option(c("-o", "--overwrite"), action="store_true", default=FALSE, 
