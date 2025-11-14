@@ -75,15 +75,15 @@ transformed parameters {
   array[N] real<lower=0, upper=10> loss;
   array[N] real<lower=0, upper=1> update;
   
-  con    = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 5);
-  gain   = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(gain_pr)) * 2);
-  loss   = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(loss_pr)) * 10);
-  update = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(update_pr)));
+  con    = to_array_1d(Phi_approx(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 5);
+  gain   = to_array_1d(Phi_approx(mu_pr[2] + sigma[2] .* to_vector(gain_pr)) * 2);
+  loss   = to_array_1d(Phi_approx(mu_pr[3] + sigma[3] .* to_vector(loss_pr)) * 10);
+  update = to_array_1d(Phi_approx(mu_pr[4] + sigma[4] .* to_vector(update_pr)));
 }
 
 model {
   mu_pr ~ normal(0, 1);
-  sigma ~ normal(0, 0.5);
+  sigma ~ student_t(3, 0, 1);
 
   con_pr    ~ normal(0, 1);
   gain_pr   ~ normal(0, 1);
