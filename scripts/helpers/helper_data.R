@@ -971,17 +971,20 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
 #' @param hierarchy_data List of hierarchical simulation data
 #' @return List of individual data lists, one per subject
 convert_simulation_to_individual <- function(hierarchy_data) {
-  individual_data <- lapply(hierarchy_data$sid, function(sub) {
-    sub_idx <- which(hierarchy_data$sid == sub)
+  individual_data <- lapply(seq_along(hierarchy_data$sid), function(i) {  # Changed to use index
+    sub <- hierarchy_data$sid[i]
+    sub_idx <- i  # Use direct index instead of which()
     sub_data <- list()
     
+    # Get the subject-specific T value first
+    sub_T <- hierarchy_data$Tsubj[sub_idx]
+    
     # List of possible fields
-    fields <-names(hierarchy_data)
+    fields <- names(hierarchy_data)
     
     # Extract sub data
     for (field in fields) {
-      if (field %in% c("Nplay", "Npass", "sid",
-                       "maxRT", "minRT")){
+      if (field %in% c("Nplay", "Npass", "sid", "maxRT", "minRT")){
         sub_data[[field]] <- hierarchy_data[[field]][sub_idx]
       } else if (field %in% c("T", "N", "RTbound_max")) {
         next
@@ -991,7 +994,8 @@ convert_simulation_to_individual <- function(hierarchy_data) {
         sub_data[[field]] <- hierarchy_data[[field]]
       } 
       else {
-        sub_data[[field]] <- as.vector(hierarchy_data[[field]][sub_idx, , drop = FALSE])
+        # Extract only the first sub_T columns for this subject
+        sub_data[[field]] <- as.vector(hierarchy_data[[field]][sub_idx, 1:sub_T, drop = FALSE])
       }
     }
     
