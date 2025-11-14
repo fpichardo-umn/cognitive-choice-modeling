@@ -933,34 +933,45 @@ extract_simulation_hierarchical_data <- function(data, data_params, task, n_tria
       data_list$RTbound <- as.numeric(RTbound_min)
       
     } else {
-      # Existing logic for other rt_methods
+      # FIX: For "remove" and other methods, exclude padded zeros
+      # Calculate minRT/maxRT per subject using only their valid trials (first Tsubj values)
+      data_list$minRT <- sapply(seq_len(n_subs), function(i) {
+        valid_rts <- data_list$RT[i, 1:data_list$Tsubj[i]]
+        min(valid_rts, na.rm = TRUE)
+      })
+      data_list$minRT <- data_list$minRT + pmax(minrt_ep_ms/1000, 0)
+      
+      # Calculate RTbound from all valid RTs (not including padded zeros)
+      all_valid_RTs <- unlist(lapply(seq_len(n_subs), function(i) {
+        data_list$RT[i, 1:data_list$Tsubj[i]]
+      }))
+      
       if (use_percentile) {
-        all_RTs <- as.vector(data_list$RT)
-        RTbound_min <- as.numeric(quantile(head(sort(all_RTs), 100), 0.01))
+        RTbound_min <- as.numeric(quantile(head(sort(all_valid_RTs), 100), 0.01))
       } else if (rt_method == "adaptive") {
-        RTbound_min <- as.numeric(min(data_list$RT, na.rm = TRUE) - 1e-5)
+        RTbound_min <- as.numeric(min(all_valid_RTs, na.rm = TRUE) - 1e-5)
       } else {
         RTbound_min <- as.numeric(RTbound_min_ms) / 1000
       }
+      data_list$RTbound <- as.numeric(RTbound_min)
       
+      # Handle maxRT if requested
       if (!is.null(RTbound_max_ms)) {
+        data_list$maxRT <- sapply(seq_len(n_subs), function(i) {
+          valid_rts <- data_list$RT[i, 1:data_list$Tsubj[i]]
+          max(valid_rts, na.rm = TRUE)
+        })
+        data_list$maxRT <- data_list$maxRT - pmax(maxrt_ep_ms/1000, 0)
+        
         if (use_percentile) {
-          all_RTs <- as.vector(data_list$RT)
-          RTbound_max <- as.numeric(quantile(tail(sort(all_RTs), 100), 0.99))
+          RTbound_max <- as.numeric(quantile(tail(sort(all_valid_RTs), 100), 0.99))
         } else if (rt_method == "adaptive") {
-          RTbound_max <- as.numeric(max(data_list$RT, na.rm = TRUE) + 1e-5)
+          RTbound_max <- as.numeric(max(all_valid_RTs, na.rm = TRUE) + 1e-5)
         } else {
           RTbound_max <- as.numeric(RTbound_max_ms) / 1000
         }
-        
         data_list$RTbound_max <- as.numeric(RTbound_max)
-        data_list$maxRT <- as.numeric(apply(data_list$RT, 1, max, na.rm = TRUE))
-        data_list$maxRT <- data_list$maxRT - pmax(maxrt_ep_ms/1000, 0)
       }
-      
-      data_list$RTbound <- as.numeric(RTbound_min)
-      data_list$minRT <- as.numeric(apply(data_list$RT, 1, min, na.rm = TRUE))
-      data_list$minRT <- data_list$minRT + pmax(minrt_ep_ms/1000, 0)
     }
   }
   
