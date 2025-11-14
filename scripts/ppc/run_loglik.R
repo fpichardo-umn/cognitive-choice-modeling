@@ -141,8 +141,8 @@ for (subject_id in subject_ids) {
   if (opt$task == "igt_mod") {
     observed_data_list[[subject_id]] <- list(
       choice = subject_data$choice,
-      shown = subject_data$deck,
-      deck = subject_data$deck,
+      shown = subject_data$shown,
+      deck = subject_data$shown,
       outcome = subject_data$outcome,
       RT = if("RT" %in% names(subject_data)) subject_data$RT else NULL
     )

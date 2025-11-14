@@ -115,7 +115,7 @@ extract_subject_data_from_fits <- function(fits, task_name) {
       # For mIGT: choices are play/pass (0/1), deck is shown
       subject_data_list[[subject_id]] <- list(
         choice = data$choice,
-        deck = data$deck,
+        deck = data$shown,
         outcome = if ("outcome" %in% names(data)) data$outcome else NULL,
         RT = if ("RT" %in% names(data)) data$RT else NULL
       )
@@ -368,7 +368,7 @@ generate_simulation_data <- function(task_name, model_name, subject_data,
       } else if (task_config$type == "play_pass") {
         # For mIGT: Need deck sequence from the data
         trials <- data.frame(
-          deck_shown = subj_data$deck
+          deck_shown = subj_data$shown
         )
         
         # Run simulation
@@ -389,7 +389,7 @@ generate_simulation_data <- function(task_name, model_name, subject_data,
         # Format result
         sim_data <- list(
           choices = sim_result$choices,
-          deck = subj_data$deck,  # Use original deck sequence
+          deck = subj_data$shown,  # Use original deck sequence
           outcome = outcomes,
           parameters = parameters,
           parameter_set = i
