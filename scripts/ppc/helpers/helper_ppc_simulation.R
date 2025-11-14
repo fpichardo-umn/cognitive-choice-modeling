@@ -351,8 +351,7 @@ run_simulations <- function(task, model, subject_data, param_sets, task_params =
   
   # Create trials data frame
   trials <- data.frame(
-    deck_shown = deck_sequence,
-    forced_choice = NA_real_  # No forced choices for PPC
+    deck_shown = deck_sequence
   )
   
   # Run simulations for each parameter set

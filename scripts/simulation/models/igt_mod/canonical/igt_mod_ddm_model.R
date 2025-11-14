@@ -33,12 +33,9 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                              simulate_choices = function(trials, parameters, task_params) {
                                if (is.data.frame(trials)) {
                                  n_trials <- nrow(trials)
-                                 deck_sequence <- trials$deck_shown
-                                 forced_choices <- trials$forced_choice
                                } else {
                                  n_trials <- length(trials)
                                  deck_sequence <- trials
-                                 forced_choices <- rep(NA_real_, n_trials)
                                }
                                
                                choices <- vector("numeric", n_trials)
@@ -52,43 +49,22 @@ igt_modDDMModel <- R6::R6Class("igt_modDDMModel",
                                  shown_deck <- as.numeric(deck_sequence[t])
                                  
                                  # Generate choice and RT using DDM
-                                 # Use forced choice if available, otherwise simulate
-                                 if (!is.na(forced_choices[t])) {
-                                   choices[t] <- forced_choices[t]
-                                   
-                                   # Generate RT using appropriate parameters based on choice
-                                   if (choices[t] == 1) {  # Play decision
-                                     ddm_result <- rdiffusion(1, 
-                                                         a = parameters$boundary, # Separation
-                                                         t0 = parameters$tau, # Non-desc time
-                                                         z = parameters$beta * parameters$boundary, # Starting point
-                                                         v = parameters$drift)
-                                   } else {  # Pass decision
-                                     ddm_result <- rdiffusion(1, 
-                                                         a = parameters$boundary, # Separation
-                                                         t0 = parameters$tau, # Non-desc time
-                                                         z = (1 - parameters$beta) * parameters$boundary, # Starting point
-                                                         v = -parameters$drift)
-                                   }
-                                   RTs[t] <- ddm_result$rt
+                                 # Run a single diffusion process
+                                 ddm_result <- rdiffusion(1, 
+                                                      a = parameters$boundary, # Separation
+                                                      t0 = parameters$tau, # Non-desc time
+                                                      z = parameters$beta * parameters$boundary, # Starting point
+                                                      v = parameters$drift)
+                                 
+                                 # Determine choice based on which boundary was hit
+                                 if (ddm_result$response == "upper") {
+                                   choices[t] <- 1  # Play decision
                                  } else {
-                                   # Run a single diffusion process
-                                   ddm_result <- rdiffusion(1, 
-                                                        a = parameters$boundary, # Separation
-                                                        t0 = parameters$tau, # Non-desc time
-                                                        z = parameters$beta * parameters$boundary, # Starting point
-                                                        v = parameters$drift)
-                                   
-                                   # Determine choice based on which boundary was hit
-                                   if (ddm_result$response == "upper") {
-                                     choices[t] <- 1  # Play decision
-                                   } else {
-                                     choices[t] <- 0  # Pass decision
-                                   }
-                                   
-                                   # Record the RT
-                                   RTs[t] <- ddm_result$rt
+                                   choices[t] <- 0  # Pass decision
                                  }
+                                 
+                                 # Record the RT
+                                 RTs[t] <- ddm_result$rt
                                  
                                  # Handle timeout
                                  if(RTs[t] > RTbound_max) {

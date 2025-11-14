@@ -44,11 +44,9 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
       if (is.data.frame(trials)) {
         n_trials <- nrow(trials)
         deck_sequence <- trials$deck_shown
-        forced_choices <- trials$forced_choice
       } else {
         n_trials <- length(trials)
         deck_sequence <- trials
-        forced_choices <- rep(NA_real_, n_trials)
       }
       
       # Initialize containers
@@ -98,42 +96,22 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
         drift_history[t] <- drift_rate
         
         # Generate choice and RT using DDM with trial-specific drift
-        if (!is.na(forced_choices[t])) {
-          choices[t] <- forced_choices[t]
-          
-          # Generate RT using appropriate parameters based on choice
-          if (choices[t] == 1) {  # Play decision
-            ddm_result <- rdiffusion(1, 
-                                a = curr_boundary,
-                                t0 = curr_tau,
-                                z = beta * curr_boundary,
-                                v = drift_rate)
-          } else {  # Pass decision
-            ddm_result <- rdiffusion(1, 
-                                a = curr_boundary,
-                                t0 = curr_tau,
-                                z = (1 - beta) * curr_boundary,
-                                v = -drift_rate)
-          }
-          RTs[t] <- ddm_result$rt
+        # Run a single diffusion process
+        ddm_result <- rdiffusion(1, 
+                             a = curr_boundary,
+                             t0 = curr_tau,
+                             z = beta * curr_boundary,
+                             v = drift_rate)
+        
+        # Determine choice based on which boundary was hit
+        if (ddm_result$response == "upper") {
+          choices[t] <- 1  # Play decision
         } else {
-          # Run a single diffusion process
-          ddm_result <- rdiffusion(1, 
-                               a = curr_boundary,
-                               t0 = curr_tau,
-                               z = beta * curr_boundary,
-                               v = drift_rate)
-          
-          # Determine choice based on which boundary was hit
-          if (ddm_result$response == "upper") {
-            choices[t] <- 1  # Play decision
-          } else {
-            choices[t] <- 0  # Pass decision
-          }
-          
-          # Record the RT
-          RTs[t] <- ddm_result$rt
+          choices[t] <- 0  # Pass decision
         }
+        
+        # Record the RT
+        RTs[t] <- ddm_result$rt
         
         # Handle timeout
         if (RTs[t] > RTbound_max) {

@@ -61,8 +61,6 @@ igtTask <- R6::R6Class("igtTask",
                             main_trials <- data.table(
                               trial = seq_len(total_trials),
                               block = rep(1:n_blocks, each = trials_per_block),
-                              # No specific deck shown - all 4 are always available
-                              forced_choice = NA_real_,
                               is_training = FALSE
                             )
                             

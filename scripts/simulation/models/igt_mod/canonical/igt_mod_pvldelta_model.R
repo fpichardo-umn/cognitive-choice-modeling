@@ -27,11 +27,9 @@ igt_modPVLDELTAModel <- R6::R6Class("igt_modPVLDELTAModel",
                                if (is.data.frame(trials)) {
                                  n_trials <- nrow(trials)
                                  deck_sequence <- trials$deck_shown
-                                 forced_choices <- trials$forced_choice
                                } else {
                                  n_trials <- length(trials)
                                  deck_sequence <- trials
-                                 forced_choices <- rep(NA_real_, n_trials)
                                }
                                
                                choices <- vector("numeric", n_trials)
@@ -42,18 +40,13 @@ igt_modPVLDELTAModel <- R6::R6Class("igt_modPVLDELTAModel",
                                  shown_deck <- as.numeric(deck_sequence[t])
                                  ev_history[t,] <- self$ev
                                  
-                                 # Use forced choice if available, otherwise simulate
-                                 if (!is.na(forced_choices[t])) {
-                                   choices[t] <- forced_choices[t]
-                                 } else {
-                                   # Calculate decision probability
-                                   sensitivity <- as.numeric((t/10)^parameters$con)
-                                   info <- sensitivity * self$ev[shown_deck]
-                                   prob_play <- 1 / (1 + exp(-info))
-                                   
-                                   # Make choice
-                                   choices[t] <- rbinom(1, 1, prob_play)
-                                 }
+                                 # Calculate decision probability
+                                 sensitivity <- as.numeric((t/10)^parameters$con)
+                                 info <- sensitivity * self$ev[shown_deck]
+                                 prob_play <- 1 / (1 + exp(-info))
+                                 
+                                 # Make choice
+                                 choices[t] <- rbinom(1, 1, prob_play)
                                  
                                  # Update EV if deck was played
                                  if(choices[t] == 1) {

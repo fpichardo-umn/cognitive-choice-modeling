@@ -42,8 +42,7 @@ calculate_single_loglik <- function(model, subject_data, parameters, task_name, 
     
     # Create trials data frame
     trials <- data.frame(
-      deck_shown = deck_sequence,
-      forced_choice = NA_real_  # No forced choices for PPC
+      deck_shown = deck_sequence
     )
     
     # Build data object

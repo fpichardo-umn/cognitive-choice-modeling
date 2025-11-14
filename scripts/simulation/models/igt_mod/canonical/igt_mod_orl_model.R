@@ -32,11 +32,9 @@ igt_modORLModel <- R6::R6Class("igt_modORLModel",
       if (is.data.frame(trials)) {
         n_trials <- nrow(trials)
         deck_sequence <- trials$deck_shown
-        forced_choices <- trials$forced_choice
       } else {
         n_trials <- length(trials)
         deck_sequence <- trials
-        forced_choices <- rep(NA_real_, n_trials)
       }
       
       # Initialize containers
@@ -66,12 +64,8 @@ igt_modORLModel <- R6::R6Class("igt_modORLModel",
         # Calculate probability of playing
         prob_play <- 1 / (1 + exp(-Info))
         
-        # Make choice (use forced choice if available)
-        if (!is.na(forced_choices[t])) {
-          choices[t] <- forced_choices[t]
-        } else {
-          choices[t] <- rbinom(1, 1, prob_play)
-        }
+        # Make choice 
+        choices[t] <- rbinom(1, 1, prob_play)
         
         # Learning only occurs if participant chose to play
         if (choices[t] == 1) {
