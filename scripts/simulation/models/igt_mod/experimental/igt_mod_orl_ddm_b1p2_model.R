@@ -33,7 +33,6 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
         tau1 = list(range = c(0.05, 0.9)),
         tau = list(range = c(0.05, 0.9)),
         beta = list(range = c(0, 1)),
-        drift_con = list(range = c(-5, 5)),
         Apun = list(range = c(0, 1)),
         Arew = list(range = c(0, 1)),
         betaF = list(range = c(-10, 10))
@@ -66,7 +65,6 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
       tau1 <- as.numeric(parameters$tau1)
       tau <- as.numeric(parameters$tau)
       beta <- as.numeric(parameters$beta)
-      drift_con <- as.numeric(parameters$drift_con)
       Apun <- as.numeric(parameters$Apun)
       Arew <- as.numeric(parameters$Arew)
       betaF <- as.numeric(parameters$betaF)
@@ -87,12 +85,9 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
           curr_tau <- tau
         }
         
-        # Calculate trial-specific sensitivity/scaling
-        sensitivity <- (t / 10) ^ drift_con
-        
         # Calculate drift rate based on ORL values
-        # drift = (EV[deck] + EF[deck]*betaF) * sensitivity
-        drift_rate <- (self$ev[shown_deck] + self$ef[shown_deck] * betaF) * sensitivity
+        # drift = EV[deck] + EF[deck]*betaF
+        drift_rate <- self$ev[shown_deck] + self$ef[shown_deck] * betaF
         drift_history[t] <- drift_rate
         
         # Generate choice and RT using DDM with trial-specific drift
@@ -190,7 +185,6 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
       tau1 <- as.numeric(parameters$tau1)
       tau <- as.numeric(parameters$tau)
       beta <- as.numeric(parameters$beta)
-      drift_con <- as.numeric(parameters$drift_con)
       Apun <- as.numeric(parameters$Apun)
       Arew <- as.numeric(parameters$Arew)
       betaF <- as.numeric(parameters$betaF)
@@ -213,11 +207,8 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
           curr_tau <- tau
         }
         
-        # Calculate trial-specific sensitivity
-        sensitivity <- (t / 10) ^ drift_con
-        
         # Calculate drift rate
-        drift_rate <- (ev[shown_deck] + ef[shown_deck] * betaF) * sensitivity
+        drift_rate <- ev[shown_deck] + ef[shown_deck] * betaF
         
         # Check RT validity
         rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)

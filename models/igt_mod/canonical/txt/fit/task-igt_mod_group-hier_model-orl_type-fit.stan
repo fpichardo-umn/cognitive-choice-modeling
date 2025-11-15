@@ -22,7 +22,7 @@ functions {
       Info[t] = local_ev[curDeck] + local_ef[curDeck] * betaF + betaB;
 
       if (choice[t] == 1) {
-        sign_outcome = (outcome[t] > 0) ? 1.0 : -1.0;
+        sign_outcome = (outcome[t] >= 0) ? 1.0 : -1.0;
         PEval = outcome[t] - local_ev[curDeck];
         PEfreq = sign_outcome - local_ef[curDeck];
         efChosen = local_ef[choice[t]];
@@ -31,13 +31,13 @@ functions {
           PEfreq_fic[d] = -sign_outcome / 3.0 - local_ef[d];
         }
         
-        if (outcome[t] > 0) {
+        if (outcome[t] >= 0) {
           local_ef += Apun * PEfreq_fic;
-        local_ef[choice[t]] = efChosen + Arew * PEfreq; // Correct the chosen deck using the stored value
+        local_ef[curDeck] = efChosen + Arew * PEfreq; // Correct the chosen deck using the stored value
           local_ev[curDeck] += Arew * PEval;
         } else {
           local_ef += Arew * PEfreq_fic;
-        local_ef[choice[t]] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
+        local_ef[curDeck] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
           local_ev[curDeck] += Apun * PEval;
         }
       }
