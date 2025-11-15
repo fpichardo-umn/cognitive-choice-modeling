@@ -93,6 +93,105 @@ kable(summary_df, col.names = c("", ""))
 
 ---
 
+# Group-Level Parameters
+
+This section shows diagnostics for non-subject parameters: hyperparameters (`mu_pr`, `sigma`), generated quantities (`mu_*`), and the log posterior (`lp__`).
+
+```{r group-level-params}
+if (!is.null(diagnostic_results$group_analysis)) {
+  group_info <- diagnostic_results$group_analysis
+  
+  cat(sprintf("- **Total group-level parameters**: %d\n", group_info$n_params))
+  cat(sprintf("- **All converged (R-hat < %.2f)**: %s\n", 
+              thresholds$thresholds$rhat$acceptable,
+              ifelse(group_info$rhat$all_converged, "Yes", "No")))
+  cat(sprintf("- **Worst R-hat**: %.4f\n", group_info$rhat$max))
+  if (!is.null(group_info$ess_bulk)) {
+    cat(sprintf("- **Min ESS Bulk**: %.0f\n", group_info$ess_bulk$min))
+  }
+  if (!is.null(group_info$ess_tail)) {
+    cat(sprintf("- **Min ESS Tail**: %.0f\n", group_info$ess_tail$min))
+  }
+  cat(sprintf("- **Status**: %s\n\n", group_info$status))
+  
+  if (group_info$status != "PASS") {
+    cat("⚠ **Warning**: Group-level parameters have convergence issues. This affects population-level inference.\n\n")
+  }
+} else if (!is.null(diagnostic_results$basic_checks$hyperparameters)) {
+  hyper <- diagnostic_results$basic_checks$hyperparameters
+  
+  cat(sprintf("- **Converged**: %s\n", ifelse(hyper$converged, "Yes", "No")))
+  cat(sprintf("- **Worst R-hat**: %.4f\n", hyper$worst_rhat))
+  cat(sprintf("- **Status**: %s\n\n", hyper$status))
+  
+  if (!hyper$converged) {
+    cat("⚠ **Warning**: Hyperparameters have not fully converged. This affects all subject-level estimates.\n\n")
+  }
+} else {
+  cat("*Group-level parameter diagnostics not available*\n\n")
+}
+```
+
+## Detailed Group-Level Parameter Table
+
+```{r group-param-table}
+if (!is.null(diagnostic_results$group_analysis)) {
+  group_info <- diagnostic_results$group_analysis
+  
+  # Build detailed table
+  group_df <- data.frame(
+    Parameter = group_info$parameters,
+    Category = unname(group_info$param_categories[group_info$parameters]),
+    Rhat = sprintf("%.4f", group_info$rhat$values[group_info$parameters]),
+    stringsAsFactors = FALSE
+  )
+  
+  if (!is.null(group_info$ess_bulk)) {
+    group_df$ESS_Bulk <- sprintf("%.0f", group_info$ess_bulk$values[group_info$parameters])
+  }
+  
+  if (!is.null(group_info$ess_tail)) {
+    group_df$ESS_Tail <- sprintf("%.0f", group_info$ess_tail$values[group_info$parameters])
+  }
+  
+  # Add status column based on thresholds
+  group_df$Status <- sapply(group_info$parameters, function(p) {
+    rhat_val <- group_info$rhat$values[p]
+    ess_bulk_val <- if (!is.null(group_info$ess_bulk)) group_info$ess_bulk$values[p] else Inf
+    ess_tail_val <- if (!is.null(group_info$ess_tail)) group_info$ess_tail$values[p] else Inf
+    
+    if (rhat_val > thresholds$thresholds$rhat$problematic ||
+        ess_bulk_val < thresholds$thresholds$ess_bulk$critical ||
+        ess_tail_val < thresholds$thresholds$ess_tail$critical) {
+      "FAIL"
+    } else if (rhat_val > thresholds$thresholds$rhat$acceptable ||
+               ess_bulk_val < thresholds$thresholds$ess_bulk$acceptable ||
+               ess_tail_val < thresholds$thresholds$ess_tail$acceptable) {
+      "WARN"
+    } else {
+      "PASS"
+    }
+  })
+  
+  # Reorder to show problematic ones first
+  group_df <- group_df[order(factor(group_df$Status, levels = c("FAIL", "WARN", "PASS")), 
+                              group_df$Category), ]
+  
+  kable(group_df, row.names = FALSE)
+} else {
+  cat("*Detailed group-level parameter table not available*\n")
+}
+```
+
+**Parameter Categories:**
+
+- **log_posterior**: `lp__` - overall model fit quality
+- **hyper_mean**: `mu_pr[*]` - population means (on transformed scale)
+- **hyper_sd**: `sigma[*]` - population standard deviations
+- **generated_mu**: `mu_*` - transformed population means (interpretable scale)
+
+---
+
 # Subject-Level Parameters
 
 ## R-hat Distribution Across Subjects
@@ -181,28 +280,6 @@ if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
 
 ---
 
-# Hyperparameters (Group-Level)
-
-```{r hyperparameters}
-if (!is.null(diagnostic_results$basic_checks$hyperparameters)) {
-  hyper <- diagnostic_results$basic_checks$hyperparameters
-  
-  cat(sprintf("- **Converged**: %s\n", ifelse(hyper$converged, "Yes", "No")))
-  cat(sprintf("- **Worst R-hat**: %.4f\n", hyper$worst_rhat))
-  cat(sprintf("- **Status**: %s\n\n", hyper$status))
-  
-  if (!hyper$converged) {
-    cat("⚠ **Warning**: Hyperparameters have not fully converged. This affects all subject-level estimates.\n\n")
-  }
-} else {
-  cat("*Hyperparameter diagnostics not available*\n\n")
-}
-```
-
-**What are hyperparameters?** In hierarchical models, hyperparameters control the distribution of subject-level parameters (e.g., group means and standard deviations). They must converge for valid population-level inference.
-
----
-
 # Divergences
 
 ```{r divergences}
@@ -254,41 +331,6 @@ if (!is.null(diagnostic_results$shrinkage_check)) {
 
 ---
 
-```{r group-level, eval=!is.null(diagnostic_results$group_analysis), results='asis'}
-if (!is.null(diagnostic_results$group_analysis)) {
-  cat("# Group-Level Parameters (Full Hierarchical)\n\n")
-  cat("This analysis was run with `--real_hier` flag for complete group-level diagnostics.\n\n")
-  
-  group_info <- diagnostic_results$group_analysis
-  
-  cat("## Convergence\n\n")
-  cat(sprintf("- **Parameters**: %d group-level parameters\n", group_info$n_params))
-  cat(sprintf("- **All converged**: %s\n", ifelse(group_info$rhat$all_converged, "Yes", "No")))
-  cat(sprintf("- **Maximum R-hat**: %.4f\n", group_info$rhat$max))
-  cat(sprintf("- **Status**: %s\n\n", group_info$status))
-  
-  if (group_info$status != "PASS") {
-    cat("⚠ **Warning**: Group-level parameters have convergence issues. This affects population-level inference.\n\n")
-  }
-  
-  cat("## Group Parameters\n\n")
-  group_df <- data.frame(
-    Parameter = group_info$parameters,
-    `R-hat` = sprintf("%.4f", group_info$rhat$values),
-    check.names = FALSE,
-    stringsAsFactors = FALSE
-  )
-  
-  if (!is.null(group_info$ess)) {
-    group_df$`ESS Ratio` <- sprintf("%.3f", group_info$ess$ratios)
-  }
-  
-  kable(group_df, row.names = FALSE)
-}
-```
-
----
-
 # All Subjects Summary
 
 ```{r all-subjects}
@@ -298,17 +340,16 @@ if (!is.null(diagnostic_results$subject_analysis$subject_summaries)) {
   all_df <- data.frame(
     Subject = sapply(summaries, function(x) x$subject_id),
     Status = sapply(summaries, function(x) x$status),
-    `Worst R-hat` = sprintf("%.4f", sapply(summaries, function(x) x$worst_rhat)),
-    `Median R-hat` = sprintf("%.4f", sapply(summaries, function(x) x$median_rhat %||% NA)),
-    `Min ESS Bulk` = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_bulk %||% NA)),
-    `Min ESS Tail` = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_tail %||% NA)),
-    `Problem Score` = sprintf("%.1f", sapply(summaries, function(x) x$problem_score)),
-    check.names = FALSE,
+    Worst_Rhat = sprintf("%.4f", sapply(summaries, function(x) x$worst_rhat)),
+    Median_Rhat = sprintf("%.4f", sapply(summaries, function(x) x$median_rhat %||% NA)),
+    Min_ESS_Bulk = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_bulk %||% NA)),
+    Min_ESS_Tail = sprintf("%.0f", sapply(summaries, function(x) x$min_ess_tail %||% NA)),
+    Problem_Score = sprintf("%.1f", sapply(summaries, function(x) x$problem_score)),
     stringsAsFactors = FALSE
   )
   
   # Sort by problem score
-  all_df <- all_df[order(as.numeric(all_df$`Problem Score`), decreasing = TRUE), ]
+  all_df <- all_df[order(as.numeric(all_df$Problem_Score), decreasing = TRUE), ]
   
   if (nrow(all_df) <= 50) {
     kable(all_df, row.names = FALSE)

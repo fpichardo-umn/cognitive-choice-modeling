@@ -37,9 +37,11 @@ analyze_hierarchical_fit <- function(hier_fit, thresholds = NULL, real_hier = FA
     basic_checks = check_basic_hierarchical_health(hier_fit, param_structure, thresholds)
   )
   
-  # If real hierarchical, do full group-level analysis
+  # Always analyze group-level parameters (lp__, mu_pr, sigma, mu_*)
+  hier_analysis$group_analysis <- analyze_group_level_parameters(hier_fit, param_structure, thresholds)
+  
+  # If real hierarchical, do full shrinkage analysis
   if (real_hier) {
-    hier_analysis$group_analysis <- analyze_group_level_parameters(hier_fit, param_structure, thresholds)
     hier_analysis$shrinkage_analysis <- analyze_shrinkage_full(hier_fit, param_structure)
   } else {
     # For fit-based, just basic shrinkage check
@@ -63,42 +65,52 @@ identify_hierarchical_parameters <- function(hier_fit) {
     dimnames(hier_fit$draws)[[3]]
   }
   
-  # Filter out lp__ if present
-  all_params <- all_params[all_params != "lp__"]
+  # Keep lp__ for diagnostics
+  has_lp <- "lp__" %in% all_params
   
-  # Identify subject-indexed parameters (e.g., alpha[1], alpha[2])
+  # Identify indexed parameters (e.g., alpha[1], mu_pr[2])
   indexed_params <- all_params[grepl("\\[\\d+\\]", all_params)]
   
-  # Extract unique base parameter names
-  base_params <- unique(gsub("\\[\\d+\\]", "", indexed_params))
+  # CRITICAL: Separate hyperparameters (indexed by param) from subject params (indexed by subject)
+  # mu_pr[*] and sigma[*] are group-level hyperparameters, NOT subject parameters
+  hyperparam_indexed <- indexed_params[grepl("^(mu_pr|sigma)\\[", indexed_params)]
+  subject_params <- setdiff(indexed_params, hyperparam_indexed)
   
-  # Infer number of subjects from indices
-  if (length(indexed_params) > 0) {
-    # Extract all indices
-    all_indices <- as.numeric(gsub(".*\\[(\\d+)\\].*", "\\1", indexed_params))
+  # Extract unique base parameter names for subject-level only
+  base_params <- unique(gsub("\\[\\d+\\]", "", subject_params))
+  
+  # Infer number of subjects from subject parameter indices
+  if (length(subject_params) > 0) {
+    all_indices <- as.numeric(gsub(".*\\[(\\d+)\\].*", "\\1", subject_params))
     n_subjects <- max(all_indices, na.rm = TRUE)
   } else {
     n_subjects <- 1
   }
   
-  # Identify group-level parameters (e.g., mu_alpha, sigma_alpha)
-  # Common patterns for hyperparameters
-  group_param_patterns <- c("^mu_", "^sigma_", "_mu$", "_sigma$", "^hyper_", "_group$")
-  group_params <- character()
-  for (pattern in group_param_patterns) {
-    group_params <- c(group_params, all_params[grepl(pattern, all_params)])
-  }
-  group_params <- unique(group_params)
+  # Identify generated mu quantities (e.g., mu_gain, mu_loss)
+  # These are scalar (non-indexed) and follow pattern mu_<param_name>
+  non_indexed_params <- all_params[!grepl("\\[\\d+\\]", all_params)]
+  non_indexed_params <- non_indexed_params[non_indexed_params != "lp__"]
+  generated_mus <- non_indexed_params[grepl("^mu_[a-z_]+$", non_indexed_params)]
   
-  # Remove any that are actually indexed (false positives)
-  group_params <- group_params[!grepl("\\[\\d+\\]", group_params)]
+  # Group-level parameters include:
+  # 1. Indexed hyperparameters: mu_pr[*], sigma[*]
+  # 2. Generated quantities: mu_gain, mu_loss, etc.
+  # 3. lp__ (if present)
+  group_params <- c(hyperparam_indexed, generated_mus)
+  if (has_lp) {
+    group_params <- c("lp__", group_params)
+  }
   
   structure <- list(
     n_subjects = n_subjects,
     base_params = base_params,
     n_base_params = length(base_params),
-    subject_params = indexed_params,
+    subject_params = subject_params,
     group_params = group_params,
+    hyperparam_indexed = hyperparam_indexed,
+    generated_mus = generated_mus,
+    has_lp = has_lp,
     n_group_params = length(group_params),
     all_params = all_params
   )
@@ -118,13 +130,12 @@ analyze_subject_level_parameters <- function(hier_fit, param_structure, threshol
   
   # Extract diagnostics for subject parameters
   if (!is.null(hier_fit$diagnostics)) {
-    # Get all params from fit, filtering lp__
+    # Get all params from fit (keep lp__ in the list)
     fit_all_params <- if (!is.null(hier_fit$all_params)) {
       hier_fit$all_params
     } else {
       rownames(hier_fit$diagnostics)
     }
-    fit_all_params <- fit_all_params[fit_all_params != "lp__"]
     
     # Get indices for subject parameters
     subj_param_indices <- which(fit_all_params %in% subject_params)
@@ -233,13 +244,12 @@ check_basic_hierarchical_health <- function(hier_fit, param_structure, threshold
   
   # Check if hyperparameters are not degenerate
   if (length(param_structure$group_params) > 0 && !is.null(hier_fit$diagnostics)) {
-    # Get all params from fit, filtering lp__
+    # Get all params from fit (keep lp__ now)
     fit_all_params <- if (!is.null(hier_fit$all_params)) {
       hier_fit$all_params
     } else {
       rownames(hier_fit$diagnostics)
     }
-    fit_all_params <- fit_all_params[fit_all_params != "lp__"]
     
     group_param_indices <- which(fit_all_params %in% param_structure$group_params)
     
@@ -321,7 +331,7 @@ analyze_group_level_parameters <- function(hier_fit, param_structure, thresholds
     return(NULL)
   }
   
-  # Get all params from fit, filtering lp__
+  # Get all params from fit (keep lp__ now)
   fit_all_params <- if (!is.null(hier_fit$all_params)) {
     hier_fit$all_params
   } else if (!is.null(hier_fit$diagnostics)) {
@@ -329,17 +339,35 @@ analyze_group_level_parameters <- function(hier_fit, param_structure, thresholds
   } else {
     NULL
   }
-  fit_all_params <- fit_all_params[fit_all_params != "lp__"]
   
   group_param_indices <- which(fit_all_params %in% param_structure$group_params)
   
   if (length(group_param_indices) > 0 && !is.null(hier_fit$diagnostics)) {
     group_diagnostics <- hier_fit$diagnostics[group_param_indices, , drop = FALSE]
     
+    # Categorize parameters for clearer reporting
+    param_categories <- character(length(param_structure$group_params))
+    names(param_categories) <- param_structure$group_params
+    
+    for (p in param_structure$group_params) {
+      if (p == "lp__") {
+        param_categories[p] <- "log_posterior"
+      } else if (grepl("^mu_pr\\[", p)) {
+        param_categories[p] <- "hyper_mean"
+      } else if (grepl("^sigma\\[", p)) {
+        param_categories[p] <- "hyper_sd"
+      } else if (grepl("^mu_", p)) {
+        param_categories[p] <- "generated_mu"
+      } else {
+        param_categories[p] <- "other"
+      }
+    }
+    
     # Extract R-hat, ESS, etc for group parameters
     group_analysis <- list(
       n_params = length(param_structure$group_params),
       parameters = param_structure$group_params,
+      param_categories = param_categories,
       
       rhat = list(
         values = group_diagnostics[, "rhat"],
@@ -347,21 +375,29 @@ analyze_group_level_parameters <- function(hier_fit, param_structure, thresholds
         all_converged = all(group_diagnostics[, "rhat"] < thresholds$thresholds$rhat$acceptable, na.rm = TRUE)
       ),
       
-      ess = if ("ess_bulk" %in% colnames(group_diagnostics)) {
-        # n_iter is already post-warmup samples per chain
-        total_samples <- hier_fit$n_iter * hier_fit$n_chains
+      ess_bulk = if ("ess_bulk" %in% colnames(group_diagnostics)) {
         list(
           values = group_diagnostics[, "ess_bulk"],
-          ratios = group_diagnostics[, "ess_bulk"] / total_samples,
-          min_ratio = min(group_diagnostics[, "ess_bulk"] / total_samples, na.rm = TRUE),
-          all_adequate = all(group_diagnostics[, "ess_bulk"] / total_samples > thresholds$thresholds$ess_ratio$acceptable, na.rm = TRUE)
+          min = min(group_diagnostics[, "ess_bulk"], na.rm = TRUE)
+        )
+      } else NULL,
+      
+      ess_tail = if ("ess_tail" %in% colnames(group_diagnostics)) {
+        list(
+          values = group_diagnostics[, "ess_tail"],
+          min = min(group_diagnostics[, "ess_tail"], na.rm = TRUE)
         )
       } else NULL
     )
     
-    # Overall group-level status
-    group_analysis$status <- if (group_analysis$rhat$all_converged && 
-                                  (is.null(group_analysis$ess) || group_analysis$ess$all_adequate)) {
+    # Overall group-level status based on absolute ESS thresholds
+    rhat_ok <- group_analysis$rhat$all_converged
+    ess_bulk_ok <- is.null(group_analysis$ess_bulk) || 
+      group_analysis$ess_bulk$min >= thresholds$thresholds$ess_bulk$acceptable
+    ess_tail_ok <- is.null(group_analysis$ess_tail) || 
+      group_analysis$ess_tail$min >= thresholds$thresholds$ess_tail$acceptable
+    
+    group_analysis$status <- if (rhat_ok && ess_bulk_ok && ess_tail_ok) {
       "PASS"
     } else if (group_analysis$rhat$max < thresholds$thresholds$rhat$problematic) {
       "WARN"
