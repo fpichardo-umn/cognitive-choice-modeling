@@ -191,6 +191,34 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
       stop("Posterior draws data frame is empty. Check the fitted model.")
     }
     
+    # HIERARCHICAL: Sample indices ONCE globally before processing subjects
+    n_samples_to_use <- validate_n_samples(
+      n_available = nrow(posterior_draws),
+      n_requested = n_samples,
+      min_required = min_required,
+      purpose = "hierarchical posterior sampling"
+    )
+    
+    # For weighted sampling with hierarchical, use global lp__
+    if (sampling_method == "weighted" && "lp__" %in% names(posterior_draws)) {
+      global_indices <- sample_posterior(
+        posterior_draws,
+        n_samples_to_use,
+        params = character(0),  # Not filtering by individual params for global sampling
+        method = "weighted",
+        width_control = width_control
+      )
+    } else if (sampling_method == "width") {
+      # Width-based sampling is problematic for hierarchical - fall back to random
+      message("Width-based sampling not recommended for hierarchical fits. Using random sampling.")
+      global_indices <- sample(1:nrow(posterior_draws), n_samples_to_use)
+    } else {
+      # Random sampling
+      global_indices <- sample(1:nrow(posterior_draws), n_samples_to_use)
+    }
+    
+    message("Sampled ", length(global_indices), " global indices for all subjects")
+    
     # Find subject-specific parameters
     subject_params <- list()
     for (param in model_params) {
@@ -217,12 +245,12 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
       }
     }
     
-    # Sample parameter sets for each subject
+    # Extract parameter sets for each subject using GLOBAL indices
     if (length(subject_params) > 0) {
       for (sub_id in names(subject_params)) {
         # Skip excluded subjects
-        true_sub_id <- if (!is.null(fit_obj$metadata$subject_mapping)) {
-          fit_obj$metadata$subject_mapping[as.integer(sub_id)]
+        true_sub_id <- if (!is.null(fit_obj$subject_list)) {
+          as.character(fit_obj$subject_list[as.integer(sub_id)])
         } else {
           sub_id
         }
@@ -231,49 +259,18 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
           next
         }
         
-        # Prepare a temporary data frame for sampling
-        temp_df <- data.frame(matrix(ncol = length(model_params), nrow = nrow(posterior_draws)))
-        colnames(temp_df) <- model_params
-        
-        for (i in seq_along(model_params)) {
-          param <- model_params[i]
-          if (param %in% names(subject_params[[sub_id]])) {
-            temp_df[[param]] <- subject_params[[sub_id]][[param]]
-          } else {
-            # Parameter not found - this is an error
-            stop(paste("Parameter", param, "not found for subject", sub_id))
-          }
-        }
-        
-        # If using weighted sampling, add log posterior if available
-        if (sampling_method == "weighted" && "lp__" %in% names(posterior_draws)) {
-          temp_df$lp__ <- posterior_draws$lp__
-        }
-        
-        # Validate and resolve n_samples
-        n_samples_to_use <- validate_n_samples(
-          n_available = nrow(temp_df),
-          n_requested = n_samples,
-          min_required = min_required,
-          purpose = paste0("posterior sampling for subject ", true_sub_id)
-        )
-        
-        # Use the new sampling function
-        sample_indices <- sample_posterior(
-          temp_df, 
-          n_samples_to_use, 
-          model_params, 
-          method = sampling_method, 
-          width_control = width_control
-        )
-        
-        # Extract parameter values
-        param_sets <- data.frame(matrix(NA, nrow = length(sample_indices), ncol = length(model_params)))
+        # Extract parameter values using GLOBAL indices (same for all subjects)
+        param_sets <- data.frame(matrix(NA, nrow = length(global_indices), ncol = length(model_params)))
         colnames(param_sets) <- model_params
         
         for (i in seq_along(model_params)) {
           param <- model_params[i]
-          param_sets[[param]] <- temp_df[[param]][sample_indices]
+          if (param %in% names(subject_params[[sub_id]])) {
+            param_sets[[param]] <- subject_params[[sub_id]][[param]][global_indices]
+          } else {
+            # Parameter not found - this is an error
+            stop(paste("Parameter", param, "not found for subject", sub_id))
+          }
         }
         
         results[[true_sub_id]] <- param_sets

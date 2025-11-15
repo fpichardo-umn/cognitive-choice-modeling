@@ -1,12 +1,12 @@
-opt_model = "ev"
+opt_model = "pvldelta"
 # =======
 #opt_model = "orl"
 
 opt_task = "igt"
-opt_cohort = "adb"
+opt_cohort = "luc"
 opt_session = "00"
-opt_nsubs = 400#182#92
-opt_group = "hier"
+opt_nsubs = 1#182#92
+opt_group = "sing"
 opt_group2 = "batch_001"
 #opt_group2 = "hier"
 opt_n_trials = 80
@@ -54,7 +54,7 @@ opt <- list(
   target_ess_tail = 400,
   disable_adaptive_iter = FALSE,
   min_valid_rt_pct = 0.7
-  #,subid = "200839"#"1002"#"9104700"
+  ,subid = "1044"#"1002"#"9104700"
 )
 
 # Gen Params

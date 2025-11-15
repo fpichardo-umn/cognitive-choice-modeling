@@ -129,11 +129,10 @@ parameter_sets_by_subject <- extract_posterior_draws(
 )
 
 # Extract observed data for each subject
-if (is.null(fits$subject_list)){
-  names(parameter_sets_by_subject) = names(fits)
-} else {
-  names(parameter_sets_by_subject) = fits$subject_list
-}
+# if (is.null(fits$subject_list)){
+#   names(parameter_sets_by_subject) = names(fits)
+# }
+
 subject_ids <- names(parameter_sets_by_subject)
 message("Extracting observed data for ", length(subject_ids), " subjects...")
 
@@ -206,7 +205,7 @@ if (has_ssm) {
           RT = obs_data$RT,
           choice = obs_data$choice,
           shown = if ("shown" %in% names(obs_data)) obs_data$shown else NULL,
-          outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL,
+          outcome = if ("outcome" %in% names(obs_data)) obs_data$outcome else NULL
         )
       }
       

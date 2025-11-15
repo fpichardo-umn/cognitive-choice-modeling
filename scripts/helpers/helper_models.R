@@ -275,6 +275,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_pvldelta2"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = param_sets$pvl_delta,
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_pvldelta_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta), "con"),
@@ -298,6 +305,13 @@ get_igt_defaults = function() {
   )
   
   models[["igt_hier_pvldecay"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = param_sets$pvl_decay,
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_pvldecay2"]] <- list(
     data = data_types$basic_hier_igt,
     params = param_sets$pvl_decay,
     non_pr_params = NULL,
