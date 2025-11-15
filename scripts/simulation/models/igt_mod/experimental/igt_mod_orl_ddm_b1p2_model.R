@@ -211,7 +211,7 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
         drift_rate <- ev[shown_deck] + ef[shown_deck] * betaF
         
         # Check RT validity
-        rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
+        rt_is_valid <- (RTs[t] > RTbound_min && RTs[t] < RTbound_max)
         
         if (rt_is_valid) {
           tryCatch({

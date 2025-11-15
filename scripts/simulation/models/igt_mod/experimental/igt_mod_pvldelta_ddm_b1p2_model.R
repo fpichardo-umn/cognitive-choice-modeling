@@ -157,31 +157,33 @@ igt_modPVLDELTADDMB1P2Model <- R6::R6Class("igt_modPVLDELTADDMB1P2Model",
         }
         
         # Check RT validity
-        rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
+        rt_is_valid <- (RTs[t] > RTbound_min && RTs[t] < RTbound_max)
         
         if(rt_is_valid) {
           # Calculate log-likelihood of observed choice and RT
           tryCatch({
             if(choices[t] == 1) {
               # Play decision - upper boundary
-              trial_loglik[t] <- log(ddiffusion(
+              trial_lk = ddiffusion(
                 rt = RTs[t],
                 response = "upper",
                 a = current_boundary,
                 t0 = current_tau,
                 z = parameters$beta * current_boundary,
                 v = drift_rate
-              ))
+              )
+              trial_loglik[t] <- ifelse(trial_lk > 0, log(trial_lk), 0)
             } else {
               # Pass decision - lower boundary
-              trial_loglik[t] <- log(ddiffusion(
+              trial_lk = ddiffusion(
                 rt = RTs[t],
                 response = "lower",
                 a = current_boundary,
                 t0 = current_tau,
                 z = parameters$beta * current_boundary,
                 v = drift_rate
-              ))
+              )
+              trial_loglik[t] <- ifelse(trial_lk > 0, log(trial_lk), 0)
             }
           }, error = function(e) {
             trial_loglik[t] <<- -1000

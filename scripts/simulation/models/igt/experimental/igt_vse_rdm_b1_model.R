@@ -145,7 +145,7 @@ igtVSERDMB1Model <- R6::R6Class("igtVSERDMB1Model",
                                           current_tau <- parameters$tau
                                         }
                                         
-                                        if (rt >= RTbound_min && rt <= RTbound_max && rt != 999) {
+                                        if (rt > RTbound_min && rt < RTbound_max && rt != 999) {
                                           rt_adj <- rt - current_tau
                                           if (rt_adj <= 1e-5) {
                                             trial_loglik[t] <- -Inf

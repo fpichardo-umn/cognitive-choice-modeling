@@ -165,7 +165,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                        }
                                        
                                        # Check if RT is valid (within bounds)
-                                       rt_is_valid <- (RTs[t] >= RTbound_min && RTs[t] <= RTbound_max)
+                                       rt_is_valid <- (RTs[t] > RTbound_min && RTs[t] < RTbound_max)
                                        
                                        # Only calculate RT likelihood for valid RTs
                                        if(rt_is_valid) {
