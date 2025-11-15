@@ -129,7 +129,11 @@ parameter_sets_by_subject <- extract_posterior_draws(
 )
 
 # Extract observed data for each subject
-names(parameter_sets_by_subject) = fits$subject_list
+if (is.null(fits$subject_list)){
+  names(parameter_sets_by_subject) = names(fits)
+} else {
+  names(parameter_sets_by_subject) = fits$subject_list
+}
 subject_ids <- names(parameter_sets_by_subject)
 message("Extracting observed data for ", length(subject_ids), " subjects...")
 

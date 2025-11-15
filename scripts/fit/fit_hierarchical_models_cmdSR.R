@@ -270,3 +270,6 @@ if (!opt$dry_run) {
 } else {
   cat("Dry run completed successfully.\n")
 }
+
+cat("Script completed. Exiting explicitly.\n")
+q(save = "no", status = 0)
