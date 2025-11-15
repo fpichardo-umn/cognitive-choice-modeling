@@ -62,6 +62,7 @@ transformed data {
 parameters {
   array[4] real mu_pr;
   array[4] real<lower=0> sigma;
+  real<lower=1> nu; // DoFs
 
   array[N] real con_pr;
   array[N] real gain_pr;
@@ -84,11 +85,12 @@ transformed parameters {
 model {
   mu_pr ~ normal(0, 1);
   sigma ~ student_t(3, 0, 1);
+  nu ~ gamma(2, 0.1);
 
-  con_pr    ~ normal(0, 1);
-  gain_pr   ~ normal(0, 1);
-  loss_pr   ~ normal(0, 1);
-  update_pr ~ normal(0, 1);
+  con_pr    ~ student_t(nu, 0, 1);
+  gain_pr   ~ student_t(nu, 0, 1);
+  loss_pr   ~ student_t(nu, 0, 1);
+  update_pr ~ student_t(nu, 0, 1);
 
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum_func, subject_indices, grainsize,
