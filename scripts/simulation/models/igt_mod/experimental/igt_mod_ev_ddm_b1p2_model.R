@@ -56,7 +56,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                        ev_history[t,] <- self$ev
                                        
                                        # Calculate drift rate based on expected value
-                                       sensitivity <- (3^drift_con) - 1
+                                       sensitivity <- (3^parameters$drift_con) - 1
                                        drift_rate <- sensitivity * self$ev[shown_deck]
                                        
                                        # Determine boundary and tau based on block

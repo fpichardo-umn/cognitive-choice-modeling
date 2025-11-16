@@ -41,7 +41,7 @@ igt_modPVLDELTAModel <- R6::R6Class("igt_modPVLDELTAModel",
                                  ev_history[t,] <- self$ev
                                  
                                  # Calculate decision probability
-                                 sensitivity <- (3^con) - 1
+                                 sensitivity <- (3^parameters$con) - 1
                                  info <- sensitivity * self$ev[shown_deck]
                                  prob_play <- 1 / (1 + exp(-info))
                                  
