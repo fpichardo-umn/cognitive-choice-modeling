@@ -87,7 +87,7 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
         RTs[t] <- ddm_result$rt
         
         # Handle timeout
-        if(RTs[t] > RTbound_max) {
+        if(RTs[t] >= RTbound_max) {
           choices[t] <- 0  # Force pass
           RTs[t] <- RTbound_max
         }
@@ -164,26 +164,24 @@ igt_modPVLDECAYDDMB1P2Model <- R6::R6Class("igt_modPVLDECAYDDMB1P2Model",
           tryCatch({
             if(choices[t] == 1) {
               # Play decision - upper boundary
-              trial_lk = ddiffusion(
+              trial_loglik[t] <- log(ddiffusion(
                 rt = RTs[t],
                 response = "upper",
                 a = current_boundary,
                 t0 = current_tau,
                 z = parameters$beta * current_boundary,
                 v = drift_rate
-              )
-              trial_loglik[t] <- ifelse(trial_lk > 0, log(trial_lk), 0)
+              ) + 1e-10)
             } else {
               # Pass decision - lower boundary
-              trial_lk = ddiffusion(
+              trial_loglik[t] <- log(ddiffusion(
                 rt = RTs[t],
                 response = "lower",
                 a = current_boundary,
                 t0 = current_tau,
                 z = parameters$beta * current_boundary,
                 v = drift_rate
-              )
-              trial_loglik[t] <- ifelse(trial_lk > 0, log(trial_lk), 0)
+              ) + 1e-10)
             }
           }, error = function(e) {
             trial_loglik[t] <<- -1000

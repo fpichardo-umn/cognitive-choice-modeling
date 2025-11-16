@@ -91,7 +91,7 @@ igt_modDDMB1P2Model <- R6::R6Class("igt_modDDMB1P2Model",
         RTs[t] <- ddm_result$rt
         
         # Handle timeout
-        if (RTs[t] > RTbound_max) {
+        if (RTs[t] >= RTbound_max) {
           choices[t] <- 0  # Force pass
           RTs[t] <- RTbound_max
         }
