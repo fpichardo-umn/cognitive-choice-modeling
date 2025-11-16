@@ -214,7 +214,7 @@ if (has_ssm) {
       processed_df <- preprocess_data(
         data = obs_df,
         task = opt$task,
-        RTbound_min_ms = opt$RTbound_min_ms,
+        RTbound_min_ms = opt$RTbound_min_ms + 20,
         RTbound_max_ms = opt$RTbound_max_ms,
         rt_method = opt$rt_method,
         return_dropped_indices = FALSE
