@@ -27,7 +27,7 @@ igt_modPVLDELTADDMB1P2Model <- R6::R6Class("igt_modPVLDELTADDMB1P2Model",
         tau1 = list(range = c(0.1, 0.9)),     # Using reasonable RT bounds for block 1
         tau = list(range = c(0.1, 0.9)),      # Using reasonable RT bounds for rest
         beta = list(range = c(0, 1)),
-        drift_con = list(range = c(-5, 5)),
+        drift_con = list(range = c(-3, 3)),
         gain = list(range = c(0, 2)),
         loss = list(range = c(0, 10)),
         update = list(range = c(0, 1))
