@@ -14,8 +14,8 @@ functions {
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * local_ev);
       
       real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
-real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
-curUtil = win_component - loss * loss_component;
+      real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+      curUtil = win_component - loss * loss_component;
       local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
     }
     
@@ -92,8 +92,10 @@ model {
 
   int grainsize = max(1, N %/% 4);
   target += reduce_sum(partial_sum_func, subject_indices, grainsize,
-                       choice, wins, losses, Tsubj,
-                       con, gain, loss, update);
+                       choice, wins, losses,
+		       Tsubj,
+                       con, gain,
+		       loss, update);
 }
 
 generated quantities {

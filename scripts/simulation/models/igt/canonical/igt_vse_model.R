@@ -77,7 +77,7 @@ igtVSEModel <- R6::R6Class("igtVSEModel",
         utility <- wins[t]^gain - loss * losses[t]^gain
         
         # Exploitation: Decay all deck values
-        self$ev_exploit <- self$ev_exploit * decay
+        self$ev_exploit <- self$ev_exploit * (1 - decay)
         
         # Exploitation: Add utility to chosen deck
         self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + utility
@@ -148,7 +148,7 @@ igtVSEModel <- R6::R6Class("igtVSEModel",
         utility <- win^gain - loss * lose^gain
         
         # Exploitation: Decay and update
-        ev_exploit <- ev_exploit * decay
+        ev_exploit <- ev_exploit * (1 - decay)
         ev_exploit[choice] <- ev_exploit[choice] + utility
         
         # Exploration: Reset chosen and update unchosen
