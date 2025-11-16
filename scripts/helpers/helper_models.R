@@ -1643,14 +1643,14 @@ get_igt_mod_defaults = function() {
   
   models[["igt_mod_sing_ddm_b1p2"]] <- list(
     data = c(data_types$with_rt_igt, "choice"),
-    params = setdiff(param_sets$ddm_b1p2, "drift_con"),
+    params = setdiff(c(param_sets$ddm_b1p2, "drift"), "drift_con"),
     non_pr_params = c("drift"),
     exclude_params = NULL
   )
   
   models[["igt_mod_hier_ddm_b1p2"]] <- list(
     data = data_types$ddm_specific,
-    params = param_sets$ddm_b1p2,
+    params = setdiff(c(param_sets$ddm_b1p2, "drift"), "drift_con"),
     non_pr_params = c("drift"),
     exclude_params = NULL
   )

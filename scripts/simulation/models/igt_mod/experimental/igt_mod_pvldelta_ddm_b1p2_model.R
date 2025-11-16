@@ -107,9 +107,8 @@ igt_modPVLDELTADDMB1P2Model <- R6::R6Class("igt_modPVLDELTADDMB1P2Model",
           
           # Apply delta rule update
           current_ev <- as.numeric(self$ev[shown_deck])
-          update_rate <- as.numeric(parameters$update)
                                    
-          self$ev[shown_deck] <- current_ev + update_rate * (utility - current_ev)
+          self$ev[shown_deck] <- current_ev + parameters$update * (utility - current_ev)
         }
       }
       
@@ -204,9 +203,8 @@ igt_modPVLDELTADDMB1P2Model <- R6::R6Class("igt_modPVLDELTADDMB1P2Model",
           
           # Apply delta rule update
           current_ev <- as.numeric(self$ev[shown_deck])
-          update_rate <- as.numeric(parameters$update)
                                    
-          self$ev[shown_deck] <- current_ev + update_rate * (utility - current_ev)
+          self$ev[shown_deck] <- current_ev + parameters$update * (utility - current_ev)
         }
       }
       

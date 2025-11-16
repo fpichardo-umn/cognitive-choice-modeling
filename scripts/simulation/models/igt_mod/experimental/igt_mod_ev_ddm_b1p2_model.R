@@ -107,7 +107,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                              
                                              # Add utility to the relevant deck (pure decay rule)
                                              self$ev[shown_deck] <- self$ev[shown_deck] + 
-                                               update_rate * (utility - self$ev[shown_deck])
+                                               parameters$update * (utility - self$ev[shown_deck])
                                            }
                                          }
                                          
@@ -205,7 +205,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                              
                                              # Add utility to the relevant deck (pure decay rule)
                                              self$ev[shown_deck] <- self$ev[shown_deck] +
-                                               update_rate * (utility - self$ev[shown_deck])
+                                               parameters$update * (utility - self$ev[shown_deck])
                                            }
                                          }
                                          

@@ -148,7 +148,6 @@ model_params <- if (!is.null(opt$params)) strsplit(opt$params, ",")[[1]] else mo
 
 cat("Preparing data for", full_model_name, "\n")
 
-
 # Load data using the same method as fit scripts
 all_data <- load_data(opt$task, opt$cohort, opt$ses)
 message("Loaded data with ", nrow(all_data), " trials for ", length(unique(all_data$subjID)), " subjects")
