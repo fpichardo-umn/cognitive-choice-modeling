@@ -109,7 +109,7 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
         RTs[t] <- ddm_result$rt
         
         # Handle timeout
-        if (RTs[t] > RTbound_max) {
+        if (RTs[t] >= RTbound_max) {
           choices[t] <- 0  # Force pass
           RTs[t] <- RTbound_max
         }
@@ -220,9 +220,9 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
               trial_loglik[t] <- log(ddiffusion(
                 rt = RTs[t],
                 response = "upper",
-                a = curr_boundary,
-                t0 = curr_tau,
-                z = beta * curr_boundary,
+                a = current_boundary,
+                t0 = current_tau,
+                z = parameters$beta * current_boundary,
                 v = drift_rate
               ) + 1e-10)
             } else {
@@ -230,10 +230,10 @@ igt_modORLDDMB1P2Model <- R6::R6Class("igt_modORLDDMB1P2Model",
               trial_loglik[t] <- log(ddiffusion(
                 rt = RTs[t],
                 response = "lower",
-                a = curr_boundary,
-                t0 = curr_tau,
-                z = beta * curr_boundary,
-                v = -drift_rate
+                a = current_boundary,
+                t0 = current_tau,
+                z = parameters$beta * current_boundary,
+                v = drift_rate
               ) + 1e-10)
             }
           }, error = function(e) {
