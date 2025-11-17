@@ -90,7 +90,6 @@ parameters {
   real<lower=-3, upper=3> tau1_pr;
   real<lower=-3, upper=3> tau_pr;
   real<lower=-3, upper=3> beta_pr;
-  real<lower=-3, upper=3> drift_con_pr;
   real<lower=-3, upper=3> Apun_pr;
   real<lower=-3, upper=3> Arew_pr;
   real<lower=-3, upper=3> betaF_pr;
@@ -102,7 +101,6 @@ transformed parameters {
   real<lower=RTbound, upper=minRT> tau1;
   real<lower=RTbound, upper=minRT> tau;
   real<lower=0, upper=1> beta;
-  real<lower=0, upper=3> drift_con;
   real<lower=0, upper=1> Apun;
   real<lower=0, upper=1> Arew;
   real betaF;
@@ -112,7 +110,6 @@ transformed parameters {
   tau1      = inv_logit(tau1_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   tau       = inv_logit(tau_pr) * (minRT - RTbound - 1e-6) * 0.99 + RTbound;
   beta      = inv_logit(beta_pr);
-  drift_con = inv_logit(drift_con_pr) * 3;
   Apun      = inv_logit(Apun_pr);
   Arew      = inv_logit(Arew_pr);
   betaF     = betaF_pr;
@@ -124,14 +121,13 @@ model {
   tau1_pr ~ normal(0, 1);
   tau_pr ~ normal(0, 1);
   beta_pr ~ normal(0, 1);
-  drift_con_pr ~ normal(0, 1);
   Apun_pr ~ normal(0, 1);
   Arew_pr ~ normal(0, 1);
   betaF_pr ~ normal(0, 1);
 
   vector[4] ev = rep_vector(0., 4);
   vector[4] ef = rep_vector(0., 4);
-  real sensitivity = pow(3, drift_con) - 1;
+  real sensitivity = 0.15;
   
   ev = igt_pp_orl_ddm_model_lp(choice, shown, outcome, RT, ev, ef, T,
                                 Arew, Apun, betaF, sensitivity,
