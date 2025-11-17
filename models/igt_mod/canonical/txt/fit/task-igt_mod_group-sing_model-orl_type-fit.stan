@@ -37,11 +37,11 @@ functions {
         
         if (outcome[t] >= 0) {
           local_ef += Apun * PEfreq_fic;
-          local_ef[curDeck] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
+          local_ef[curDeck] = efChosen + Arew * PEfreq; // Correct chosen deck using stored val
           local_ev[curDeck] += Arew * PEval;
         } else {
           local_ef += Arew * PEfreq_fic;
-          local_ef[curDeck] = efChosen + Apun * PEfreq; // Correct the chosen deck using the stored value
+          local_ef[curDeck] = efChosen + Apun * PEfreq; // Correct chosen deck using stored val
           local_ev[curDeck] += Apun * PEval;
         }
       }
