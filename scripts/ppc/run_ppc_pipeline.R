@@ -224,7 +224,7 @@ if ("simulate" %in% steps_to_run) {
   if (file.exists(sim_file) && !opt$force) {
     message("Simulation output already exists. Skipping simulation step. Use --force to override.")
   } else {
-    message("Step 1: Running simulations")
+    cat("Step 1: Running simulations")
     simulation_script <- file.path(script_dir, "ppc", "run_simulation.R")
     cmd <- paste0("Rscript \"", simulation_script, "\"", run_simulation_args)
     message("Executing command: ", cmd)
@@ -246,7 +246,7 @@ if ("loglik" %in% steps_to_run) {
     # Loglik can run with or without simulation file
     # It will use sim_file if available, otherwise load data directly from fit_file
     
-    message("Step 2: Calculating log-likelihood")
+    cat("Step 2: Calculating log-likelihood")
     loglik_script <- file.path(script_dir, "ppc", "run_loglik.R")
     cmd <- paste0("Rscript \"", loglik_script, "\"", run_loglik_args)
     message("Executing command: ", cmd)
@@ -270,7 +270,7 @@ if ("stats" %in% steps_to_run) {
       stop("Simulation output not found. Run simulation step first: ", sim_file)
     }
     
-    message("Step 3: Calculating statistics")
+    cat("Step 3: Calculating statistics")
     stats_script <- file.path(script_dir, "ppc", "run_stats.R")
     cmd <- paste0("Rscript \"", stats_script, "\"", run_stats_args)
     message("Executing command: ", cmd)
@@ -296,7 +296,7 @@ if ("report" %in% steps_to_run) {
       stop("Statistics output not found. Run statistics step first: ", stats_file)
     }
     
-    message("Step 4: Generating report")
+    cat("Step 4: Generating report")
     report_script <- file.path(script_dir, "ppc", "generate_ppc_report.R")
     cmd <- paste0("Rscript \"", report_script, "\"", run_report_args)
     message("Executing command: ", cmd)

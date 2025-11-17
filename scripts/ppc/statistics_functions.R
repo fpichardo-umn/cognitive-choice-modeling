@@ -190,7 +190,7 @@ calculate_igt_choice_stats <- function(choices, subject_id, n_sims, additional_d
 #' @param additional_data List containing outcomes, shown decks
 #' @return Data frame of mIGT choice statistics
 calculate_migt_choice_stats <- function(choices, subject_id, n_sims, additional_data) {
-  outcomes <- additional_data$outcomes
+  outcomes <- additional_data$outcome
   shown <- additional_data$shown
   # Pre-allocate result data frame
   result <- data.frame(
@@ -1440,7 +1440,7 @@ calculate_simulation_statistics <- function(simulation_results, model_type, bloc
       # mIGT: has outcomes and shown decks
       for (i in 1:n_sims) {
         choices_matrix[i,] <- subject_sims[[i]]$choices
-        outcomes_matrix[i,] <- subject_sims[[i]]$outcomes$net_outcome
+        outcomes_matrix[i,] <- subject_sims[[i]]$outcome
       }
       
       additional_data <- list(
@@ -1604,17 +1604,18 @@ calculate_simulation_statistics <- function(simulation_results, model_type, bloc
 calculate_observed_statistics <- function(observed_data, model_type, block_size = 20, task_name, cohort, n_experiments = 1) {
   # Initialize results
   observed_stats <- list()
-  subject_ids = unique(observed_data$sid)
-  
-  # Format observed data first
-  formatted_data <- format_observed_data(observed_data, task_name, cohort)
-  subject_ids <- unique(formatted_data$sid)
+  if (is.null(observed_data$sid)){
+    subject_ids = unique(observed_data$subjID)
+    observed_data$sid = observed_data$subjID
+  } else {
+    subject_ids = unique(observed_data$sid)
+  }
   
   # Process each subject
   for (subject_id in subject_ids) {
     message(paste("Processing observed statistics for subject", subject_id))
     
-    subject_results <- formatted_data %>% filter(sid == subject_id)
+    subject_results <- observed_data %>% filter(sid == subject_id)
     
     # OPTIMIZATION: Pre-allocate matrices for all experiments
     n_trials <- length(subject_results$choice)
