@@ -105,7 +105,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                                as.numeric(parameters$wgt_pun) * outcome
                                              }
                                              
-                                             # Add utility to the relevant deck (pure decay rule)
+                                             # Add utility to the relevant deck
                                              self$ev[shown_deck] <- self$ev[shown_deck] + 
                                                parameters$update * (utility - self$ev[shown_deck])
                                            }
@@ -189,9 +189,6 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                              trial_loglik[t] <- 0
                                            }
                                            
-                                           # Apply decay to all decks first
-                                           self$ev <- self$ev * (1 - parameters$decay)
-                                           
                                            # Update EV if deck was played
                                            if(choices[t] == 1) {
                                              outcome <- outcomes[t]
@@ -203,7 +200,7 @@ igt_modEVDDMB1P2Model <- R6::R6Class("igt_modEVDDMB1P2Model",
                                                as.numeric(parameters$wgt_pun) * outcome
                                              }
                                              
-                                             # Add utility to the relevant deck (pure decay rule)
+                                             # Add utility to the relevant deck
                                              self$ev[shown_deck] <- self$ev[shown_deck] +
                                                parameters$update * (utility - self$ev[shown_deck])
                                            }

@@ -110,7 +110,7 @@ LOG_DIR="$(get_log_dir "parameter_recovery")"
 BATCH_SCRIPT="${SCRIPT_DIR}/sbatch_resc_scripts/resources_pr.sbatch"
 
 # --- Generate Job Name ---
-JOB_NAME="PR_task-${TASK}_model-${MODEL}_group-${GROUP_TYPE}_comp-${COMPONENTS//,/-}"
+JOB_NAME="PR_task-${TASK}_cohort-${SOURCE}_model-${MODEL}_group-${GROUP_TYPE}_comp-${COMPONENTS//,/-}"
 if [ ! -z "$SESSION" ]; then
   JOB_NAME="${JOB_NAME}_ses-${SESSION}"
 fi
