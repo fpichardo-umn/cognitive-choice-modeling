@@ -31,7 +31,7 @@ generate_model_comparison_report <- function(analysis_results, comparison_data, 
   message("Generating model comparison report...")
   
   # Create report filename
-  report_base <- generate_bids_filename(
+  rmd_file_base <- generate_bids_filename(
     prefix = "model_comparison",
     task = task,
     group = "comparison",
@@ -39,11 +39,11 @@ generate_model_comparison_report <- function(analysis_results, comparison_data, 
     cohort = cohort,
     ses = session,
     additional_tags = list(comparison = comparison_name),
-    ext = ""
+    ext = "Rmd"
   )
   
-  rmd_file <- file.path(output_dir, paste0(report_base, ".Rmd"))
-  html_file <- file.path(output_dir, paste0(report_base, ".html"))
+  rmd_file <- file.path(output_dir, rmd_file_base)
+  html_file <- gsub("Rmd", "html", rmd_file_base)
   
   # Generate RMD content
   rmd_content <- create_report_rmd_content(
