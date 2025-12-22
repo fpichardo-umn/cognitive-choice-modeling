@@ -166,11 +166,21 @@ parameter_sets_by_subject <- extract_posterior_draws(
 message("Loaded fitted model with ", length(parameter_sets_by_subject), " subjects")
 
 if (opt$group == "hier"){
-  subject_ids = unique(all_data$subjID)[1:length(names(parameter_sets_by_subject))]
-  names(parameter_sets_by_subject) = subject_ids
+  # Get the actual subject list from the hierarchical fit in the correct order
+  if (!is.null(fits$subject_list)) {
+    subject_ids <- fits$subject_list
+  } else {
+    stop("Hierarchical fit object does not contain subject_list. Cannot determine subject mapping.")
+  }
   
-  # Filter data for subjects that have fits
-  subject_data <- all_data[all_data$subjID %in% subject_ids, ]
+  # Verify the number of subjects matches
+  if (length(subject_ids) != length(names(parameter_sets_by_subject))) {
+    stop("Mismatch: fit has ", length(subject_ids), " subjects but extracted ", 
+         length(names(parameter_sets_by_subject)), " parameter sets")
+  }
+  
+  # Assign the correct subject IDs to the parameter sets
+  names(parameter_sets_by_subject) <- subject_ids
 } else {
   # Get subject IDs from the extraction results
   subject_ids <- names(parameter_sets_by_subject)
