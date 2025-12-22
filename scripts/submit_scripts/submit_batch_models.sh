@@ -108,7 +108,6 @@ if $DRY_RUN; then
   echo "Email: $USER_EMAIL"
   echo "Subjects list file: $SUBS_LIST_FILE"
 else
-  JOB_NAME="batch_${TASK}_${MODEL_NAME}"
   # Ensure the necessary directories exist
   ensure_dir_exists "$DATA_DIR"
   ensure_dir_exists "$SUBS_DIR"
@@ -116,7 +115,7 @@ else
   ensure_dir_exists "$LOG_DIR"
   
   # Generate job name with BIDS-style format
-  JOB_NAME="batch_task-${TASK}_model-${MODEL_NAME}_group-${FIT_CONFIG}_type-${MODEL_TYPE}"
+  JOB_NAME="FIT-batch_task-${TASK}_cohort-${SOURCE}_model-${MODEL_NAME}_group-${FIT_CONFIG}_type-${MODEL_TYPE}"
   if [ ! -z "$SESSION" ]; then
     JOB_NAME="${JOB_NAME}_ses-${SESSION}"
   fi

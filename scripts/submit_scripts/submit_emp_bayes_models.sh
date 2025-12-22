@@ -138,7 +138,7 @@ for MODEL_NAME in "${MODEL_ARRAY[@]}"; do
     source "${CONFIG_DIR}/data_params_${DATA_CONFIG}.conf"
     source "${CONFIG_DIR}/fit_params_emp_indiv_${FIT_CONFIG}.conf"
   else
-    JOB_NAME="${TASK}_${GROUP_TYPE}_${MODEL_NAME}_${MODEL_TYPE}"
+    JOB_NAME="FIT-empbayes_task-${TASK}_cohort-${SOURCE}_model-${MODEL_NAME}"
     job_id=$(sbatch --parsable \
       --job-name=$JOB_NAME \
       --export=JOB_NAME=$JOB_NAME,MODEL_NAME=$MODEL_NAME,FIT_CONFIG=$FIT_CONFIG,DATA_CONFIG=$DATA_CONFIG,USER_EMAIL=$USER_EMAIL,MODEL_TYPE=$MODEL_TYPE,TASK=$TASK,GROUP_TYPE=$GROUP_TYPE,CHECK_ITER=$CHECK_ITER,STEPS=$STEPS,SUBS_FILE=$SUBS_FILE,SOURCE=$SOURCE,SES=$SES\
