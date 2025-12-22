@@ -188,7 +188,7 @@ setup_model_comparison_dirs <- function(task, cohort, session = NULL, comparison
   base_dir <- get_model_comparison_output_dir(task)
   
   # Cohort directory
-  cohort_dir <- file.path(base_dir, paste0("cohort-", cohort))
+  cohort_dir <- file.path(base_dir, cohort)
   
   # Session directory if specified
   if (!is.null(session)) {
@@ -206,7 +206,7 @@ setup_model_comparison_dirs <- function(task, cohort, session = NULL, comparison
     data = file.path(comp_dir, "data"),
     plots = file.path(comp_dir, "plots"),
     logs = file.path(comp_dir, "logs"),
-    reports = get_analysis_output_dir("canonical")  # Reports to Analysis
+    reports = get_analysis_output_dir("working")  # Reports to Analysis
   )
   
   # Create all directories
@@ -281,7 +281,7 @@ find_available_models <- function(task, cohort, session = NULL, group_type = "ba
   
   # Check PPC directories - NEW LOCATION
   ppc_base_dir <- get_validation_output_dir(task, "ppc")
-  ppc_base_dir <- file.path(ppc_base_dir, paste0("cohort-", cohort))
+  ppc_base_dir <- file.path(ppc_base_dir, cohort)
   if (!is.null(session)) {
     ppc_base_dir <- file.path(ppc_base_dir, paste0("ses-", session))
   }
