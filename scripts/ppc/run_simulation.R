@@ -181,6 +181,9 @@ if (opt$group == "hier"){
   
   # Assign the correct subject IDs to the parameter sets
   names(parameter_sets_by_subject) <- subject_ids
+  
+  # Filter data for subjects that have fits
+  subject_data <- all_data[all_data$subjID %in% subject_ids, ]
 } else {
   # Get subject IDs from the extraction results
   subject_ids <- names(parameter_sets_by_subject)
