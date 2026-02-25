@@ -871,70 +871,9 @@ write_recovery_csv <- function(true_params, recovered_params, parameter_types = 
   return(recovery_data)
 }
 
-#' Calculate recovery statistics from CSV data
-#' @param recovery_data Data frame with recovery data
-#' @return List of recovery statistics
-calculate_recovery_statistics <- function(recovery_data) {
-  # Initialize results list
-  results <- list()
-  
-  # Calculate overall metrics across all parameters
-  # Handle hierarchical models with both population and individual parameters
-  results$overall <- data.frame(
-    parameter_type = c("overall", unique(recovery_data$parameter_type)),
-    correlation = NA,
-    rmse = NA,
-    bias = NA,
-    relative_bias = NA
-  )
-  
-  # Calculate overall metrics (across all parameters)
-  # For correlation, need at least 3 data points
-  if(nrow(recovery_data) >= 3) {
-    results$overall$correlation[1] <- cor(recovery_data$true_value, recovery_data$recovered_value, 
-                                        use = "complete.obs")
-  }
-  results$overall$rmse[1] <- sqrt(mean((recovery_data$recovered_value - recovery_data$true_value)^2, 
-                                      na.rm = TRUE))
-  results$overall$bias[1] <- mean(recovery_data$recovered_value - recovery_data$true_value, 
-                                na.rm = TRUE)
-  results$overall$relative_bias[1] <- mean(recovery_data$relative_error, 
-                                        na.rm = TRUE)
-  
-  # Calculate metrics by parameter type
-  parameter_types <- unique(recovery_data$parameter_type)
-  for(i in 1:length(parameter_types)) {
-    type_data <- recovery_data[recovery_data$parameter_type == parameter_types[i], ]
-    type_idx <- i + 1  # Index in results$overall (after "overall" row)
-    
-    # For correlation, need at least 3 data points
-    if(nrow(type_data) >= 3) {
-      results$overall$correlation[type_idx] <- cor(type_data$true_value, type_data$recovered_value, 
-                                                 use = "complete.obs")
-    }
-    results$overall$rmse[type_idx] <- sqrt(mean((type_data$recovered_value - type_data$true_value)^2, 
-                                              na.rm = TRUE))
-    results$overall$bias[type_idx] <- mean(type_data$recovered_value - type_data$true_value, 
-                                         na.rm = TRUE)
-    results$overall$relative_bias[type_idx] <- mean(type_data$relative_error, 
-                                                 na.rm = TRUE)
-  }
-  
-  # Calculate parameter-specific metrics
-  by_parameter <- recovery_data %>%
-    group_by(parameter, parameter_type) %>%
-    summarize(
-      correlation = if(n() >= 3) cor(true_value, recovered_value, use = "complete.obs") else NA,
-      rmse = sqrt(mean((recovered_value - true_value)^2, na.rm = TRUE)),
-      bias = mean(recovered_value - true_value, na.rm = TRUE),
-      relative_bias = mean(relative_error, na.rm = TRUE),
-      .groups = "drop"
-    )
-  
-  results$by_parameter <- by_parameter
-  
-  return(results)
-}
+# NOTE: calculate_recovery_statistics is defined earlier in this file (with standardized metrics).
+# A duplicate definition that previously existed here (without std_correlation/std_rmse/std_bias)
+# was removed because it overwrote the correct version and broke downstream model comparison code.
 
 #' Generate recovery analysis RMD file
 #' @param input_file Input CSV file with recovery data

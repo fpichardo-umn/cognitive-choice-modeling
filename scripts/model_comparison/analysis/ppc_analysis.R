@@ -83,20 +83,32 @@ analyze_ppc_by_groups <- function(comparison_data, models_by_type, task) {
       ) %>%
       arrange(proportion_extreme, abs(mean_ppp - 0.5))
     
-    # Create model-level summary (across domains)
-    results$model_summary <- results$by_domain_and_model %>%
-      group_by(model, model_type) %>%
-      summarise(
-        n_domains = n_distinct(domain),
-        overall_mean_ppp = mean(mean_ppp, na.rm = TRUE),
-        overall_proportion_extreme = mean(proportion_extreme, na.rm = TRUE),
-        total_statistics = sum(n_statistics, na.rm = TRUE),
-        overall_deviation = mean(mean_deviation, na.rm = TRUE),
-        model_quality = classify_ppc_quality(overall_mean_ppp, overall_proportion_extreme),
-        worst_domain = domain[which.max(proportion_extreme)][1],
-        best_domain = domain[which.min(proportion_extreme)][1],
-        .groups = "drop"
-      ) %>%
+    # Create model-level summary
+    results$model_summary <- do.call(rbind, lapply(names(all_domain_model_data), function(model_name) {
+      raw_data <- all_domain_model_data[[model_name]]$raw_data
+      domain_data <- all_domain_model_data[[model_name]]$by_domain
+      
+      if (is.null(raw_data) || nrow(raw_data) == 0) return(NULL)
+      
+      data.frame(
+        model = model_name,
+        model_type = classify_model_type(model_name, task),
+        n_domains = if (!is.null(domain_data)) n_distinct(domain_data$domain) else 0,
+        overall_mean_ppp = mean(raw_data$ppp, na.rm = TRUE),
+        overall_proportion_extreme = mean(raw_data$extreme_ppp %in% TRUE, na.rm = TRUE),
+        total_statistics = nrow(raw_data),
+        overall_deviation = mean(abs(raw_data$ppp - 0.5), na.rm = TRUE),
+        model_quality = classify_ppc_quality(
+          mean(raw_data$ppp, na.rm = TRUE),
+          mean(raw_data$extreme_ppp %in% TRUE, na.rm = TRUE)
+        ),
+        worst_domain = if (!is.null(domain_data) && nrow(domain_data) > 0)
+          domain_data$domain[which.max(domain_data$proportion_extreme)][1] else NA_character_,
+        best_domain = if (!is.null(domain_data) && nrow(domain_data) > 0)
+          domain_data$domain[which.min(domain_data$proportion_extreme)][1] else NA_character_,
+        stringsAsFactors = FALSE
+      )
+    })) %>%
       arrange(overall_proportion_extreme, abs(overall_mean_ppp - 0.5))
   }
   

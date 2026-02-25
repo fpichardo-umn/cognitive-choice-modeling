@@ -32,13 +32,17 @@ generate_model_comparison_report <- function(analysis_results, comparison_data, 
   
   # Create report filename
   rmd_file_base <- generate_bids_filename(
-    prefix = "model_comparison",
+    prefix = NULL,
     task = task,
-    group = "comparison",
-    model = NULL,
     cohort = cohort,
     ses = session,
-    additional_tags = list(comparison = comparison_name),
+    group = "comparison",
+    model = NULL,
+    additional_tags = list(
+      comparison = comparison_name,
+      type = "modelcomp",
+      desc = "integrated"
+    ),
     ext = "Rmd"
   )
   
@@ -509,7 +513,7 @@ get_default_recovery_analysis_template <- function() {
     "```{r recovery-model-summary}",
     "if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {",
     "  model_table <- analysis_results$recovery$model_summary %>%",
-    "    select(Model = model, Type = model_type, 'N Groups' = n_groups,", 
+    "    select(Model = model, Type = model_type, 'N Parameters' = n_parameters,", 
     "           'Mean Correlation' = mean_correlation, 'Min Correlation' = min_correlation,",
     "           'Max Correlation' = max_correlation, Quality = recovery_quality)",
     "  ",
