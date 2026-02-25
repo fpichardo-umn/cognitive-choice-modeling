@@ -185,7 +185,7 @@ load_comparison_data <- function(task, cohort, models, group_type = "batch", ses
     
     # Load parameter recovery
     tryCatch({
-      model_data$recovery <- load_parameter_recovery(task, model, group_type, cohort, session)
+      model_data$recovery <- load_parameter_recovery(task, model, ifelse(grepl("batch", group_type), "sing", group_type), cohort, session)
     }, error = function(e) {
       warning("Error loading parameter recovery for ", model, ": ", e$message)
       model_data$recovery <- NULL

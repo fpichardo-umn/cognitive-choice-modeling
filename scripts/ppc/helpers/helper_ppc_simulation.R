@@ -155,7 +155,7 @@ sample_posterior <- function(posterior_draws, n_samples, params,
 #' @param width_control Width of the posterior to sample from (0-1)
 #' @param min_required Minimum required samples (default 1000)
 #' @return List of parameter samples by subject ID
-extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_samples = 2000, 
+extract_posterior_draws <- function(task, fits, model_key, model_params, n_samples = 2000, 
                                     exclude_subjects = NULL,
                                     sampling_method = "random",
                                     width_control = 0.95,
@@ -164,9 +164,6 @@ extract_posterior_draws <- function(task, fit_file, model_key, model_params, n_s
   if (!sampling_method %in% c("random", "width", "weighted")) {
     stop("sampling_method must be 'random', 'width', or 'weighted'")
   }
-  
-  # Load fitted model file
-  fits <- readRDS(fit_file)
   
   # Initialize results storage
   results <- list()

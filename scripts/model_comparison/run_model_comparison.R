@@ -16,7 +16,7 @@ option_list <- list(
   make_option(c("-k", "--task"), type = "character", help = "Task name (igt, igt_mod)"),
   make_option(c("-c", "--cohort"), type = "character", help = "Cohort identifier"),
   make_option(c("-s", "--session"), type = "character", default = NULL, help = "Session identifier (optional)"),
-  make_option(c("-g", "--group_type"), type = "character", default = "batch", 
+  make_option(c("-g", "--group_type"), type = "character", default = "batch_001", 
               help = "Group type: batch or hier [default: %default]"),
   make_option(c("-m", "--models"), type = "character", default = "all",
               help = "Models to compare: 'all' or comma-separated list [default: %default]"),

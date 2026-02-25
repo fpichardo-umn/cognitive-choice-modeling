@@ -520,37 +520,18 @@ plot_choice_statistics <- function(ppc_summary, subject_id = NULL,
     }
     task_config <- get_task_config(task_name)
     
-    # Define task-specific statistic groups
-    stat_groups <- list()
-    
-    if (task_config$type == "deck_selection") {  # IGT
-      # IGT-specific groups
-      if (is.null(include_groups) || "deck_frequencies" %in% include_groups) {
-        stat_groups$deck_frequencies <- c("deck1_freq", "deck2_freq", "deck3_freq", "deck4_freq", 
-                                         "good_deck_freq", "bad_deck_freq")
-      }
-      if (is.null(include_groups) || "strategies" %in% include_groups) {
-        stat_groups$strategies <- c("win_stay", "lose_shift", "perseveration")
-      }
+    # USE THE STAT_GROUPS FROM THE CONFIG instead of hardcoding!
+    if ("stat_groups" %in% names(task_config)) {
+      stat_groups <- task_config$stat_groups
       
-    } else if (task_config$type == "play_pass") {  # mIGT
-      # mIGT-specific groups
-      if (is.null(include_groups) || "rates" %in% include_groups) {
-        stat_groups$rates <- c("play_ratio", "pass_ratio", "good_play_ratio", "bad_play_ratio")
+      # Filter to only include requested groups
+      if (!is.null(include_groups)) {
+        stat_groups <- stat_groups[names(stat_groups) %in% include_groups]
       }
-      if (is.null(include_groups) || "deck_rates" %in% include_groups) {
-        stat_groups$deck_rates <- c("play_ratio_deck1", "play_ratio_deck2", 
-                                   "play_ratio_deck3", "play_ratio_deck4")
-      }
-      # Note: No strategies group for mIGT as WSLS doesn't apply to play/pass decisions
-    }
-    
-    # Common groups for both tasks
-    if (is.null(include_groups) || "performance" %in% include_groups) {
-      stat_groups$performance <- c("net_score", "mean_earnings")
-    }
-    if (is.null(include_groups) || "money" %in% include_groups) {
-      stat_groups$money <- c("total_earnings")
+    } else {
+      # Fallback if no stat_groups in config
+      stat_groups <- list()
+      warning("No stat_groups found in task configuration for ", task_name)
     }
     
   } else {
@@ -587,6 +568,12 @@ plot_choice_statistics <- function(ppc_summary, subject_id = NULL,
   available_stats <- unique(ppc_summary$statistic[ppc_summary$category == "choice"])
   stat_groups <- stat_groups[sapply(stat_groups, function(stats) any(stats %in% available_stats))]
   
+  # If no groups available, return empty
+  if (length(stat_groups) == 0) {
+    message("No choice statistic groups available for plotting")
+    return(NULL)
+  }
+  
   # Set up return list
   plots <- list()
   
@@ -621,12 +608,23 @@ plot_choice_statistics <- function(ppc_summary, subject_id = NULL,
     # Performance metrics
     "net_score" = "Net Score",
     "total_earnings" = "Total Earnings",
-    "mean_earnings" = "Mean Earnings per Trial"
+    "mean_earnings" = "Mean Earnings per Trial",
+    # Counts
+    "total_plays" = "Total Plays",
+    "total_passes" = "Total Passes"
   )
   
   # Process each group of statistics
   for (group_name in names(stat_groups)) {
     stats_to_use <- stat_groups[[group_name]]
+    
+    # Filter to only stats that exist in data
+    stats_to_use <- stats_to_use[stats_to_use %in% available_stats]
+    
+    if (length(stats_to_use) == 0) {
+      message("No statistics available in data for group: ", group_name)
+      next
+    }
     
     # Filter data for this group
     if (!is.null(subject_id)) {
@@ -648,7 +646,6 @@ plot_choice_statistics <- function(ppc_summary, subject_id = NULL,
                session == "session")
       
       # Calculate within and between subject CIs - using a character vector for group_cols
-      # This is the critical fix: passing a character vector instead of a function
       group_cols_char <- "statistic"
       within_cis <- calculate_within_subject_ci(filtered_data, group_cols = group_cols_char)
       between_cis <- calculate_between_subject_ci(filtered_data, group_cols = group_cols_char)
@@ -680,7 +677,9 @@ plot_choice_statistics <- function(ppc_summary, subject_id = NULL,
     # Make statistic labels prettier
     plot_data <- plot_data %>%
       mutate(
-        stat_label = label_map[statistic]
+        stat_label = ifelse(statistic %in% names(label_map), 
+                            label_map[statistic], 
+                            gsub("_", " ", statistic))
       )
     
     # Set group-specific title and y-axis label

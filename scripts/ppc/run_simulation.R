@@ -154,7 +154,7 @@ message("Loaded data with ", nrow(all_data), " trials for ", length(unique(all_d
 
 # Extract posterior draws with density-aware sampling
 parameter_sets_by_subject <- extract_posterior_draws(
-  fit_file = fit_file,
+  fits = fits,
   model_key = full_model_name,  # Pass full model name so hierarchical detection works
   model_params = model_params,
   n_samples = opt$n_sims,

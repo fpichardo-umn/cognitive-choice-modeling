@@ -32,6 +32,7 @@ suppressPackageStartupMessages({
   library(DT)
   library(plotly)
   library(here)
+  library(rlang)
 })
 
 # Load results

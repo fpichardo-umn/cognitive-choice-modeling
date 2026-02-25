@@ -25,7 +25,7 @@ parameter_groups:
       - neg_val
       - mag
     
-  cognitive_control:
+  response:
     description: "Response consistency and decision control"
     parameters:
       - con
@@ -65,66 +65,66 @@ parameter_groups:
 # Model parameter sets - defines which parameters each model has
 model_parameter_sets:
   # Basic RL models
-  ev: [motivational, cognitive_control]
-  pvl_delta: [motivational, learning, cognitive_control]
-  pvl_decay: [motivational, learning, cognitive_control]
-  pvl_both: [motivational, learning, cognitive_control]
+  ev: [motivational, learning, response]
+  pvl_delta: [motivational, learning, response]
+  pvl_decay: [motivational, learning, response]
+  pvl_both: [motivational, learning, response]
   
   # PUL models
-  pul_delta: [motivational, learning, cognitive_control]
-  pul_decay: [motivational, learning, cognitive_control]
-  pul_both: [motivational, learning, cognitive_control]
+  pul_delta: [motivational, learning, response]
+  pul_decay: [motivational, learning, response]
+  pul_both: [motivational, learning, response]
   
   # NNL models
-  nnl_delta: [motivational, learning, cognitive_control]
-  nnl_decay: [motivational, learning, cognitive_control]
-  nnl_both: [motivational, learning, cognitive_control]
+  nnl_delta: [motivational, learning, response]
+  nnl_decay: [motivational, learning, response]
+  nnl_both: [motivational, learning, response]
   
   # VPP models
   vpp_base: [bias_perseveration, exploration]
   vpp_igt: [bias_perseveration, exploration]
   
   # ORL model
-  orl: [motivational, cognitive_control]
+  orl: [motivational, response]
   
   # VSE model
   vse_base: [exploration]
   
   # Dual processing models
-  dual: [learning, motivational, exploration, cognitive_control]
+  dual: [learning, motivational, exploration, response]
   dual_bbu: [learning, motivational]
   dual_bbup: [learning, motivational, bias_perseveration]
   
   # SSM models
-  ddm_base: [cognitive_control, motor_perceptual]
-  ddm_simple: [cognitive_control, motor_perceptual]
-  ddm_drift: [cognitive_control, motor_perceptual]
-  ddm_b1b: [cognitive_control, motor_perceptual]
-  ddm_b1p2: [cognitive_control, motor_perceptual]
+  ddm_base: [response, motor_perceptual]
+  ddm_simple: [response, motor_perceptual]
+  ddm_drift: [response, motor_perceptual]
+  ddm_b1b: [response, motor_perceptual]
+  ddm_b1p2: [response, motor_perceptual]
   
   # Hybrid models (RL + SSM)
-  ev_ddm: [motivational, cognitive_control, motor_perceptual]
-  pvl_delta_ddm: [motivational, learning, cognitive_control, motor_perceptual]
-  pvl_decay_ddm: [motivational, learning, cognitive_control, motor_perceptual]
-  pvl_both_ddm: [motivational, learning, cognitive_control, motor_perceptual]
-  orl_ddm: [motivational, cognitive_control, motor_perceptual]
+  ev_ddm: [motivational, response, motor_perceptual]
+  pvl_delta_ddm: [motivational, learning, response, motor_perceptual]
+  pvl_decay_ddm: [motivational, learning, response, motor_perceptual]
+  pvl_both_ddm: [motivational, learning, response, motor_perceptual]
+  orl_ddm: [motivational, response, motor_perceptual]
 
 # Model type definitions
 model_types:
   RL:
     description: "Reinforcement learning models"
     models: ["ev", "pvl_delta", "pvl_decay", "pvl_both", "pul_delta", "pul_decay", "pul_both", "nnl_delta", "nnl_decay", "nnl_both", "vpp_base", "vpp_igt", "orl", "vse_base", "dual", "dual_bbu", "dual_bbup"]
-    parameter_groups: ["learning", "motivational", "cognitive_control", "bias_perseveration", "exploration"]
+    parameter_groups: ["learning", "motivational", "response", "bias_perseveration", "exploration"]
     
   SSM:
     description: "Sequential sampling models"
     models: ["ddm_base", "ddm_simple", "ddm_drift", "ddm_b1b", "ddm_b1p2"]
-    parameter_groups: ["cognitive_control", "motor_perceptual", "bias_perseveration"]
+    parameter_groups: ["response", "motor_perceptual", "bias_perseveration"]
     
   hybrid:
     description: "Hybrid RL + SSM models"
     models: ["ev_ddm", "pvl_delta_ddm", "pvl_decay_ddm", "pvl_both_ddm", "orl_ddm"]
-    parameter_groups: ["learning", "motivational", "cognitive_control", "motor_perceptual", "bias_perseveration"]
+    parameter_groups: ["learning", "motivational", "response", "motor_perceptual", "bias_perseveration"]
 
 # Analysis configuration
 analysis_config:

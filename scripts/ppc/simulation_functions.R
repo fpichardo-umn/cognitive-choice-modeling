@@ -134,15 +134,12 @@ extract_subject_data_from_fits <- function(fits, task_name) {
 #' @param sampling_method Method for sampling: "random", "width", or "weighted"
 #' @param width_control Width of the posterior to sample from (0-1)
 #' @return List of parameter samples by subject ID
-extract_posterior_draws <- function(fit_file, model_key, model_params, n_samples = 100, 
+extract_posterior_draws <- function(fits, model_key, model_params, n_samples = 100, 
                                     exclude_subjects = NULL,
                                     sampling_method = c("random", "width", "weighted"),
                                     width_control = 0.95) {
   # Process sampling method argument
   sampling_method <- match.arg(sampling_method)
-  
-  # Load fitted model file
-  fits <- readRDS(fit_file)
   
   # Initialize results storage
   results <- list()

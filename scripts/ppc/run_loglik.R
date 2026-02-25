@@ -118,7 +118,7 @@ model_params <- model_defaults[[full_model_name]]$params
 message("Extracting posterior draws for LOOIC calculation...")
 parameter_sets_by_subject <- extract_posterior_draws(
   task = opt$task,
-  fit_file = opt$fit_file,
+  fits = fits,
   model_key = full_model_name,
   model_params = model_params,
   n_samples = opt$n_samples,  # NULL = all, integer = specific amount
