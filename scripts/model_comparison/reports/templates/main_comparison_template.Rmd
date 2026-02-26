@@ -112,7 +112,7 @@ kable(summary_table, caption = "Model Comparison Summary") %>%
 ```{r models-analyzed}
 models_table <- data.frame(
   Model = names(comparison_data),
-  Type = sapply(names(comparison_data), classify_model_type),
+  Type = sapply(names(comparison_data), function(m) classify_model_type(m, config$task)),
   Has_Recovery = sapply(comparison_data, function(x) !is.null(x$recovery)),
   Has_PPC = sapply(comparison_data, function(x) !is.null(x$ppc)),
   Has_IC = sapply(comparison_data, function(x) !is.null(x$ic)),
@@ -137,18 +137,6 @@ kable(models_table, caption = "Available Data by Model") %>%
 # Posterior Predictive Checks
 
 {{PPC_SECTION}}
-
-# Model Type Comparisons
-
-{{MODEL_TYPE_SECTION}}
-
-# Task-Specific Analysis
-
-{{TASK_SPECIFIC_SECTION}}
-
-# Detailed Model Profiles
-
-{{MODEL_PROFILES_SECTION}}
 
 # Conclusions and Recommendations
 

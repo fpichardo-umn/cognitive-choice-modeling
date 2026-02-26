@@ -103,8 +103,6 @@ create_report_rmd_content <- function(analysis_results, comparison_data, models_
   ic_section <- read_template_section(template_dir, "ic_section_template.Rmd")
   recovery_section <- read_template_section(template_dir, "recovery_section_template.Rmd")
   ppc_section <- read_template_section(template_dir, "ppc_section_template.Rmd")
-  model_type_section <- read_template_section(template_dir, "model_type_section_template.Rmd")
-  task_specific_section <- read_template_section(template_dir, "task_specific_section_template.Rmd")
   
   # Use the absolute path to results file (passed as parameter)
   results_file_path <- results_file
@@ -120,10 +118,7 @@ create_report_rmd_content <- function(analysis_results, comparison_data, models_
     RESULTS_FILE = results_file_path,
     IC_SECTION = paste(ic_section, collapse = "\n"),
     RECOVERY_SECTION = paste(recovery_section, collapse = "\n"),
-    PPC_SECTION = paste(ppc_section, collapse = "\n"),
-    MODEL_TYPE_SECTION = paste(model_type_section, collapse = "\n"),
-    TASK_SPECIFIC_SECTION = paste(task_specific_section, collapse = "\n"),
-    MODEL_PROFILES_SECTION = create_model_profiles_section(comparison_data)
+    PPC_SECTION = paste(ppc_section, collapse = "\n")
   )
   
   # Process main template with all placeholders
@@ -163,64 +158,6 @@ replace_placeholders <- function(template_lines, placeholders) {
   return(content)
 }
 
-#' Create model profiles section dynamically
-#' @param comparison_data Original comparison data
-#' @return Character vector with model profiles section
-create_model_profiles_section <- function(comparison_data) {
-  profiles_content <- c(
-    "```{r model-profiles}",
-    "# Create detailed profile for each model",
-    "model_names <- names(comparison_data)",
-    "",
-    "for (model_name in model_names) {",
-    "  cat('\n## Model:', model_name, '\n\n')",
-    "  ",
-    "  # Model metadata",
-    "  model_type <- classify_model_type(model_name)",
-    "  cat('**Type:** ', model_type, '\n\n')",
-    "  ",
-    "  # IC performance",
-    "  if ('ic' %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {",
-    "    ic_info <- analysis_results$ic$overall_ranking %>% filter(model == model_name)",
-    "    if (nrow(ic_info) > 0) {",
-    "      cat('**Information Criteria:**\n')",
-    "      cat('- Rank:', ic_info$rank, '\n')",
-    "      cat('- Performance Tier:', ic_info$performance_tier, '\n')",
-    "      cat('- Model Weight:', round(ic_info$model_weight, 3), '\n\n')",
-    "    }",
-    "  }",
-    "  ",
-    "  # Recovery performance", 
-    "  if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {",
-    "    recovery_info <- analysis_results$recovery$model_summary %>% filter(model == model_name)",
-    "    if (nrow(recovery_info) > 0) {",
-    "      cat('**Parameter Recovery:**\n')",
-    "      cat('- Mean Correlation:', round(recovery_info$mean_correlation, 3), '\n')",
-    "      cat('- Recovery Quality:', recovery_info$recovery_quality, '\n\n')",
-    "    }",
-    "  }",
-    "  ",
-    "  # PPC performance",
-    "  if ('ppc' %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {",
-    "    ppc_info <- analysis_results$ppc$model_summary %>% filter(model == model_name)",
-    "    if (nrow(ppc_info) > 0) {",
-    "      cat('**PPC Performance:**\n')",
-    "      cat('- Mean PPP:', round(ppc_info$overall_mean_ppp, 3), '\n')",
-    "      cat('- Proportion Extreme:', round(ppc_info$overall_proportion_extreme, 3), '\n')",
-    "      cat('- PPC Quality:', ppc_info$model_quality, '\n')",
-    "      cat('- Best Domain:', ppc_info$best_domain, '\n')",
-    "      cat('- Worst Domain:', ppc_info$worst_domain, '\n\n')",
-    "    }",
-    "  }",
-    "  ",
-    "  cat('---\n')",
-    "}",
-    "```"
-  )
-  
-  return(paste(profiles_content, collapse = "\n"))
-}
-
 #' Get default template content for missing templates
 #' @param filename Template filename
 #' @return Default template content
@@ -230,8 +167,6 @@ get_default_template_content <- function(filename) {
     "ic_section_template.Rmd" = get_default_ic_analysis_template(),
     "recovery_section_template.Rmd" = get_default_recovery_analysis_template(),
     "ppc_section_template.Rmd" = get_default_ppc_analysis_template(),
-    "model_type_section_template.Rmd" = get_default_model_type_template(),
-    "task_specific_section_template.Rmd" = get_default_task_specific_template(),
     paste("# Unknown Template:", filename)
   )
 }
@@ -280,154 +215,7 @@ get_default_main_template <- function() {
     "",
     "{{RECOVERY_SECTION}}",
     "",
-    "{{PPC_SECTION}}",
-    "",
-    "{{MODEL_TYPE_SECTION}}",
-    "",
-    "{{TASK_SPECIFIC_SECTION}}",
-    "",
-    "# Detailed Model Profiles",
-    "",
-    "{{MODEL_PROFILES_SECTION}}"
-  )
-}
-
-#' Default model type template
-get_default_model_type_template <- function() {
-  c(
-    "# Model Type Comparisons",
-    "",
-    "Analysis of performance differences across model types (RL, SSM, hybrid).",
-    "",
-    "```{r model-type-analysis}",
-    "if (length(models_by_type) > 1) {",
-    "  cat('Multiple model types available for comparison.\n')",
-    "} else {",
-    "  cat('Only one model type in this comparison.\n')",
-    "}",
-    "```"
-  )
-}
-
-#' Default task specific template
-get_default_task_specific_template <- function() {
-  c(
-    "# Task-Specific Analysis",
-    "",
-    "Analysis tailored to the specific task requirements.",
-    "",
-    "```{r task-specific-analysis}",
-    "cat('Task:', config$task, '\n')",
-    "```"
-  )
-}
-
-#' Default header template
-get_default_header_template <- function() {
-  c(
-    "---",
-    "title: 'Model Comparison Report: {{TASK}} - {{COHORT}}'",
-    "author: 'Model Comparison Pipeline'",
-    "date: '{{TIMESTAMP}}'",
-    "output:",
-    "  html_document:",
-    "    theme: flatly",
-    "    toc: true",
-    "    toc_float: true",
-    "    code_folding: hide",
-    "    fig_width: 10",
-    "    fig_height: 6",
-    "---",
-    "",
-    "```{r setup, include=FALSE}",
-    "knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)",
-    "library(dplyr)",
-    "library(ggplot2)",
-    "library(knitr)",
-    "library(DT)",
-    "",
-    "# Load analysis results",
-    "results_file <- file.path(dirname(getwd()), 'data', 'model_comparison_results.rds')",
-    "if (file.exists(results_file)) {",
-    "  all_results <- readRDS(results_file)",
-    "  analysis_results <- all_results$analysis_results",
-    "  comparison_data <- all_results$comparison_data",
-    "  models_by_type <- all_results$models_by_type",
-    "} else {",
-    "  stop('Analysis results file not found')",
-    "}",
-    "```"
-  )
-}
-
-#' Default executive summary template
-get_default_executive_summary_template <- function() {
-  c(
-    "# Executive Summary",
-    "",
-    "This report presents a comprehensive comparison of {{N_MODELS}} computational models for the **{{TASK}}** task using data from the **{{COHORT}}** cohort.",
-    "",
-    "```{r executive-summary}",
-    "# Create executive summary table",
-    "if ('ic' %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {",
-    "  # Top 5 models by information criteria",
-    "  top_models <- head(analysis_results$ic$overall_ranking, 5)",
-    "  ",
-    "  # Get recovery and PPC info for top models",
-    "  if ('recovery' %in% names(analysis_results)) {",
-    "    recovery_info <- analysis_results$recovery$model_summary %>%",
-    "      select(model, recovery_quality = recovery_quality, mean_correlation)",
-    "    top_models <- top_models %>% left_join(recovery_info, by = 'model')",
-    "  }",
-    "  ",
-    "  if ('ppc' %in% names(analysis_results)) {",
-    "    ppc_info <- analysis_results$ppc$model_summary %>%",
-    "      select(model, ppc_quality = model_quality, overall_proportion_extreme)",
-    "    top_models <- top_models %>% left_join(ppc_info, by = 'model')",
-    "  }",
-    "  ",
-    "  # Display summary table",
-    "  kable(top_models %>% select(Rank = rank, Model = model, Type = model_type, ",
-    "                             everything(), -performance_tier),",
-    "        caption = 'Top 5 Models Summary', digits = 3)",
-    "} else {",
-    "  cat('No information criteria results available.')",
-    "}",
-    "```",
-    "",
-    "## Key Findings",
-    "",
-    "```{r key-findings}",
-    "# Generate key findings",
-    "findings <- list()",
-    "",
-    "# Best model overall",
-    "if ('ic' %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {",
-    "  best_model <- analysis_results$ic$overall_ranking$model[1]",
-    "  findings$best_model <- paste('**Best Model (IC):**', best_model)",
-    "}",
-    "",
-    "# Parameter recovery insights",
-    "if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$group_summary) > 0) {",
-    "  best_group <- analysis_results$recovery$group_summary$group[1]",
-    "  worst_group <- tail(analysis_results$recovery$group_summary$group, 1)",
-    "  findings$recovery <- paste('**Parameter Recovery:** Best recovered group:', best_group, '| Worst:', worst_group)",
-    "}",
-    "",
-    "# PPC insights",
-    "if ('ppc' %in% names(analysis_results) && nrow(analysis_results$ppc$domain_summary) > 0) {",
-    "  hardest_domain <- analysis_results$ppc$domain_summary %>%",
-    "    arrange(desc(proportion_extreme)) %>%",
-    "    slice(1) %>%",
-    "    pull(domain)",
-    "  findings$ppc <- paste('**PPC Performance:** Most challenging behavioral domain:', hardest_domain)",
-    "}",
-    "",
-    "# Display findings",
-    "for (finding in findings) {",
-    "  cat(finding, '\\n\\n')",
-    "}",
-    "```"
+    "{{PPC_SECTION}}"
   )
 }
 
@@ -490,23 +278,7 @@ get_default_recovery_analysis_template <- function() {
   c(
     "# Parameter Recovery Analysis",
     "",
-    "Parameter recovery analysis tests whether model parameters can be accurately recovered from simulated data, organized by psychological construct groups.",
-    "",
-    "## Recovery Quality by Parameter Group",
-    "",
-    "```{r recovery-group-summary}",
-    "if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$group_summary) > 0) {",
-    "  group_table <- analysis_results$recovery$group_summary %>%",
-    "    select(Group = group, 'N Models' = n_models, 'Mean Correlation' = mean_correlation,",
-    "           'Min Correlation' = min_correlation, 'Max Correlation' = max_correlation,",
-    "           Quality = recovery_quality)",
-    "  ",
-    "  DT::datatable(group_table, options = list(pageLength = 10)) %>%",
-    "    DT::formatRound(columns = 3:5, digits = 3)",
-    "} else {",
-    "  cat('No parameter recovery results available.')",
-    "}",
-    "```",
+    "Parameter recovery analysis tests whether model parameters can be accurately recovered from simulated data.",
     "",
     "## Recovery Quality by Model",
     "",
@@ -524,45 +296,19 @@ get_default_recovery_analysis_template <- function() {
     "}",
     "```",
     "",
-    "## Cross-Model Type Comparison",
+    "## Recovery Quality by Parameter Group",
     "",
-    "```{r recovery-cross-type}",
-    "if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$cross_model_comparison) > 0) {",
-    "  cross_type_table <- analysis_results$recovery$cross_model_comparison %>%",
-    "    select('Model Type' = model_type, Group = group, 'N Models' = n_models,",
-    "           'Mean Correlation' = mean_correlation, 'SD Correlation' = sd_correlation,",
+    "```{r recovery-group-summary}",
+    "if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$group_summary) > 0) {",
+    "  group_table <- analysis_results$recovery$group_summary %>%",
+    "    select(Group = group, 'N Models' = n_models, 'Mean Correlation' = mean_correlation,",
+    "           'Min Correlation' = min_correlation, 'Max Correlation' = max_correlation,",
     "           Quality = recovery_quality)",
     "  ",
-    "  DT::datatable(cross_type_table, options = list(pageLength = 15)) %>%",
-    "    DT::formatRound(columns = 4:5, digits = 3)",
+    "  DT::datatable(group_table, options = list(pageLength = 10)) %>%",
+    "    DT::formatRound(columns = 3:5, digits = 3)",
     "} else {",
-    "  cat('No cross-model type recovery comparison available.')",
-    "}",
-    "```",
-    "",
-    "## Key Recovery Insights",
-    "",
-    "```{r recovery-insights}",
-    "if ('recovery' %in% names(analysis_results)) {",
-    "  insights <- list()",
-    "  ",
-    "  # Best and worst groups",
-    "  if (length(analysis_results$recovery$best_worst_groups) > 0) {",
-    "    if (nrow(analysis_results$recovery$best_worst_groups$best_groups) > 0) {",
-    "      best_groups <- head(analysis_results$recovery$best_worst_groups$best_groups$group, 3)",
-    "      insights$best <- paste('**Best Recovered Groups:**', paste(best_groups, collapse = ', '))",
-    "    }",
-    "    ",
-    "    if (nrow(analysis_results$recovery$best_worst_groups$worst_groups) > 0) {",
-    "      worst_groups <- head(analysis_results$recovery$best_worst_groups$worst_groups$group, 3)",
-    "      insights$worst <- paste('**Worst Recovered Groups:**', paste(worst_groups, collapse = ', '))",
-    "    }",
-    "  }",
-    "  ",
-    "  # Display insights",
-    "  for (insight in insights) {",
-    "    cat(insight, '\\n\\n')",
-    "  }",
+    "  cat('No parameter recovery results available.')",
     "}",
     "```"
   )
@@ -573,23 +319,7 @@ get_default_ppc_analysis_template <- function() {
   c(
     "# Posterior Predictive Checks Analysis",
     "",
-    "Posterior predictive checks assess how well models reproduce observed behavioral patterns, organized by behavioral domains.",
-    "",
-    "## PPC Performance by Behavioral Domain",
-    "",
-    "```{r ppc-domain-summary}",
-    "if ('ppc' %in% names(analysis_results) && nrow(analysis_results$ppc$domain_summary) > 0) {",
-    "  domain_table <- analysis_results$ppc$domain_summary %>%",
-    "    select(Domain = domain, 'N Models' = n_models, 'Mean PPP' = mean_ppp,",
-    "           'Proportion Extreme' = proportion_extreme, 'N Statistics' = n_statistics,",
-    "           Quality = domain_quality)",
-    "  ",
-    "  DT::datatable(domain_table, options = list(pageLength = 10)) %>%",
-    "    DT::formatRound(columns = 3:4, digits = 3)",
-    "} else {",
-    "  cat('No PPC domain results available.')",
-    "}",
-    "```",
+    "Posterior predictive checks assess how well models reproduce observed behavioral patterns.",
     "",
     "## PPC Performance by Model",
     "",
@@ -604,6 +334,22 @@ get_default_ppc_analysis_template <- function() {
     "    DT::formatRound(columns = 4:5, digits = 3)",
     "} else {",
     "  cat('No model-level PPC results available.')",
+    "}",
+    "```",
+    "",
+    "## PPC Performance by Behavioral Domain",
+    "",
+    "```{r ppc-domain-summary}",
+    "if ('ppc' %in% names(analysis_results) && nrow(analysis_results$ppc$domain_summary) > 0) {",
+    "  domain_table <- analysis_results$ppc$domain_summary %>%",
+    "    select(Domain = domain, 'N Models' = n_models, 'Mean PPP' = mean_ppp,",
+    "           'Proportion Extreme' = proportion_extreme, 'N Statistics' = n_statistics,",
+    "           Quality = domain_quality)",
+    "  ",
+    "  DT::datatable(domain_table, options = list(pageLength = 10)) %>%",
+    "    DT::formatRound(columns = 3:4, digits = 3)",
+    "} else {",
+    "  cat('No PPC domain results available.')",
     "}",
     "```",
     "",
@@ -639,64 +385,6 @@ get_default_ppc_analysis_template <- function() {
     "    ",
     "    print(kable(difficult_table, digits = 3, caption = 'Challenging Domains by Model Type'))",
     "  }",
-    "}",
-    "```"
-  )
-}
-
-#' Default detailed profiles template
-get_default_detailed_profiles_template <- function() {
-  c(
-    "# Detailed Model Profiles",
-    "",
-    "Individual profiles for each model showing comprehensive performance across all analysis dimensions.",
-    "",
-    "```{r model-profiles}",
-    "# Create detailed profile for each model",
-    "model_names <- names(comparison_data)",
-    "",
-    "for (model_name in model_names) {",
-    "  cat('\\n## Model:', model_name, '\\n\\n')",
-    "  ",
-    "  # Model metadata",
-    "  model_type <- classify_model_type(model_name)",
-    "  cat('**Type:** ', model_type, '\\n\\n')",
-    "  ",
-    "  # IC performance",
-    "  if ('ic' %in% names(analysis_results) && nrow(analysis_results$ic$overall_ranking) > 0) {",
-    "    ic_info <- analysis_results$ic$overall_ranking %>% filter(model == model_name)",
-    "    if (nrow(ic_info) > 0) {",
-    "      cat('**Information Criteria:**\\n')",
-    "      cat('- Rank:', ic_info$rank, '\\n')",
-    "      cat('- Performance Tier:', ic_info$performance_tier, '\\n')",
-    "      cat('- Model Weight:', round(ic_info$model_weight, 3), '\\n\\n')",
-    "    }",
-    "  }",
-    "  ",
-    "  # Recovery performance", 
-    "  if ('recovery' %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {",
-    "    recovery_info <- analysis_results$recovery$model_summary %>% filter(model == model_name)",
-    "    if (nrow(recovery_info) > 0) {",
-    "      cat('**Parameter Recovery:**\\n')",
-    "      cat('- Mean Correlation:', round(recovery_info$mean_correlation, 3), '\\n')",
-    "      cat('- Recovery Quality:', recovery_info$recovery_quality, '\\n\\n')",
-    "    }",
-    "  }",
-    "  ",
-    "  # PPC performance",
-    "  if ('ppc' %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {",
-    "    ppc_info <- analysis_results$ppc$model_summary %>% filter(model == model_name)",
-    "    if (nrow(ppc_info) > 0) {",
-    "      cat('**PPC Performance:**\\n')",
-    "      cat('- Mean PPP:', round(ppc_info$overall_mean_ppp, 3), '\\n')",
-    "      cat('- Proportion Extreme:', round(ppc_info$overall_proportion_extreme, 3), '\\n')",
-    "      cat('- PPC Quality:', ppc_info$model_quality, '\\n')",
-    "      cat('- Best Domain:', ppc_info$best_domain, '\\n')",
-    "      cat('- Worst Domain:', ppc_info$worst_domain, '\\n\\n')",
-    "    }",
-    "  }",
-    "  ",
-    "  cat('---\\n')",
     "}",
     "```"
   )

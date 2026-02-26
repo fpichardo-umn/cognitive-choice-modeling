@@ -63,7 +63,7 @@ analyze_ppc_by_groups <- function(comparison_data, models_by_type, task) {
   results$by_domain_and_model <- do.call(rbind, lapply(names(all_domain_model_data), function(model) {
     data <- all_domain_model_data[[model]]$by_domain
     data$model <- model
-    data$model_type <- classify_model_type(model)
+    data$model_type <- classify_model_type(model, task)
     return(data)
   }))
   
@@ -83,37 +83,39 @@ analyze_ppc_by_groups <- function(comparison_data, models_by_type, task) {
       ) %>%
       arrange(proportion_extreme, abs(mean_ppp - 0.5))
     
-    # Create model-level summary
-    results$model_summary <- do.call(rbind, lapply(names(all_domain_model_data), function(model_name) {
-      raw_data <- all_domain_model_data[[model_name]]$raw_data
-      domain_data <- all_domain_model_data[[model_name]]$by_domain
-      
-      if (is.null(raw_data) || nrow(raw_data) == 0) return(NULL)
-      
-      data.frame(
-        model = model_name,
-        model_type = classify_model_type(model_name, task),
-        n_domains = if (!is.null(domain_data)) n_distinct(domain_data$domain) else 0,
-        overall_mean_ppp = mean(raw_data$ppp, na.rm = TRUE),
-        overall_proportion_extreme = mean(raw_data$extreme_ppp %in% TRUE, na.rm = TRUE),
-        total_statistics = nrow(raw_data),
-        overall_deviation = mean(abs(raw_data$ppp - 0.5), na.rm = TRUE),
+    # ──────────────────────────────────────────────────────────────────────
+    # FIX: Create model-level summary using PROPERLY WEIGHTED metrics.
+    #
+    # Previously this used mean(proportion_extreme) across domains, which
+    # gave equal weight to small and large domains — a domain with 50
+    # statistics and 30% extreme rate would count the same as one with
+    # 1000 statistics and 1% extreme rate, massively inflating the result.
+    #
+    # Now we use sum(n_extreme) / sum(n_statistics) for the true overall
+    # rate, and weighted.mean() for ppp and deviation, matching what the
+    # individual model PPC reports compute (total extreme / total stats).
+    # ──────────────────────────────────────────────────────────────────────
+    results$model_summary <- results$by_domain_and_model %>%
+      group_by(model, model_type) %>%
+      summarise(
+        n_domains = n_distinct(domain),
+        overall_mean_ppp = weighted.mean(mean_ppp, n_statistics, na.rm = TRUE),
+        overall_proportion_extreme = sum(n_extreme, na.rm = TRUE) / sum(n_statistics, na.rm = TRUE),
+        total_statistics = sum(n_statistics, na.rm = TRUE),
+        overall_deviation = weighted.mean(mean_deviation, n_statistics, na.rm = TRUE),
         model_quality = classify_ppc_quality(
-          mean(raw_data$ppp, na.rm = TRUE),
-          mean(raw_data$extreme_ppp %in% TRUE, na.rm = TRUE)
+          weighted.mean(mean_ppp, n_statistics, na.rm = TRUE),
+          sum(n_extreme, na.rm = TRUE) / sum(n_statistics, na.rm = TRUE)
         ),
-        worst_domain = if (!is.null(domain_data) && nrow(domain_data) > 0)
-          domain_data$domain[which.max(domain_data$proportion_extreme)][1] else NA_character_,
-        best_domain = if (!is.null(domain_data) && nrow(domain_data) > 0)
-          domain_data$domain[which.min(domain_data$proportion_extreme)][1] else NA_character_,
-        stringsAsFactors = FALSE
-      )
-    })) %>%
+        worst_domain = domain[which.max(proportion_extreme)][1],
+        best_domain = domain[which.min(proportion_extreme)][1],
+        .groups = "drop"
+      ) %>%
       arrange(overall_proportion_extreme, abs(overall_mean_ppp - 0.5))
   }
   
   # Identify extreme failures across models
-  results$extreme_failures <- identify_extreme_ppc_failures(all_domain_model_data, behavioral_domains)
+  results$extreme_failures <- identify_extreme_ppc_failures(all_domain_model_data, behavioral_domains, task)
   
   # Analyze behavioral patterns
   results$behavioral_patterns <- analyze_behavioral_patterns(all_domain_model_data, models_by_type, task)
@@ -351,8 +353,9 @@ classify_ppc_quality <- function(mean_ppp, proportion_extreme) {
 #' Identify extreme PPC failures across models
 #' @param all_domain_model_data All model PPC analyses
 #' @param behavioral_domains Domain definitions
+#' @param task Task name (required for classify_model_type)
 #' @return Data frame with extreme failures
-identify_extreme_ppc_failures <- function(all_domain_model_data, behavioral_domains) {
+identify_extreme_ppc_failures <- function(all_domain_model_data, behavioral_domains, task) {
   extreme_failures <- list()
   
   for (model_name in names(all_domain_model_data)) {
@@ -365,7 +368,7 @@ identify_extreme_ppc_failures <- function(all_domain_model_data, behavioral_doma
       filter(extreme_ppp %in% TRUE) %>%
       mutate(
         model = model_name,
-        model_type = classify_model_type(model_name),
+        model_type = classify_model_type(model_name, task),
         failure_severity = case_when(
           ppp < 0.01 | ppp > 0.99 ~ "severe",
           ppp < 0.025 | ppp > 0.975 ~ "moderate",
@@ -401,7 +404,7 @@ analyze_behavioral_patterns <- function(all_domain_model_data, models_by_type, t
     data <- all_domain_model_data[[model]]$by_domain
     if (!is.null(data) && nrow(data) > 0) {
       data$model <- model
-      data$model_type <- classify_model_type(model)
+      data$model_type <- classify_model_type(model, task)
       return(data)
     }
     return(data.frame())

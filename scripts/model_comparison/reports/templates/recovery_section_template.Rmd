@@ -1,3 +1,22 @@
+## Recovery Performance by Model
+
+```{r recovery-model-summary}
+if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
+  model_recovery <- analysis_results$recovery$model_summary %>%
+    arrange(desc(mean_correlation)) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(model_recovery, 
+                caption = "Parameter Recovery Quality by Model",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("recovery_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#f8d7da")
+                    ))
+}
+```
+
 ## Parameter Recovery by Construct Groups
 
 ```{r recovery-group-summary}
@@ -16,25 +35,6 @@ if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$gr
                     ))
 } else {
   cat("No parameter recovery results available.")
-}
-```
-
-## Recovery Performance by Model
-
-```{r recovery-model-summary}
-if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$model_summary) > 0) {
-  model_recovery <- analysis_results$recovery$model_summary %>%
-    arrange(desc(mean_correlation)) %>%
-    mutate(across(where(is.numeric), ~round(.x, 3)))
-  
-  DT::datatable(model_recovery, 
-                caption = "Parameter Recovery Quality by Model",
-                options = list(pageLength = 15, scrollX = TRUE)) %>%
-    DT::formatStyle("recovery_quality",
-                    backgroundColor = DT::styleEqual(
-                      c("excellent", "good", "acceptable", "poor"),
-                      c("#d4edda", "#d1ecf1", "#fff3cd", "#f8d7da")
-                    ))
 }
 ```
 
@@ -58,112 +58,6 @@ if ("recovery" %in% names(analysis_results)) {
   # Display type comparison
   if (!is.null(recovery_plots$by_type)) {
     print(recovery_plots$by_type)
-  }
-}
-```
-
-## Best and Worst Performing Groups
-
-```{r recovery-best-worst}
-if ("recovery" %in% names(analysis_results) && 
-    "best_worst_groups" %in% names(analysis_results$recovery)) {
-  
-  best_worst <- analysis_results$recovery$best_worst_groups
-  
-  # Best groups
-  if (nrow(best_worst$best_groups) > 0) {
-    cat("### Best Recovered Parameter Groups\n\n")
-    best_table <- best_worst$best_groups %>%
-      select(group, mean_correlation, recovery_quality, n_models) %>%
-      mutate(across(where(is.numeric), ~round(.x, 3)))
-    
-    kable(best_table, caption = "Top Parameter Groups by Recovery Quality") %>%
-      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-    cat("\n\n")
-  }
-  
-  # Worst groups
-  if (nrow(best_worst$worst_groups) > 0) {
-    cat("### Most Challenging Parameter Groups\n\n")
-    worst_table <- best_worst$worst_groups %>%
-      select(group, mean_correlation, recovery_quality, n_models) %>%
-      mutate(across(where(is.numeric), ~round(.x, 3)))
-    
-    kable(worst_table, caption = "Most Challenging Parameter Groups") %>%
-      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-    cat("\n\n")
-  }
-  
-  # Poor recovery groups
-  if (nrow(best_worst$poor_groups) > 0) {
-    cat("### Parameter Groups with Poor Recovery\n\n")
-    poor_table <- best_worst$poor_groups %>%
-      select(group, mean_correlation, recovery_quality, n_models) %>%
-      mutate(across(where(is.numeric), ~round(.x, 3)))
-    
-    kable(poor_table, caption = "Groups with Poor Recovery (r < 0.4)") %>%
-      kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-    cat("\n\n")
-  }
-}
-```
-
-## Cross-Model Type Comparison
-
-```{r recovery-cross-model}
-if ("recovery" %in% names(analysis_results) && nrow(analysis_results$recovery$cross_model_comparison) > 0) {
-  cross_comparison <- analysis_results$recovery$cross_model_comparison %>%
-    arrange(model_type, desc(mean_correlation)) %>%
-    mutate(across(where(is.numeric), ~round(.x, 3)))
-  
-  DT::datatable(cross_comparison, 
-                caption = "Parameter Recovery by Model Type and Group",
-                options = list(pageLength = 15, scrollX = TRUE)) %>%
-    DT::formatStyle("recovery_quality",
-                    backgroundColor = DT::styleEqual(
-                      c("excellent", "good", "acceptable", "poor"),
-                      c("#d4edda", "#d1ecf1", "#fff3cd", "#f8d7da")
-                    ))
-}
-```
-
-## Parameter Recovery Insights
-
-```{r recovery-insights}
-if ("recovery" %in% names(analysis_results)) {
-  cat("### Key Findings\n\n")
-  
-  # Overall insights
-  if (nrow(analysis_results$recovery$group_summary) > 0) {
-    best_group <- analysis_results$recovery$group_summary$group[1]
-    best_corr <- analysis_results$recovery$group_summary$mean_correlation[1]
-    worst_group <- tail(analysis_results$recovery$group_summary$group, 1)
-    worst_corr <- tail(analysis_results$recovery$group_summary$mean_correlation, 1)
-    
-    cat("- **Best recovered construct:** ", best_group, " (r = ", round(best_corr, 3), ")\n")
-    cat("- **Most challenging construct:** ", worst_group, " (r = ", round(worst_corr, 3), ")\n\n")
-  }
-  
-  # Model insights
-  if (nrow(analysis_results$recovery$model_summary) > 0) {
-    best_model <- analysis_results$recovery$model_summary$model[1]
-    best_model_corr <- analysis_results$recovery$model_summary$mean_correlation[1]
-    
-    cat("- **Best overall recovery:** ", best_model, " (mean r = ", round(best_model_corr, 3), ")\n\n")
-  }
-  
-  # Type insights
-  if (nrow(analysis_results$recovery$cross_model_comparison) > 0) {
-    type_summary <- analysis_results$recovery$cross_model_comparison %>%
-      group_by(model_type) %>%
-      summarise(mean_recovery = mean(mean_correlation, na.rm = TRUE), .groups = "drop") %>%
-      arrange(desc(mean_recovery))
-    
-    if (nrow(type_summary) > 1) {
-      best_type <- type_summary$model_type[1]
-      best_type_corr <- type_summary$mean_recovery[1]
-      cat("- **Best model type for recovery:** ", best_type, " (mean r = ", round(best_type_corr, 3), ")\n\n")
-    }
   }
 }
 ```

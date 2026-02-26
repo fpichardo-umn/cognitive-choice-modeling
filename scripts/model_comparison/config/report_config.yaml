@@ -27,53 +27,29 @@ sections:
     show_ranking_table: true
     show_evidence_summary: true
     show_plots: true
-    show_complexity_analysis: true
-    show_by_type_rankings: true
     
   parameter_recovery:
     include: true
-    show_group_summary: true
     show_model_summary: true
+    show_group_summary: true
     show_plots: true
-    show_best_worst: true
-    show_cross_type: true
-    show_insights: true
     
   ppc_analysis:
     include: true
-    show_domain_summary: true
     show_model_summary: true
+    show_domain_summary: true
     show_plots: true
     show_extreme_failures: true
     show_behavioral_patterns: true
-    show_task_specific: true
-    show_insights: true
     
   model_type_comparison:
-    include: true
-    show_overview: true
-    show_ic_by_type: true
-    show_recovery_by_type: true
-    show_ppc_by_type: true
-    show_specialized_capabilities: true
-    show_cross_type_comparison: true
+    include: false
     
   task_specific:
-    include: true
-    show_task_overview: true
-    show_model_performance: true
-    show_learning_dynamics: true
-    show_rt_analysis: true
-    show_insights: true
-    show_visualization: true
+    include: false
     
   detailed_profiles:
-    include: true
-    max_models: 15  # Limit for readability
-    show_metadata: true
-    show_ic_performance: true
-    show_recovery_performance: true
-    show_ppc_performance: true
+    include: false
     
   conclusions:
     include: true

@@ -1,3 +1,22 @@
+## PPC Performance by Model
+
+```{r ppc-model-summary}
+if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
+  model_ppc <- analysis_results$ppc$model_summary %>%
+    arrange(overall_proportion_extreme) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+  
+  DT::datatable(model_ppc, 
+                caption = "PPC Performance by Model",
+                options = list(pageLength = 15, scrollX = TRUE)) %>%
+    DT::formatStyle("model_quality",
+                    backgroundColor = DT::styleEqual(
+                      c("excellent", "good", "acceptable", "concerning", "poor"),
+                      c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#f8d7da")
+                    ))
+}
+```
+
 ## PPC Performance by Behavioral Domain
 
 ```{r ppc-domain-summary}
@@ -16,25 +35,6 @@ if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$domain_summa
                     ))
 } else {
   cat("No PPC domain results available.")
-}
-```
-
-## PPC Performance by Model
-
-```{r ppc-model-summary}
-if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
-  model_ppc <- analysis_results$ppc$model_summary %>%
-    arrange(overall_proportion_extreme) %>%
-    mutate(across(where(is.numeric), ~round(.x, 3)))
-  
-  DT::datatable(model_ppc, 
-                caption = "PPC Performance by Model",
-                options = list(pageLength = 15, scrollX = TRUE)) %>%
-    DT::formatStyle("model_quality",
-                    backgroundColor = DT::styleEqual(
-                      c("excellent", "good", "acceptable", "concerning", "poor"),
-                      c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#f8d7da")
-                    ))
 }
 ```
 
@@ -149,101 +149,5 @@ if ("ppc" %in% names(analysis_results) && "behavioral_patterns" %in% names(analy
     kable(domain_table, caption = "Model Performance Range by Behavioral Domain") %>%
       kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
   }
-}
-```
-
-## Task-Specific PPC Analysis
-
-```{r ppc-task-specific}
-if ("ppc" %in% names(analysis_results) && "task_specific_analysis" %in% names(analysis_results$ppc)) {
-  task_analysis <- analysis_results$ppc$task_specific_analysis
-  
-  if (params$task == "igt_mod") {
-    # mIGT-specific analysis
-    if ("play_pass_analysis" %in% names(task_analysis) && nrow(task_analysis$play_pass_analysis) > 0) {
-      cat("### Play/Pass Decision Patterns\n\n")
-      
-      play_pass_table <- task_analysis$play_pass_analysis %>%
-        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
-        arrange(model, statistic)
-      
-      kable(play_pass_table, caption = "Play/Pass PPC Performance by Model") %>%
-        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-      cat("\n\n")
-    }
-    
-    if ("deck_preference_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_preference_analysis) > 0) {
-      cat("### Deck Preference Patterns\n\n")
-      
-      deck_table <- task_analysis$deck_preference_analysis %>%
-        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
-        arrange(model, deck)
-      
-      kable(deck_table, caption = "Deck-Specific PPC Performance") %>%
-        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-    }
-    
-  } else if (params$task == "igt") {
-    # IGT-specific analysis
-    if ("deck_selection_analysis" %in% names(task_analysis) && nrow(task_analysis$deck_selection_analysis) > 0) {
-      cat("### Deck Selection Patterns\n\n")
-      
-      deck_table <- task_analysis$deck_selection_analysis %>%
-        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
-        arrange(model, statistic)
-      
-      kable(deck_table, caption = "Deck Selection PPC Performance") %>%
-        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-      cat("\n\n")
-    }
-    
-    if ("strategy_analysis" %in% names(task_analysis) && nrow(task_analysis$strategy_analysis) > 0) {
-      cat("### Strategy Pattern Analysis\n\n")
-      
-      strategy_table <- task_analysis$strategy_analysis %>%
-        mutate(across(where(is.numeric), ~round(.x, 3))) %>%
-        arrange(model, statistic)
-      
-      kable(strategy_table, caption = "Strategy-Related PPC Performance") %>%
-        kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-    }
-  }
-}
-```
-
-## PPC Insights Summary
-
-```{r ppc-insights}
-if ("ppc" %in% names(analysis_results)) {
-  cat("### Key PPC Findings\n\n")
-  
-  # Best performing models
-  if (nrow(analysis_results$ppc$model_summary) > 0) {
-    best_ppc_model <- analysis_results$ppc$model_summary$model[1]
-    best_ppc_score <- analysis_results$ppc$model_summary$overall_proportion_extreme[1]
-    
-    cat("- **Best overall PPC performance:** ", best_ppc_model, " (", round(best_ppc_score * 100, 1), "% extreme PPP)\n")
-  }
-  
-  # Most challenging domains
-  if (nrow(analysis_results$ppc$domain_summary) > 0) {
-    difficult_domains <- analysis_results$ppc$domain_summary %>%
-      arrange(desc(proportion_extreme)) %>%
-      head(3) %>%
-      pull(domain)
-    
-    cat("- **Most challenging behavioral domains:** ", paste(difficult_domains, collapse = ", "), "\n")
-  }
-  
-  # Overall failure rate
-  if (nrow(analysis_results$ppc$extreme_failures) > 0) {
-    total_statistics <- sum(analysis_results$ppc$model_summary$total_statistics, na.rm = TRUE)
-    total_failures <- nrow(analysis_results$ppc$extreme_failures)
-    failure_rate <- round((total_failures / total_statistics) * 100, 1)
-    
-    cat("- **Overall extreme failure rate:** ", failure_rate, "% of all statistics\n")
-  }
-  
-  cat("\n")
 }
 ```

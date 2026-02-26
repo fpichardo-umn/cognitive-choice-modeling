@@ -63,28 +63,7 @@ if ("ic" %in% names(analysis_results)) {
   if (!is.null(ic_plots$ranking_plot)) {
     print(ic_plots$ranking_plot)
   }
-  
-  # Display weights plot
-  if (!is.null(ic_plots$weights_plot)) {
-    print(ic_plots$weights_plot)
-  }
-  
-  # Display complexity plot if available
-  if (!is.null(ic_plots$complexity_plot)) {
-    print(ic_plots$complexity_plot)
-  }
 }
 ```
 
-## Model Complexity Analysis
 
-```{r complexity-analysis}
-if ("ic" %in% names(analysis_results) && nrow(analysis_results$ic$complexity_analysis) > 0) {
-  complexity_table <- analysis_results$ic$complexity_analysis %>%
-    select(model, model_type, p_eff, complexity_category) %>%
-    arrange(desc(p_eff))
-  
-  kable(complexity_table, caption = "Model Complexity Analysis") %>%
-    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
-}
-```
