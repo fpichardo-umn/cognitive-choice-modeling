@@ -77,6 +77,11 @@ param_sets <- list(
     "tau1", "tau",            # Block 1 tau and rest tau
     "drift_con", "urgency"    # Standard parameters
   ),
+  rdm_b1 = c(
+    "boundary1", "boundary",  # Block 1 boundary and rest boundary
+    "tau",                    # Block 1 tau and rest tau
+    "drift_con", "urgency"    # Standard parameters
+  ),
   ard_b1p2 = c(
     "boundary1", "boundary",  # Block 1 boundary and rest boundary
     "tau1", "tau",            # Block 1 tau and rest tau
@@ -991,7 +996,7 @@ get_igt_defaults = function() {
   
   models[["igt_sing_rdm_b1"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
-    params = setdiff(c(param_sets$rdm_b1p2, c("drift_A", "drift_B", "drift_C", "drift_D")), c("con", "drift_con", "urgency", "tau1")),
+    params = setdiff(c(param_sets$rdm_b1, c("drift_A", "drift_B", "drift_C", "drift_D")), c("con", "drift_con", "urgency")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -1053,7 +1058,7 @@ get_igt_defaults = function() {
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$orl_base, 
                        param_sets$orl_base, param_sets$orl_delta, 
                        param_sets$orl_igt), 
-                     c("con", "drift_con", "tau1")),
+                     c("con", "drift_con", "tau1", "urgency")),
     non_pr_params = NULL,
     exclude_params = NULL
   )
@@ -1075,6 +1080,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_vppdelta_rdm_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta, param_sets$vpp_igt), c("con", "drift_con", "tau1", "urgency")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_vppdelta2_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_delta, param_sets$vpp_igt), 
@@ -1090,6 +1102,14 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_sing_vppdecay_rdm_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vpp_igt), c("con", "drift_con", "tau1", "urgency")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  
   models[["igt_sing_vppdecay2_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vpp_igt), 
@@ -1101,6 +1121,13 @@ get_igt_defaults = function() {
   models[["igt_sing_vse_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_orig), c("con", "drift_con")),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_sing_vse_rdm_b1"]] <- list(
+    data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
+    params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vse_orig), c("con", "drift_con", "tau1", "urgency")),
     non_pr_params = NULL,
     exclude_params = NULL
   )

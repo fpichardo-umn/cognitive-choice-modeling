@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
 # 4 accumulators (1 per deck) - first to finish wins
 # Drift rates derived from weighted combination of expected values and perseverance
 
-igtVPPDECAYRDMB1P2Model <- R6::R6Class("igtVPPDECAYRDMB1P2Model",
+igtVPPDECAYRDMB1Model <- R6::R6Class("igtVPPDECAYRDMB1Model",
                                        inherit = ModelBase,
                                        
                                        public = list(

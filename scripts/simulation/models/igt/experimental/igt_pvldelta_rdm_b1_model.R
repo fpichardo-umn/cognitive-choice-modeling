@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
 # 4 accumulators (1 per deck) - first to finish wins
 # Drift rates derived from learned expected values with prospect theory utility
 
-igtPVLDeltaRDMB1Model <- R6::R6Class("igtPVLDeltaRDMB1Model",
+igtPVLDELTARDMB1Model <- R6::R6Class("igtPVLDELTARDMB1Model",
                                        inherit = ModelBase,
                                        
                                        public = list(
