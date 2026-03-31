@@ -112,7 +112,7 @@ kable(summary_table, caption = "Model Comparison Summary") %>%
 ```{r models-analyzed}
 models_table <- data.frame(
   Model = names(comparison_data),
-  Type = sapply(names(comparison_data), function(m) classify_model_type(m, config$task)),
+  Type = sapply(names(comparison_data), function(m) classify_model_type(m)),
   Has_Recovery = sapply(comparison_data, function(x) !is.null(x$recovery)),
   Has_PPC = sapply(comparison_data, function(x) !is.null(x$ppc)),
   Has_IC = sapply(comparison_data, function(x) !is.null(x$ic)),

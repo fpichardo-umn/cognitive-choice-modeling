@@ -62,7 +62,7 @@ analyze_parameter_recovery_by_groups <- function(comparison_data, models_by_type
   results$by_parameter_and_model <- do.call(rbind, lapply(names(all_model_data), function(model) {
     data <- all_model_data[[model]]$by_parameter
     data$model <- model
-    data$model_type <- classify_model_type(model, task)
+    data$model_type <- classify_model_type(model)
     return(data)
   }))
   
@@ -71,7 +71,7 @@ analyze_parameter_recovery_by_groups <- function(comparison_data, models_by_type
     data <- all_model_data[[model]]$by_group
     if (nrow(data) > 0) {
       data$model <- model
-      data$model_type <- classify_model_type(model, task)
+      data$model_type <- classify_model_type(model)
       return(data)
     }
     return(NULL)
@@ -105,7 +105,7 @@ analyze_parameter_recovery_by_groups <- function(comparison_data, models_by_type
     # Calculate model-level summary from individual parameters
     data.frame(
       model = model,
-      model_type = classify_model_type(model, task),
+      model_type = classify_model_type(model),
       n_parameters = nrow(param_data_filtered),
       mean_correlation = mean(param_data_filtered$correlation, na.rm = TRUE),
       mean_std_correlation = mean(param_data_filtered$std_correlation, na.rm = TRUE),

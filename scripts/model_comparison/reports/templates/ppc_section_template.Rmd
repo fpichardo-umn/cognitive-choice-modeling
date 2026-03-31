@@ -4,16 +4,21 @@
 if ("ppc" %in% names(analysis_results) && nrow(analysis_results$ppc$model_summary) > 0) {
   model_ppc <- analysis_results$ppc$model_summary %>%
     arrange(overall_proportion_extreme) %>%
+    select(Model = model, Type = model_type, `N Session Stats` = total_statistics,
+           `Mean PPP` = overall_mean_ppp, `Proportion Extreme` = overall_proportion_extreme,
+           Quality = model_quality) %>%
     mutate(across(where(is.numeric), ~round(.x, 3)))
   
   DT::datatable(model_ppc, 
-                caption = "PPC Performance by Model",
+                caption = "Overall Model Performance (Session-Level Statistics Only)",
                 options = list(pageLength = 15, scrollX = TRUE)) %>%
-    DT::formatStyle("model_quality",
+    DT::formatStyle("Quality",  # Target the renamed capitalized column
                     backgroundColor = DT::styleEqual(
                       c("excellent", "good", "acceptable", "concerning", "poor"),
                       c("#d4edda", "#d1ecf1", "#fff3cd", "#ffeaa7", "#f8d7da")
                     ))
+} else {
+  cat("No model-level PPC results available.")
 }
 ```
 

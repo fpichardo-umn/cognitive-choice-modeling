@@ -63,7 +63,7 @@ analyze_ppc_by_groups <- function(comparison_data, models_by_type, task) {
   results$by_domain_and_model <- do.call(rbind, lapply(names(all_domain_model_data), function(model) {
     data <- all_domain_model_data[[model]]$by_domain
     data$model <- model
-    data$model_type <- classify_model_type(model, task)
+    data$model_type <- classify_model_type(model)
     return(data)
   }))
   
@@ -84,33 +84,37 @@ analyze_ppc_by_groups <- function(comparison_data, models_by_type, task) {
       arrange(proportion_extreme, abs(mean_ppp - 0.5))
     
     # ──────────────────────────────────────────────────────────────────────
-    # FIX: Create model-level summary using PROPERLY WEIGHTED metrics.
-    #
-    # Previously this used mean(proportion_extreme) across domains, which
-    # gave equal weight to small and large domains — a domain with 50
-    # statistics and 30% extreme rate would count the same as one with
-    # 1000 statistics and 1% extreme rate, massively inflating the result.
-    #
-    # Now we use sum(n_extreme) / sum(n_statistics) for the true overall
-    # rate, and weighted.mean() for ppp and deviation, matching what the
-    # individual model PPC reports compute (total extreme / total stats).
+    # NEW FIX: Create model-level summary from strictly SESSION-LEVEL stats.
+    # Completely bypasses domains and block-level noise.
     # ──────────────────────────────────────────────────────────────────────
-    results$model_summary <- results$by_domain_and_model %>%
-      group_by(model, model_type) %>%
-      summarise(
-        n_domains = n_distinct(domain),
-        overall_mean_ppp = weighted.mean(mean_ppp, n_statistics, na.rm = TRUE),
-        overall_proportion_extreme = sum(n_extreme, na.rm = TRUE) / sum(n_statistics, na.rm = TRUE),
-        total_statistics = sum(n_statistics, na.rm = TRUE),
-        overall_deviation = weighted.mean(mean_deviation, n_statistics, na.rm = TRUE),
-        model_quality = classify_ppc_quality(
-          weighted.mean(mean_ppp, n_statistics, na.rm = TRUE),
-          sum(n_extreme, na.rm = TRUE) / sum(n_statistics, na.rm = TRUE)
-        ),
-        worst_domain = domain[which.max(proportion_extreme)][1],
-        best_domain = domain[which.min(proportion_extreme)][1],
-        .groups = "drop"
-      ) %>%
+    results$model_summary <- do.call(rbind, lapply(names(all_domain_model_data), function(model_name) {
+      # Grab the raw data for this model
+      model_raw <- all_domain_model_data[[model_name]]$raw_data
+      
+      # STRICT FILTER: Keep ONLY session-level statistics
+      session_data <- model_raw[model_raw$session == "session", ]
+      
+      # Skip gracefully if empty
+      if (nrow(session_data) == 0) return(NULL)
+      
+      # Calculate core metrics ONLY on the session data
+      total_stats <- nrow(session_data)
+      total_extreme <- sum(session_data$extreme_ppp %in% TRUE, na.rm = TRUE)
+      overall_prop_extreme <- total_extreme / total_stats
+      overall_mean_ppp <- mean(session_data$ppp, na.rm = TRUE)
+      overall_dev <- mean(abs(session_data$ppp - 0.5), na.rm = TRUE)
+      
+      data.frame(
+        model = model_name,
+        model_type = classify_model_type(model_name),
+        total_statistics = total_stats,
+        overall_mean_ppp = overall_mean_ppp,
+        overall_proportion_extreme = overall_prop_extreme,
+        overall_deviation = overall_dev,
+        model_quality = classify_ppc_quality(overall_mean_ppp, overall_prop_extreme),
+        stringsAsFactors = FALSE
+      )
+    })) %>%
       arrange(overall_proportion_extreme, abs(overall_mean_ppp - 0.5))
   }
   
@@ -147,7 +151,7 @@ define_behavioral_domains <- function(task) {
       choice_patterns = list(
         description = "Overall choice behavior and deck preferences",
         statistics = c("play_ratio", "pass_ratio", "play_ratio_deck1", "play_ratio_deck2", 
-                      "play_ratio_deck3", "play_ratio_deck4"),
+                       "play_ratio_deck3", "play_ratio_deck4"),
         session_types = "session"
       ),
       performance = list(
@@ -163,11 +167,11 @@ define_behavioral_domains <- function(task) {
       rt_patterns = list(
         description = "Response time distributions and patterns",
         statistics = c("rt_mean", "rt_sd", "rt_q10", "rt_q50", "rt_q90", 
-                      "rt_mean_play", "rt_mean_pass", "rt_mean_good", "rt_mean_bad"),
+                       "rt_mean_play", "rt_mean_pass", "rt_mean_good", "rt_mean_bad"),
         session_types = c("session", "block")
       )
     )
-  )
+    )
   } else if (task == "igt") {
     # Original IGT behavioral domains
     return(list(
@@ -194,11 +198,11 @@ define_behavioral_domains <- function(task) {
       rt_patterns = list(
         description = "Response time distributions and patterns",
         statistics = c("rt_mean", "rt_sd", "rt_q10", "rt_q50", "rt_q90",
-                      "rt_deck1", "rt_deck2", "rt_deck3", "rt_deck4"),
+                       "rt_deck1", "rt_deck2", "rt_deck3", "rt_deck4"),
         session_types = c("session", "block")
       )
     )
-  )
+    )
   } else {
     stop("Unknown task for behavioral domain definition: ", task)
   }
@@ -228,7 +232,7 @@ analyze_single_model_ppc <- function(model_data, model_name, behavioral_domains,
       filter(
         statistic %in% domain_def$statistics,
         (session %in% domain_def$session_types | 
-         grepl(paste(domain_def$session_types, collapse = "|"), session))
+           grepl(paste(domain_def$session_types, collapse = "|"), session))
       )
     
     if (nrow(domain_data) == 0) next
@@ -298,7 +302,7 @@ calculate_domain_ppc_metrics <- function(domain_data, domain_name, model_name) {
   ))
 }
 
-#' Calculate overall PPC metrics for a model
+#' Calculate overall PPC metrics for a model (STRICTLY SESSION-LEVEL)
 #' @param ppc_data Full PPC data for the model
 #' @param model_name Name of the model
 #' @return Data frame with overall PPC metrics
@@ -307,13 +311,21 @@ calculate_overall_ppc_metrics <- function(ppc_data, model_name) {
     return(data.frame())
   }
   
-  # Overall metrics
-  overall_mean_ppp <- mean(ppc_data$ppp, na.rm = TRUE)
-  overall_proportion_extreme <- mean(ppc_data$extreme_ppp %in% TRUE, na.rm = TRUE)
-  overall_deviation <- mean(abs(ppc_data$ppp - 0.5), na.rm = TRUE)
+  # TRACK 1: Strictly filter for session-level statistics only
+  session_data <- ppc_data %>%
+    filter(session == "session")
   
-  # By category
-  by_category <- ppc_data %>%
+  if (nrow(session_data) == 0) {
+    return(list(overall = data.frame(), by_category = data.frame()))
+  }
+  
+  # Overall metrics (Session-level only)
+  overall_mean_ppp <- mean(session_data$ppp, na.rm = TRUE)
+  overall_proportion_extreme <- mean(session_data$extreme_ppp %in% TRUE, na.rm = TRUE)
+  overall_deviation <- mean(abs(session_data$ppp - 0.5), na.rm = TRUE)
+  
+  # By category (Session-level only)
+  by_category <- session_data %>%
     group_by(category) %>%
     summarise(
       mean_ppp = mean(ppp, na.rm = TRUE),
@@ -327,7 +339,7 @@ calculate_overall_ppc_metrics <- function(ppc_data, model_name) {
       overall_mean_ppp = overall_mean_ppp,
       overall_proportion_extreme = overall_proportion_extreme,
       overall_deviation = overall_deviation,
-      total_statistics = nrow(ppc_data),
+      total_statistics = nrow(session_data),
       model_quality = classify_ppc_quality(overall_mean_ppp, overall_proportion_extreme)
     ),
     by_category = by_category
@@ -368,7 +380,7 @@ identify_extreme_ppc_failures <- function(all_domain_model_data, behavioral_doma
       filter(extreme_ppp %in% TRUE) %>%
       mutate(
         model = model_name,
-        model_type = classify_model_type(model_name, task),
+        model_type = classify_model_type(model_name),
         failure_severity = case_when(
           ppp < 0.01 | ppp > 0.99 ~ "severe",
           ppp < 0.025 | ppp > 0.975 ~ "moderate",
@@ -404,7 +416,7 @@ analyze_behavioral_patterns <- function(all_domain_model_data, models_by_type, t
     data <- all_domain_model_data[[model]]$by_domain
     if (!is.null(data) && nrow(data) > 0) {
       data$model <- model
-      data$model_type <- classify_model_type(model, task)
+      data$model_type <- classify_model_type(model)
       return(data)
     }
     return(data.frame())
