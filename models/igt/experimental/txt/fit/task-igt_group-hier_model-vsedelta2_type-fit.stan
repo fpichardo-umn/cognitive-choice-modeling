@@ -82,7 +82,7 @@ parameters {
   // Centered Parameterization for Loss
   real<lower=0, upper=10> mu_loss;      // The group mean directly on the 0-10 scale
   real<lower=0> sigma_loss;             // The group SD
-  vector<lower=0, upper=10>[N] loss;    // Individual loss parameters
+  array[N] real<lower=0, upper=10> loss;    // Individual loss parameters
 
   // Individual NCP "pr" parameters
   vector[N] con_pr;
