@@ -51,7 +51,8 @@ igtPVLDECAYModel <- R6::R6Class("igtPVLDECAYModel",
         ev_history[t,] <- self$ev
         
         # Calculate choice probabilities using softmax
-        probs <- exp(sensitivity * self$ev)
+        scaled <- sensitivity * self$ev
+        probs <- exp(scaled - max(scaled))
         probs <- probs / sum(probs)
         
         # Make choice
@@ -108,7 +109,8 @@ igtPVLDECAYModel <- R6::R6Class("igtPVLDECAYModel",
         lose <- abs(data$loss[t])
         
         # Calculate probabilities
-        probs <- exp(sensitivity * ev)
+        scaled <- sensitivity * ev
+        probs <- exp(scaled - max(scaled))
         probs <- probs / sum(probs)
         
         # Add log-likelihood of observing this choice

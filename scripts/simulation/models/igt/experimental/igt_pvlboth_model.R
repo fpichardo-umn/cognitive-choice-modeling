@@ -3,6 +3,7 @@ igtPVLBOTHModel <- R6::R6Class("igtPVLBOTHModel",
   inherit = ModelBase,
   
   public = list(
+    model_type = "RL",
     ev = NULL, # Expected values for each deck
     
     validate_config = function(parameters) {
@@ -52,7 +53,8 @@ igtPVLBOTHModel <- R6::R6Class("igtPVLBOTHModel",
         ev_history[t,] <- self$ev
         
         # Calculate choice probabilities using softmax
-        probs <- exp(sensitivity * self$ev)
+        scaled <- sensitivity * self$ev
+        probs <- exp(scaled - max(scaled))
         probs <- probs / sum(probs)
         
         # Make choice
@@ -116,7 +118,8 @@ igtPVLBOTHModel <- R6::R6Class("igtPVLBOTHModel",
         lose <- abs(losses[t])
         
         # Calculate probabilities
-        probs <- exp(sensitivity * ev)
+        scaled <- sensitivity * ev
+        probs <- exp(scaled - max(scaled))
         probs <- probs / sum(probs)
         
         # Add log-likelihood of observing this choice
