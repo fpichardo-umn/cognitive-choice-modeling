@@ -73,7 +73,7 @@ identify_hierarchical_parameters <- function(hier_fit) {
   
   # CRITICAL: Separate hyperparameters (indexed by param) from subject params (indexed by subject)
   # mu_pr[*] and sigma[*] are group-level hyperparameters, NOT subject parameters
-  hyperparam_indexed <- indexed_params[grepl("^(mu_pr|sigma[_a-z]*)\\[", indexed_params)]
+  hyperparam_indexed <- indexed_params[grepl("^(mu_|sigma)[_a-z]*\\[", indexed_params)]
   subject_params <- setdiff(indexed_params, hyperparam_indexed)
   
   # Extract unique base parameter names for subject-level only
