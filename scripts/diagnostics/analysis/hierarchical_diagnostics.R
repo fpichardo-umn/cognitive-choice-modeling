@@ -73,7 +73,7 @@ identify_hierarchical_parameters <- function(hier_fit) {
   
   # CRITICAL: Separate hyperparameters (indexed by param) from subject params (indexed by subject)
   # mu_pr[*] and sigma[*] are group-level hyperparameters, NOT subject parameters
-  hyperparam_indexed <- indexed_params[grepl("^(mu_pr|sigma)\\[", indexed_params)]
+  hyperparam_indexed <- indexed_params[grepl("^(mu_pr|sigma[_a-z]*)\\[", indexed_params)]
   subject_params <- setdiff(indexed_params, hyperparam_indexed)
   
   # Extract unique base parameter names for subject-level only
@@ -92,12 +92,13 @@ identify_hierarchical_parameters <- function(hier_fit) {
   non_indexed_params <- all_params[!grepl("\\[\\d+\\]", all_params)]
   non_indexed_params <- non_indexed_params[non_indexed_params != "lp__"]
   generated_mus <- non_indexed_params[grepl("^mu_[a-z_]+$", non_indexed_params)]
+  generated_sigmas <- non_indexed_params[grepl("^sigma[_a-z]*$", non_indexed_params)]
   
   # Group-level parameters include:
   # 1. Indexed hyperparameters: mu_pr[*], sigma[*]
   # 2. Generated quantities: mu_gain, mu_loss, etc.
   # 3. lp__ (if present)
-  group_params <- c(hyperparam_indexed, generated_mus)
+  group_params <- c(hyperparam_indexed, generated_mus, generated_sigmas)
   if (has_lp) {
     group_params <- c("lp__", group_params)
   }
@@ -110,6 +111,7 @@ identify_hierarchical_parameters <- function(hier_fit) {
     group_params = group_params,
     hyperparam_indexed = hyperparam_indexed,
     generated_mus = generated_mus,
+    generated_sigmas = generated_sigmas,
     has_lp = has_lp,
     n_group_params = length(group_params),
     all_params = all_params
