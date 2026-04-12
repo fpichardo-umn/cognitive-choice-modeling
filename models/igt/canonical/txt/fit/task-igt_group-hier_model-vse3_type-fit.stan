@@ -101,8 +101,8 @@ transformed parameters {
   con           = to_array_1d(inv_logit(mu_pr[1] + sigma[1] .* to_vector(con_pr)) * 5);
   gain          = to_array_1d(inv_logit(mu_pr[2] + sigma[2] .* to_vector(gain_pr)));
   loss          = to_array_1d(inv_logit(mu_pr[3] + sigma[3] .* to_vector(loss_pr)) * 10);
-  explore_alpha = to_array_1d(inv_logit(mu_pr[5] + sigma[5] .* to_vector(explore_alpha_pr)));
-  explore_bonus = to_array_1d(-10 + inv_logit(mu_pr[6] + sigma[6] .* to_vector(explore_bonus_pr)) * 20);
+  explore_alpha = to_array_1d(inv_logit(mu_pr[4] + sigma[4] .* to_vector(explore_alpha_pr)));
+  explore_bonus = to_array_1d(-10 + inv_logit(mu_pr[5] + sigma[5] .* to_vector(explore_bonus_pr)) * 20);
 }
 
 model {
@@ -137,6 +137,6 @@ generated quantities {
   mu_con           = inv_logit(mu_pr[1]) * 5;
   mu_gain          = inv_logit(mu_pr[2]);
   mu_loss          = inv_logit(mu_pr[3]) * 10;
-  mu_explore_alpha = inv_logit(mu_pr[5]);
-  mu_explore_bonus = -10 + inv_logit(mu_pr[6]) * 20;
+  mu_explore_alpha = inv_logit(mu_pr[4]);
+  mu_explore_bonus = -10 + inv_logit(mu_pr[5]) * 20;
 }
