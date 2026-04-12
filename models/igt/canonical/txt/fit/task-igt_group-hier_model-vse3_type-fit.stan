@@ -78,6 +78,10 @@ parameters {
   array[5] real mu_pr;
   array[5] real<lower=0> sigma;
 
+  // CP Hyperparameters
+  real<lower=0, upper=1> mu_decay;
+  real<lower=0> sigma_decay;
+
   array[N] real con_pr;
   array[N] real gain_pr;
   array[N] real loss_pr;
