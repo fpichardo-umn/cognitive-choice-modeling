@@ -1,5 +1,5 @@
 # IGT VPP Model
-igtVPPDELTAModel <- R6::R6Class("igtVPPDELTAModel",
+igtVPPDELTA2Model <- R6::R6Class("igtVPPDELTA2Model",
   inherit = ModelBase,
   
   public = list(

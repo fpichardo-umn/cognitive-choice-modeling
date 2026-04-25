@@ -287,7 +287,14 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
-  models[["igt_hier_pvldelta2"]] <- list(
+  models[["igt_hier_pvldelta3"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = param_sets$pvl_delta,
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_pvldelta4"]] <- list(
     data = data_types$basic_hier_igt,
     params = param_sets$pvl_delta,
     non_pr_params = NULL,
@@ -525,6 +532,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_vppdecay3"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_decay, param_sets$vpp_igt),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_sing_vppdecay_rdm_b1p2"]] <- list(
     data = unique(c(data_types$with_rt_igt, data_types$basic_igt)),
     params = setdiff(c(param_sets$rdm_b1p2, param_sets$pvl_decay, param_sets$vpp_igt), "con"),
@@ -590,6 +604,13 @@ get_igt_defaults = function() {
     exclude_params = NULL
   )
   
+  models[["igt_hier_orl2"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$orl_base, param_sets$orl_delta, param_sets$orl_igt),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
   models[["igt_hier_orldecay"]] <- list(
     data = data_types$basic_hier_igt,
     params = c(param_sets$orl_base, param_sets$orl_decay, param_sets$orl_igt),
@@ -627,6 +648,13 @@ get_igt_defaults = function() {
   )
   
   models[["igt_hier_vse2"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_decay, param_sets$vse_orig),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_vse3"]] <- list(
     data = data_types$basic_hier_igt,
     params = c(param_sets$pvl_decay, param_sets$vse_orig),
     non_pr_params = NULL,
@@ -697,6 +725,13 @@ get_igt_defaults = function() {
   )
   
   models[["igt_hier_vseboth2"]] <- list(
+    data = data_types$basic_hier_igt,
+    params = c(param_sets$pvl_both, param_sets$vse_orig),
+    non_pr_params = NULL,
+    exclude_params = NULL
+  )
+  
+  models[["igt_hier_vseboth3"]] <- list(
     data = data_types$basic_hier_igt,
     params = c(param_sets$pvl_both, param_sets$vse_orig),
     non_pr_params = NULL,

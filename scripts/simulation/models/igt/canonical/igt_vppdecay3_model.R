@@ -1,5 +1,5 @@
 # IGT VPP Model
-igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
+igtVPPDECAY3Model <- R6::R6Class("igtVPPDECAY3Model",
   inherit = ModelBase,
   
   public = list(
@@ -22,14 +22,13 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
       # Parameter information based on the Stan model
       return(list(
         con = list(range = c(0, 5)),
-        update = list(range = c(0, 1)),
+        decay = list(range = c(0, 1)),
         gain = list(range = c(0, 1)),
         loss = list(range = c(0, 10)),
         epP = list(range = c(-5, 5)),
         epN = list(range = c(-5, 5)),
         K = list(range = c(0, 1)),
-        w = list(range = c(0, 1)),
-        decay = list(range = c(0, 1))
+        w = list(range = c(0, 1))
       ))
     },
     
@@ -46,14 +45,13 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
       
       # Extract parameters - Using exact parameter names from the Stan model
       con <- parameters$con
-      update <- parameters$update
+      decay <- parameters$decay
       gain <- parameters$gain
       loss <- parameters$loss
       epP <- parameters$epP
       epN <- parameters$epN
       K <- parameters$K
       w <- parameters$w
-      decay <- parameters$decay
       
       # Convert consistency parameter to sensitivity (as in Stan model)
       sensitivity <- (3^con) - 1
@@ -92,11 +90,11 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
           self$pers[choices[t]] <- self$pers[choices[t]] + epN
         }
         
-        # First decay all deck values
+        # Apply decay to all deck values
         self$ev <- self$ev * (1 - decay)
         
-        # Add utility and delta update to chosen deck
-        self$ev[choices[t]] <- self$ev[choices[t]] + update * (utility - self$ev[choices[t]])
+        # Add utility to chosen deck
+        self$ev[choices[t]] <- self$ev[choices[t]] + utility
       }
       
       # Return results with the correct structure
@@ -116,22 +114,15 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
     },
     
     calculate_loglik = function(data, parameters, task_params) {
-      # Extract data
-      n_trials <- nrow(data)
-      choices <- data$choice
-      gains <- data$gain
-      losses <- data$loss
-      
       # Extract parameters
       con <- parameters$con
-      update <- parameters$update
+      decay <- parameters$decay
       gain <- parameters$gain
       loss <- parameters$loss
       epP <- parameters$epP
       epN <- parameters$epN
       K <- parameters$K
       w <- parameters$w
-      decay <- parameters$decay
       
       # Convert consistency parameter to sensitivity
       sensitivity <- (3^con) - 1
@@ -142,11 +133,11 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
       trial_loglik <- numeric(nrow(data))
       
       # For each trial
-      for (t in 1:n_trials) {
+      for (t in 1:nrow(data)) {
         # Get current choice and outcome
-        choice <- choices[t]
-        win <- gains[t]
-        lose <- abs(losses[t])
+        choice <- data$choice[t]
+        win <- data$gain[t]
+        lose <- abs(data$loss[t])
         
         # Calculate combined value
         V <- w * ev + (1-w) * pers
@@ -171,11 +162,11 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
           pers[choice] <- pers[choice] + epN
         }
         
-        # Apply decay to all values
+        # Apply decay to all deck values
         ev <- ev * (1 - decay)
         
-        # Update chosen deck with both utility and delta rule
-        ev[choice] <- ev[choice] + update * (utility - ev[choice])
+        # Add utility to chosen deck
+        ev[choice[t]] <- ev[choice[t]] + utility
       }
       
       return(list(

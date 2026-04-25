@@ -1,11 +1,11 @@
-# IGT VPP Model
-igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
+# IGT VSE Model
+igtVSE3Model <- R6::R6Class("igtVSE3Model",
   inherit = ModelBase,
   
   public = list(
     model_type = "RL",
-    ev = NULL,    # Expected values for each deck
-    pers = NULL,  # Perseverance values for each deck
+    ev_exploit = NULL, # Exploitation values for each deck
+    ev_explore = NULL, # Exploration values for each deck
     
     validate_config = function(parameters) {
       # Simple validation for now
@@ -14,22 +14,19 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
     
     initialize = function(task) {
       super$initialize(task)
-      self$ev <- rep(0, 4)   # Initialize expected values to 0 for all 4 decks
-      self$pers <- rep(0, 4) # Initialize perseverance values to 0 for all 4 decks
+      self$ev_exploit <- rep(0, 4) # Initialize exploitation values to 0
+      self$ev_explore <- rep(0, 4) # Initialize exploration values to 0
     },
     
     get_parameter_info = function() {
       # Parameter information based on the Stan model
       return(list(
         con = list(range = c(0, 5)),
-        update = list(range = c(0, 1)),
         gain = list(range = c(0, 1)),
         loss = list(range = c(0, 10)),
-        epP = list(range = c(-5, 5)),
-        epN = list(range = c(-5, 5)),
-        K = list(range = c(0, 1)),
-        w = list(range = c(0, 1)),
-        decay = list(range = c(0, 1))
+        decay = list(range = c(0, 1)),
+        explore_alpha = list(range = c(0, 1)),
+        explore_bonus = list(range = c(-10, 10))
       ))
     },
     
@@ -41,19 +38,16 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
       choices <- numeric(n_trials)
       wins <- numeric(n_trials)
       losses <- numeric(n_trials)
-      ev_history <- matrix(0, nrow = n_trials, ncol = 4)
-      pers_history <- matrix(0, nrow = n_trials, ncol = 4)
+      ev_exploit_history <- matrix(0, nrow = n_trials, ncol = 4)
+      ev_explore_history <- matrix(0, nrow = n_trials, ncol = 4)
       
       # Extract parameters - Using exact parameter names from the Stan model
       con <- parameters$con
-      update <- parameters$update
       gain <- parameters$gain
       loss <- parameters$loss
-      epP <- parameters$epP
-      epN <- parameters$epN
-      K <- parameters$K
-      w <- parameters$w
       decay <- parameters$decay
+      explore_alpha <- parameters$explore_alpha
+      explore_bonus <- parameters$explore_bonus
       
       # Convert consistency parameter to sensitivity (as in Stan model)
       sensitivity <- (3^con) - 1
@@ -61,14 +55,14 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
       # For each trial
       for (t in 1:n_trials) {
         # Store current values
-        ev_history[t,] <- self$ev
-        pers_history[t,] <- self$pers
+        ev_exploit_history[t,] <- self$ev_exploit
+        ev_explore_history[t,] <- self$ev_explore
         
-        # Calculate combined value
-        V <- w * self$ev + (1-w) * self$pers
+        # Combine exploitation and exploration values
+        combined_value <- self$ev_exploit + self$ev_explore
         
         # Calculate choice probabilities using softmax
-        probs <- exp(sensitivity * V)
+        probs <- exp(sensitivity * combined_value)
         probs <- probs / sum(probs)
         
         # Make choice
@@ -79,24 +73,25 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
         wins[t] <- result$gain
         losses[t] <- abs(result$loss)
         
-        # Decay perseverance values
-        self$pers <- self$pers * K
-        
         # Calculate utility (as in the Stan model)
         utility <- wins[t]^gain - loss * losses[t]^gain
         
-        # Update perseverance based on outcome
-        if (wins[t] >= losses[t]) {
-          self$pers[choices[t]] <- self$pers[choices[t]] + epP
-        } else {
-          self$pers[choices[t]] <- self$pers[choices[t]] + epN
+        # Exploitation: Decay all deck values
+        self$ev_exploit <- self$ev_exploit * (1 - decay)
+        
+        # Exploitation: Add utility to chosen deck
+        self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + utility
+        
+        # Exploration: Reset chosen deck to zero
+        self$ev_explore[choices[t]] <- 0
+        
+        # Exploration: Update unchosen decks
+        for (d in 1:4) {
+          if (d != choices[t]) {
+            self$ev_explore[d] <- self$ev_explore[d] + 
+              explore_alpha * (explore_bonus - self$ev_explore[d])
+          }
         }
-        
-        # First decay all deck values
-        self$ev <- self$ev * (1 - decay)
-        
-        # Add utility and delta update to chosen deck
-        self$ev[choices[t]] <- self$ev[choices[t]] + update * (utility - self$ev[choices[t]])
       }
       
       # Return results with the correct structure
@@ -104,78 +99,65 @@ igtVPPBOTH2Model <- R6::R6Class("igtVPPBOTH2Model",
         choices = choices,
         wins = wins,
         losses = losses,
-        ev_history = ev_history,
-        pers_history = pers_history
+        ev_exploit_history = ev_exploit_history,
+        ev_explore_history = ev_explore_history
       ))
     },
     
     reset = function() {
       # Reset values to initial state
-      self$ev <- rep(0, 4)
-      self$pers <- rep(0, 4)
+      self$ev_exploit <- rep(0, 4)
+      self$ev_explore <- rep(0, 4)
     },
     
     calculate_loglik = function(data, parameters, task_params) {
-      # Extract data
-      n_trials <- nrow(data)
-      choices <- data$choice
-      gains <- data$gain
-      losses <- data$loss
-      
       # Extract parameters
       con <- parameters$con
-      update <- parameters$update
       gain <- parameters$gain
       loss <- parameters$loss
-      epP <- parameters$epP
-      epN <- parameters$epN
-      K <- parameters$K
-      w <- parameters$w
       decay <- parameters$decay
+      explore_alpha <- parameters$explore_alpha
+      explore_bonus <- parameters$explore_bonus
       
       # Convert consistency parameter to sensitivity
       sensitivity <- (3^con) - 1
       
       # Initialize variables
-      ev <- rep(0, 4)
-      pers <- rep(0, 4)
-      trial_loglik <- numeric(nrow(data))
+      ev_exploit <- rep(0, 4)
+      ev_explore <- rep(0, 4)
+      trial_loglik <- numeric(nrow(data)) 
       
       # For each trial
-      for (t in 1:n_trials) {
+      for (t in 1:nrow(data)) {
         # Get current choice and outcome
-        choice <- choices[t]
-        win <- gains[t]
-        lose <- abs(losses[t])
+        choice <- data$choice[t]
+        win <- data$gain[t]
+        lose <- abs(data$loss[t])
         
-        # Calculate combined value
-        V <- w * ev + (1-w) * pers
+        # Combine values
+        combined_value <- ev_exploit + ev_explore
         
         # Calculate probabilities
-        probs <- exp(sensitivity * V)
+        probs <- exp(sensitivity * combined_value)
         probs <- probs / sum(probs)
         
         # Add log-likelihood of observing this choice
-        trial_loglik[t] <-log(probs[choice])
-        
-        # Decay perseverance
-        pers <- pers * K
+        trial_loglik[t] <- if (is.finite(log(probs[choice]))) log(probs[choice]) else -1000
         
         # Calculate utility
         utility <- win^gain - loss * lose^gain
         
-        # Update perseverance
-        if (win >= lose) {
-          pers[choice] <- pers[choice] + epP
-        } else {
-          pers[choice] <- pers[choice] + epN
+        # Exploitation: Decay and update
+        ev_exploit <- ev_exploit * (1 - decay)
+        ev_exploit[choice] <- ev_exploit[choice] + utility
+        
+        # Exploration: Reset chosen and update unchosen
+        ev_explore[choice] <- 0
+        for (d in 1:4) {
+          if (d != choice) {
+            ev_explore[d] <- ev_explore[d] + explore_alpha * (explore_bonus - ev_explore[d])
+          }
         }
-        
-        # Apply decay to all values
-        ev <- ev * (1 - decay)
-        
-        # Update chosen deck with both utility and delta rule
-        ev[choice] <- ev[choice] + update * (utility - ev[choice])
       }
       
       return(list(

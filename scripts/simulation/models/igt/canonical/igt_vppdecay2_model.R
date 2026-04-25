@@ -1,5 +1,5 @@
 # IGT VPP Model
-igtVPPDECAYModel <- R6::R6Class("igtVPPDECAYModel",
+igtVPPDECAY2Model <- R6::R6Class("igtVPPDECAY2Model",
   inherit = ModelBase,
   
   public = list(
