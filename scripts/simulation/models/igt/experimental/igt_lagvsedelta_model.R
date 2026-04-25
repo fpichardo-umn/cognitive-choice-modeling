@@ -80,7 +80,7 @@ igtLAGVSEDELTAModel <- R6::R6Class("igtLAGVSEDELTAModel",
         # Exploitation: Update chosen deck with direct utility AND delta rule
         # Note: NO decay step in this variant
         self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + 
-          utility + update * (utility - self$ev_exploit[choices[t]])
+          update * (utility - self$ev_exploit[choices[t]])
         
         # Exploration: Reset lag for chosen deck
         self$choice_lag[choices[t]] <- 0
@@ -148,7 +148,7 @@ igtLAGVSEDELTAModel <- R6::R6Class("igtLAGVSEDELTAModel",
         
         # Update chosen deck with delta rule (NO decay step)
         ev_exploit[choice] <- ev_exploit[choice] + 
-          utility + update * (utility - ev_exploit[choice])
+          update * (utility - ev_exploit[choice])
         
         # Reset lag for chosen deck
         choice_lag[choice] <- 0

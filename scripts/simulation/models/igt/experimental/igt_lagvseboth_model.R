@@ -84,7 +84,7 @@ igtLAGVSEBOTHModel <- R6::R6Class("igtLAGVSEBOTHModel",
         
         # Exploitation: Update chosen deck with BOTH direct utility AND delta rule
         self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + 
-          utility + update * (utility - self$ev_exploit[choices[t]])
+          update * (utility - self$ev_exploit[choices[t]])
         
         # Exploration: Reset lag for chosen deck
         self$choice_lag[choices[t]] <- 0
@@ -156,7 +156,7 @@ igtLAGVSEBOTHModel <- R6::R6Class("igtLAGVSEBOTHModel",
         
         # Update chosen deck with both mechanisms
         ev_exploit[choice] <- ev_exploit[choice] + 
-          utility + update * (utility - ev_exploit[choice])
+          update * (utility - ev_exploit[choice])
         
         # Reset lag for chosen deck
         choice_lag[choice] <- 0

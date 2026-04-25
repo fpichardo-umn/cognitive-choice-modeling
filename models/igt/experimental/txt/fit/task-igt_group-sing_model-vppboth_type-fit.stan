@@ -1,4 +1,4 @@
-functions {
+﻿functions {
   vector igt_model_lp(
         array[] int choice, array[] real wins, array[] real losses,
         vector ev, vector pers, int Tsub,
@@ -39,7 +39,7 @@ curUtil = win_component - loss * loss_component;
       local_ev = local_ev * (1 - decay);
       
       // Then update chosen deck with delta rule
-      local_ev[choice[t]] += curUtil + update * (curUtil - local_ev[choice[t]]);
+      local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
     }
     
     return local_ev;

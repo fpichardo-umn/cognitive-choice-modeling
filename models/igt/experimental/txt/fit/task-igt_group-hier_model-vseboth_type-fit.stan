@@ -21,7 +21,7 @@ functions {
 real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
 curUtil = win_component - loss * loss_component;
       local_ev_exploit = local_ev_exploit * (1 - decay);
-      local_ev_exploit[choice[t]] += curUtil + update * (curUtil  - local_ev_exploit[choice[t]]);
+      local_ev_exploit[choice[t]] += update * (curUtil  - local_ev_exploit[choice[t]]);
       local_ev_explore[choice[t]] = 0;
       
       for (d in 1:4) {

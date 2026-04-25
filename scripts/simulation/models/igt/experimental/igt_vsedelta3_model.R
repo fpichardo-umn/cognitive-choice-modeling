@@ -79,7 +79,7 @@ igtVSEDELTAModel <- R6::R6Class("igtVSEDELTAModel",
         # Exploitation: Update chosen deck with direct utility AND delta rule
         # Note: NO decay step in this variant
         self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + 
-          utility + update * (utility - self$ev_exploit[choices[t]])
+          update * (utility - self$ev_exploit[choices[t]])
         
         # Exploration: Reset chosen deck to zero
         self$ev_explore[choices[t]] <- 0
@@ -153,7 +153,7 @@ igtVSEDELTAModel <- R6::R6Class("igtVSEDELTAModel",
         
         # Update chosen deck with delta rule (NO decay step)
         ev_exploit[choice] <- ev_exploit[choice] + 
-          utility + update * (utility - ev_exploit[choice])
+          update * (utility - ev_exploit[choice])
         
         # Reset chosen deck's exploration value
         ev_explore[choice] <- 0

@@ -96,7 +96,7 @@ igtVPPBOTHModel <- R6::R6Class("igtVPPBOTHModel",
         self$ev <- self$ev * (1 - decay)
         
         # Add utility and delta update to chosen deck
-        self$ev[choices[t]] <- self$ev[choices[t]] + utility + update * (utility - self$ev[choices[t]])
+        self$ev[choices[t]] <- self$ev[choices[t]] + update * (utility - self$ev[choices[t]])
       }
       
       # Return results with the correct structure
@@ -175,7 +175,7 @@ igtVPPBOTHModel <- R6::R6Class("igtVPPBOTHModel",
         ev <- ev * (1 - decay)
         
         # Update chosen deck with both utility and delta rule
-        ev[choice] <- ev[choice] + utility + update * (utility - ev[choice])
+        ev[choice] <- ev[choice] + update * (utility - ev[choice])
       }
       
       return(list(

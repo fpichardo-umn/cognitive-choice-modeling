@@ -83,7 +83,7 @@ igtVSEBOTHModel <- R6::R6Class("igtVSEBOTHModel",
         
         # Exploitation: Update chosen deck with BOTH direct utility AND delta rule
         self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + 
-          utility + update * (utility - self$ev_exploit[choices[t]])
+          update * (utility - self$ev_exploit[choices[t]])
         
         # Exploration: Reset chosen deck to zero
         self$ev_explore[choices[t]] <- 0
@@ -161,7 +161,7 @@ igtVSEBOTHModel <- R6::R6Class("igtVSEBOTHModel",
         
         # Update chosen deck with both mechanisms
         ev_exploit[choice] <- ev_exploit[choice] + 
-          utility + update * (utility - ev_exploit[choice])
+          update * (utility - ev_exploit[choice])
         
         # Reset chosen deck's exploration value
         ev_explore[choice] <- 0

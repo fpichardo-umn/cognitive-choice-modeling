@@ -18,7 +18,7 @@ functions {
       curUtil = win_component - loss * loss_component;
       
       local_ev = local_ev * (1 - decay);
-      local_ev[choice[t]] += curUtil + update * (curUtil - local_ev[choice[t]]);
+      local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);
     }
     
     return log_lik;

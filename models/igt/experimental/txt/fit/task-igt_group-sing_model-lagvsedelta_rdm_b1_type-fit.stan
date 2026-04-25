@@ -91,7 +91,7 @@ functions {
       curUtil = win_component - loss * loss_component;
       
       // Exploitation: Update chosen deck with utility + delta rule
-      local_ev_exploit[choice[t]] += curUtil + update * (curUtil - local_ev_exploit[choice[t]]);
+      local_ev_exploit[choice[t]] += update * (curUtil - local_ev_exploit[choice[t]]);
       
       // Exploration: Reset lag for chosen deck
       local_choice_lag[choice[t]] = 0;
