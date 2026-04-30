@@ -74,10 +74,8 @@ igtVSEDELTAModel <- R6::R6Class("igtVSEDELTAModel",
         losses[t] <- abs(result$loss)
         
         # Calculate utility
-        utility <- wins[t]^gain - loss * losses[t]^gain
-        
-        # Exploitation: Update chosen deck with direct utility AND delta rule
-        # Note: NO decay step in this variant
+        net_outcome <- wins[t] - losses[t]
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + 
           update * (utility - self$ev_exploit[choices[t]])
         
@@ -149,9 +147,8 @@ igtVSEDELTAModel <- R6::R6Class("igtVSEDELTAModel",
         trial_loglik[t] <- log(probs[choice] + 1e-10)
         
         # Calculate utility
-        utility <- win^gain - loss * lose^gain
-        
-        # Update chosen deck with delta rule (NO decay step)
+        net_outcome <- win - lose
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         ev_exploit[choice] <- ev_exploit[choice] + 
           update * (utility - ev_exploit[choice])
         

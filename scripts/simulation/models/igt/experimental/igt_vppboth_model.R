@@ -83,7 +83,8 @@ igtVPPBOTHModel <- R6::R6Class("igtVPPBOTHModel",
         self$pers <- self$pers * K
         
         # Calculate utility (as in the Stan model)
-        utility <- wins[t]^gain - loss * losses[t]^gain
+        net_outcome <- wins[t] - losses[t]
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Update perseverance based on outcome
         if (wins[t] >= losses[t]) {
@@ -162,7 +163,8 @@ igtVPPBOTHModel <- R6::R6Class("igtVPPBOTHModel",
         pers <- pers * K
         
         # Calculate utility
-        utility <- win^gain - loss * lose^gain
+        net_outcome <- win - lose
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Update perseverance
         if (win >= lose) {

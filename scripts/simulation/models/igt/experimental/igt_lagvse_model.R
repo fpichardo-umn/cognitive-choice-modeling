@@ -25,7 +25,7 @@ igtLAGVSEModel <- R6::R6Class("igtLAGVSEModel",
                                  gain = list(range = c(0, 1)),
                                  loss = list(range = c(0, 10)),
                                  decay = list(range = c(0, 1)),
-                                 phi = list(range = c(-10, 10))
+                                 phi = list(range = c(-1, 1))
                                ))
                              },
                              
@@ -74,10 +74,11 @@ igtLAGVSEModel <- R6::R6Class("igtLAGVSEModel",
                                  losses[t] <- abs(result$loss)
                                  
                                  # Calculate utility (as in the Stan model)
-                                 utility <- wins[t]^gain - loss * losses[t]^gain
+                                 net_outcome <- wins[t] - losses[t]
+                                 utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
                                  
                                  # Exploitation: Decay all deck values
-                                 self$ev_exploit <- self$ev_exploit * decay
+                                 self$ev_exploit <- self$ev_exploit * (1 - decay)
                                  
                                  # Exploitation: Add utility to chosen deck
                                  self$ev_exploit[choices[t]] <- self$ev_exploit[choices[t]] + utility
@@ -136,10 +137,11 @@ igtLAGVSEModel <- R6::R6Class("igtLAGVSEModel",
                                  trial_loglik[t] <- if (is.finite(log(probs[choice]))) log(probs[choice]) else -1000
                                  
                                  # Calculate utility
-                                 utility <- win^gain - loss * lose^gain
+                                 net_outcome <- win - lose
+                                 utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
                                  
                                  # Exploitation: Decay and update
-                                 ev_exploit <- ev_exploit * decay
+                                 ev_exploit <- ev_exploit * (1 - decay)
                                  ev_exploit[choice] <- ev_exploit[choice] + utility
                                  
                                  # Exploration: Reset chosen lag

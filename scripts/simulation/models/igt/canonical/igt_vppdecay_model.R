@@ -81,7 +81,8 @@ igtVPPDECAYModel <- R6::R6Class("igtVPPDECAYModel",
         self$pers <- self$pers * K
         
         # Calculate utility (as in the Stan model)
-        utility <- wins[t]^gain - loss * losses[t]^gain
+        net_outcome <- wins[t] - losses[t]
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Update perseverance based on outcome
         if (wins[t] >= losses[t]) {
@@ -153,7 +154,8 @@ igtVPPDECAYModel <- R6::R6Class("igtVPPDECAYModel",
         pers <- pers * K
         
         # Calculate utility
-        utility <- win^gain - loss * lose^gain
+        net_outcome <- win - lose
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Update perseverance
         if (win >= lose) {
@@ -166,7 +168,7 @@ igtVPPDECAYModel <- R6::R6Class("igtVPPDECAYModel",
         ev <- ev * (1 - decay)
         
         # Add utility to chosen deck
-        ev[choice[t]] <- ev[choice[t]] + utility
+        ev[choice] <- ev[choice] + utility
       }
       
       return(list(

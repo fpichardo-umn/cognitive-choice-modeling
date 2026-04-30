@@ -63,7 +63,8 @@ igtPVLDELTAModel <- R6::R6Class("igtPVLDELTAModel",
         losses[t] <- abs(result$loss)
         
         # Calculate utility as in the Stan model
-        utility <- wins[t]^gain - loss * losses[t]^gain
+        net_outcome <- wins[t] - losses[t]
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Update expected value using delta rule
         self$ev[choices[t]] <- self$ev[choices[t]] + update * (utility - self$ev[choices[t]])
@@ -112,7 +113,8 @@ igtPVLDELTAModel <- R6::R6Class("igtPVLDELTAModel",
         trial_loglik[t] <-log(probs[choice])
         
         # Calculate utility and update expected value
-        utility <- win^gain - loss * lose^gain
+        net_outcome <- win - lose
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         ev[choice] <- ev[choice] + update * (utility - ev[choice])
       }
       

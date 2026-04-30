@@ -13,9 +13,10 @@ functions {
     for (t in 1:Tsub) {
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * local_ev);
       
-      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
-      real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
-      curUtil = win_component - loss * loss_component;
+      real net_outcome = wins[t] - losses[t];
+      curUtil = (net_outcome >= 0)
+                ? ((net_outcome == 0) ? 0.0 : exp(gain * log(net_outcome)))
+                : (-loss * exp(gain * log(-net_outcome)));
       
       local_ev = local_ev * (1 - decay);
       local_ev[choice[t]] += update * (curUtil - local_ev[choice[t]]);

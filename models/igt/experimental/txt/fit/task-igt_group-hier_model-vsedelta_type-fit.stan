@@ -17,9 +17,10 @@ functions {
       combined_value = local_ev_exploit + local_ev_explore;
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * combined_value);
       
-      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
-real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
-curUtil = win_component - loss * loss_component;
+      real net_outcome = wins[t] - losses[t];
+      curUtil = (net_outcome >= 0)
+                ? ((net_outcome == 0) ? 0.0 : exp(gain * log(net_outcome)))
+                : (-loss * exp(gain * log(-net_outcome)));
 
       local_ev_exploit[choice[t]] += update * (curUtil  - local_ev_exploit[choice[t]]);
       local_ev_explore[choice[t]] = 0;

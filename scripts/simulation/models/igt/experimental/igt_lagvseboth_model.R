@@ -77,9 +77,8 @@ igtLAGVSEBOTHModel <- R6::R6Class("igtLAGVSEBOTHModel",
         losses[t] <- abs(result$loss)
         
         # Calculate utility
-        utility <- wins[t]^gain - loss * losses[t]^gain
-        
-        # Exploitation: Decay all deck values
+        net_outcome <- wins[t] - losses[t]
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         self$ev_exploit <- self$ev_exploit * (1 - decay)
         
         # Exploitation: Update chosen deck with BOTH direct utility AND delta rule
@@ -149,9 +148,8 @@ igtLAGVSEBOTHModel <- R6::R6Class("igtLAGVSEBOTHModel",
         trial_loglik[t] <- log(probs[choice] + 1e-10)
         
         # Calculate utility
-        utility <- win^gain - loss * lose^gain
-        
-        # Decay all values
+        net_outcome <- win - lose
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         ev_exploit <- ev_exploit * (1 - decay)
         
         # Update chosen deck with both mechanisms

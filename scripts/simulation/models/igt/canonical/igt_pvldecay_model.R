@@ -64,7 +64,8 @@ igtPVLDECAYModel <- R6::R6Class("igtPVLDECAYModel",
         losses[t] <- abs(result$loss)
         
         # Calculate utility as in the Stan model
-        utility <- wins[t]^gain - loss * losses[t]^gain
+        net_outcome <- wins[t] - losses[t]
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Apply decay to all deck values
         self$ev <- self$ev * (1 - decay)
@@ -117,7 +118,8 @@ igtPVLDECAYModel <- R6::R6Class("igtPVLDECAYModel",
         trial_loglik[t] <-log(probs[choice])
         
         # Calculate utility 
-        utility <- win^gain - loss * lose^gain
+        net_outcome <- win - lose
+        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
         
         # Apply decay and update
         ev <- ev * (1 - decay)
