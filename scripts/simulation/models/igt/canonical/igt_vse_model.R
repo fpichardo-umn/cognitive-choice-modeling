@@ -74,8 +74,7 @@ igtVSEModel <- R6::R6Class("igtVSEModel",
         losses[t] <- abs(result$loss)
         
         # Calculate utility (as in the Stan model)
-        net_outcome <- wins[t] - losses[t]
-        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
+        utility <- wins[t]^gain - loss * losses[t]^gain
         
         # Exploitation: Decay all deck values
         self$ev_exploit <- self$ev_exploit * (1 - decay)
@@ -146,8 +145,7 @@ igtVSEModel <- R6::R6Class("igtVSEModel",
         trial_loglik[t] <- if (is.finite(log(probs[choice]))) log(probs[choice]) else -1000
         
         # Calculate utility
-        net_outcome <- win - lose
-        utility <- if (net_outcome >= 0) { if (net_outcome == 0) 0 else net_outcome^gain } else { -loss * (-net_outcome)^gain }
+        utility <- win^gain - loss * lose^gain
         
         # Exploitation: Decay and update
         ev_exploit <- ev_exploit * (1 - decay)

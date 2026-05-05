@@ -18,10 +18,9 @@ functions {
       log_lik += categorical_logit_lpmf(choice[t] | sensitivity * V);
       
       local_pers = local_pers * K;
-      real net_outcome = wins[t] - losses[t];
-      curUtil = (net_outcome >= 0)
-                ? ((net_outcome == 0) ? 0.0 : exp(gain * log(net_outcome)))
-                : (-loss * exp(gain * log(-net_outcome)));
+      real win_component = (wins[t] == 0) ? 0.0 : exp(gain * log(wins[t]));
+real loss_component = (losses[t] == 0) ? 0.0 : exp(gain * log(losses[t]));
+curUtil = win_component - loss * loss_component;
       
       if (wins[t] >= losses[t]) {
         local_pers[choice[t]] += epP;
